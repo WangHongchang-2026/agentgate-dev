@@ -1,4 +1,4 @@
-import { request } from './client'
+import { request, requestBlob } from './client'
 import type {
   DatasetDetail, DatasetExport, DatasetMutation, DatasetRecord, DatasetSummary,
   DatasetVersion, EvaluationCase,
@@ -76,8 +76,19 @@ export const datasetApi = {
     request<DatasetExport>(
       `/api/datasets/${id(datasetId)}/versions/${version}/export`
     ),
+  exportExcel: (datasetId: string, version: number) =>
+    requestBlob(`/api/datasets/${id(datasetId)}/versions/${version}/export/excel`),
   importDataset: (payload: DatasetExport) =>
     request<{ dataset: DatasetRecord; version: DatasetVersion }>('/api/datasets/import', {
       method: 'POST', headers, body: JSON.stringify(payload),
     }),
+  importExcel: (file: File, name: string, description = '') => {
+    const body = new FormData()
+    body.append('file', file)
+    body.append('name', name)
+    body.append('description', description)
+    return request<{ dataset: DatasetRecord; version: DatasetVersion }>('/api/datasets/import/excel', {
+      method: 'POST', body,
+    })
+  },
 }

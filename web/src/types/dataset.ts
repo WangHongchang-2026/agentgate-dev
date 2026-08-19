@@ -105,3 +105,10 @@ export interface ValidationIssue {
   path: string
   message: string
 }
+
+export interface ExcelImportIssue {
+  sheet: string
+  row: number | null
+  column: string | null
+  message: string
+}

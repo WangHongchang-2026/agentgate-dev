@@ -8,7 +8,7 @@ import VersionSelector from '../components/dataset/VersionSelector.vue'
 import CaseTable from '../components/dataset/CaseTable.vue'
 import CaseEditor from '../components/dataset/CaseEditor.vue'
 import type {
-  DatasetExport, DatasetSummary, DatasetVersion, EvaluationCase, ValidationIssue,
+  DatasetExport, DatasetSummary, DatasetVersion, EvaluationCase, ExcelImportIssue, ValidationIssue,
 } from '../types/dataset'
 
 const emit = defineEmits<{ runCreated: [run: Run] }>()
@@ -31,6 +31,11 @@ const dialogMode = ref<'create'|'copy'>('create')
 const dialogName = ref('')
 const dialogDescription = ref('')
 const importInput = ref<HTMLInputElement|null>(null)
+const excelImportDialog = ref(false)
+const excelImportName = ref('')
+const excelImportDescription = ref('')
+const excelImportFile = ref<File|null>(null)
+const excelImportIssues = ref<ExcelImportIssue[]>([])
 const cloneJson = <T>(value: T): T => JSON.parse(JSON.stringify(value))
 
 const activeVersion = computed<DatasetVersion|null>(
@@ -266,6 +271,25 @@ async function exportVersion(version: number) {
   URL.revokeObjectURL(url)
 }
 
+function excelFilename(name: string, version: number) {
+  const sanitized = name.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^[.-]+|[.-]+$/g, '')
+  return `${sanitized || 'dataset'}-v${version}.xlsx`
+}
+
+async function exportExcelVersion(version: number) {
+  try {
+    const blob = await datasetApi.exportExcel(activeDatasetId.value, version)
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = excelFilename(activeDataset.value?.name ?? 'dataset', version)
+    link.click()
+    URL.revokeObjectURL(url)
+  } catch (error) {
+    showError(error, '导出 Excel 失败')
+  }
+}
+
 function openImport() {
   importInput.value?.click()
 }
@@ -283,6 +307,49 @@ async function importDataset(event: Event) {
     showError(error, '导入失败')
   } finally {
     input.value = ''
+  }
+}
+
+function openExcelImport() {
+  excelImportName.value = ''
+  excelImportDescription.value = ''
+  excelImportFile.value = null
+  excelImportIssues.value = []
+  excelImportDialog.value = true
+}
+
+function chooseExcelFile(event: Event) {
+  excelImportFile.value = (event.target as HTMLInputElement).files?.[0] ?? null
+}
+
+function isExcelImportIssue(value: unknown): value is ExcelImportIssue {
+  return typeof value === 'object' && value !== null
+    && typeof (value as ExcelImportIssue).sheet === 'string'
+    && typeof (value as ExcelImportIssue).message === 'string'
+}
+
+async function submitExcelImport() {
+  if (!excelImportName.value.trim()) return ElMessage.warning('请输入测评集名称')
+  if (!excelImportFile.value) return ElMessage.warning('请选择 .xlsx 文件')
+  busy.value = true
+  excelImportIssues.value = []
+  try {
+    const result = await datasetApi.importExcel(
+      excelImportFile.value,
+      excelImportName.value,
+      excelImportDescription.value,
+    )
+    excelImportDialog.value = false
+    await loadDatasets(result.dataset.id)
+    ElMessage.success('Excel 已导入为草稿')
+  } catch (error) {
+    if (error instanceof ApiError && Array.isArray(error.detail)) {
+      excelImportIssues.value = error.detail.filter(isExcelImportIssue)
+      if (excelImportIssues.value.length) return
+    }
+    showError(error, '导入 Excel 失败')
+  } finally {
+    busy.value = false
   }
 }
 
@@ -335,6 +402,7 @@ onMounted(async () => {
         <b>{{ activeDataset.name }}</b>
         <span>{{ activeVersion?.status === 'draft' ? '编辑草稿' : `查看 v${activeVersion?.version ?? '—'}` }}</span>
       </div>
+      <el-button size="small" data-testid="import-excel" @click="openExcelImport">导入 Excel</el-button>
     </div>
 
     <VersionSelector
@@ -347,6 +415,7 @@ onMounted(async () => {
       @publish="publishDraft"
       @discard="discardDraft"
       @export="exportVersion"
+      @export-excel="exportExcelVersion"
     />
 
     <el-alert
@@ -413,6 +482,22 @@ onMounted(async () => {
         <el-form-item v-if="dialogMode === 'create'" label="描述"><el-input v-model="dialogDescription" type="textarea" :rows="3" /></el-form-item>
       </el-form>
       <template #footer><el-button @click="datasetDialog = false">取消</el-button><el-button type="primary" :loading="busy" data-testid="submit-dataset" @click="submitDatasetDialog">确认</el-button></template>
+    </el-dialog>
+
+    <el-dialog v-model="excelImportDialog" title="导入 Excel" width="min(460px, 92vw)">
+      <el-form label-position="top">
+        <el-form-item label="名称"><el-input v-model="excelImportName" data-testid="excel-import-name" /></el-form-item>
+        <el-form-item label="描述"><el-input v-model="excelImportDescription" type="textarea" :rows="3" /></el-form-item>
+        <el-form-item label="Excel 文件"><input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" data-testid="excel-import-file" @change="chooseExcelFile" /></el-form-item>
+      </el-form>
+      <el-alert v-if="excelImportIssues.length" title="Excel 文件存在以下问题" type="error" :closable="false" show-icon>
+        <ul data-testid="excel-import-issues">
+          <li v-for="(issue, index) in excelImportIssues" :key="`${issue.sheet}-${issue.row}-${issue.column}-${issue.message}`" :data-testid="`excel-import-issue-${index}`">
+            工作表 <b data-testid="excel-import-issue-sheet">{{ issue.sheet }}</b> · 行 <span data-testid="excel-import-issue-row">{{ issue.row ?? '—' }}</span> · 列 <span data-testid="excel-import-issue-column">{{ issue.column ?? '—' }}</span>：{{ issue.message }}
+          </li>
+        </ul>
+      </el-alert>
+      <template #footer><el-button @click="excelImportDialog = false">取消</el-button><el-button type="primary" :loading="busy" data-testid="submit-excel-import" @click="submitExcelImport">导入</el-button></template>
     </el-dialog>
   </section>
 </template>

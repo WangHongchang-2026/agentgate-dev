@@ -121,15 +121,23 @@ export class ApiError extends Error {
   }
 }
 
-export const request = async <T>(url: string, init?: RequestInit): Promise<T> => {
+const requestResponse = async (url: string, init?: RequestInit): Promise<Response> => {
   const response = await fetch(url, init)
   if (!response.ok) {
     const payload = await response.json().catch(() => ({ detail: `HTTP ${response.status}` }))
     throw new ApiError(response.status, payload.detail)
   }
+  return response
+}
+
+export const request = async <T>(url: string, init?: RequestInit): Promise<T> => {
+  const response = await requestResponse(url, init)
   if (response.status === 204) return undefined as T
   return response.json()
 }
+
+export const requestBlob = async (url: string, init?: RequestInit): Promise<Blob> =>
+  (await requestResponse(url, init)).blob()
 
 export const api = {
   overview: () => request<Overview>('/api/overview'),

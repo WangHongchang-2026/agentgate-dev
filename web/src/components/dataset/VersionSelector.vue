@@ -12,6 +12,7 @@ const emit = defineEmits<{
   publish: []
   discard: []
   export: [version: number]
+  exportExcel: [version: number]
 }>()
 </script>
 
@@ -46,6 +47,12 @@ const emit = defineEmits<{
           size="small"
           @click="emit('export', versions.find(item => item.id === activeId)!.version!)"
         >导出 JSON</el-button>
+        <el-button
+          v-if="versions.find(item => item.id === activeId)?.version"
+          size="small"
+          data-testid="export-excel"
+          @click="emit('exportExcel', versions.find(item => item.id === activeId)!.version!)"
+        >导出 Excel</el-button>
       </template>
     </div>
   </div>
