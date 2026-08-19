@@ -1,14 +1,22 @@
 from __future__ import annotations
 
 import os
+import re
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, FastAPI, HTTPException, Request
+from fastapi import APIRouter, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from agentgate.case import DatasetExport, DatasetValidationError
+from agentgate.case import (
+    DatasetExcelValidationError,
+    DatasetExport,
+    DatasetValidationError,
+    ExcelImportIssue,
+)
 from agentgate.control.core import EvaluationService
 from agentgate.domain import Case
 from agentgate.storage.sqlite import SQLiteRepository
@@ -46,11 +54,36 @@ class ReorderCasesRequest(BaseModel):
     case_ids: list[str]
 
 
+EXCEL_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+MAX_EXCEL_UPLOAD_BYTES = 10 * 1024 * 1024
+
+
 def _raise_dataset_error(exc: ValueError, status_code: int = 422) -> None:
     detail: Any = str(exc)
-    if isinstance(exc, DatasetValidationError):
+    if isinstance(exc, DatasetExcelValidationError):
+        detail = [
+            {
+                "sheet": item.sheet,
+                "row": item.row,
+                "column": item.column,
+                "message": item.message,
+            }
+            for item in exc.issues
+        ]
+    elif isinstance(exc, DatasetValidationError):
         detail = [item.model_dump(mode="json") for item in exc.issues]
     raise HTTPException(status_code=status_code, detail=detail) from exc
+
+
+def _excel_upload_error(message: str) -> DatasetExcelValidationError:
+    return DatasetExcelValidationError((ExcelImportIssue(
+        sheet="Cases", row=None, column=None, message=message
+    ),))
+
+
+def _excel_attachment_filename(name: str, version: int) -> str:
+    sanitized = re.sub(r"[^A-Za-z0-9._-]+", "-", name).strip(".-")
+    return f"{sanitized or 'dataset'}-v{version}.xlsx"
 
 
 def create_app(database_path: str | Path | None = None) -> FastAPI:
@@ -226,6 +259,37 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
             return {"dataset": dataset, "version": version}
         except ValueError as exc:
             _raise_dataset_error(exc)
+
+    @api.post("/datasets/import/excel", status_code=201)
+    async def import_dataset_excel(
+        file: UploadFile = File(...),
+        name: str = Form(...),
+        description: str = Form(""),
+    ):
+        try:
+            if not file.filename or not file.filename.lower().endswith(".xlsx"):
+                raise _excel_upload_error("file must have a .xlsx filename")
+            content = await file.read()
+            if len(content) > MAX_EXCEL_UPLOAD_BYTES:
+                raise _excel_upload_error("XLSX upload exceeds 10 MiB")
+            dataset, version = datasets.import_excel(content, name, description)
+            return {"dataset": dataset, "version": version}
+        except ValueError as exc:
+            _raise_dataset_error(exc)
+
+    @api.get("/datasets/{dataset_id}/versions/{version}/export/excel")
+    def export_dataset_excel(dataset_id: str, version: int):
+        try:
+            content = datasets.export_excel(dataset_id, version)
+            dataset = datasets.get_dataset(dataset_id)
+            filename = _excel_attachment_filename(dataset.name, version)
+            return StreamingResponse(
+                BytesIO(content),
+                media_type=EXCEL_MEDIA_TYPE,
+                headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+            )
+        except ValueError as exc:
+            _raise_dataset_error(exc, 404)
 
     @api.get("/evaluators")
     def evaluators():
