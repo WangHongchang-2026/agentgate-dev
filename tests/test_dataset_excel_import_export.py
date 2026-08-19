@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 from io import BytesIO
+import sqlite3
 from zipfile import ZIP_DEFLATED, ZipFile
 
 import openpyxl
@@ -10,6 +11,7 @@ from agentgate.case.excel_import_export import (
     build_excel,
     parse_excel,
 )
+from agentgate.case import DatasetService
 from agentgate.domain import (
     Case,
     CaseCategory,
@@ -23,6 +25,7 @@ from agentgate.domain import (
     StateExpectation,
     ToolArgumentExpectation,
 )
+from agentgate.storage.sqlite import SQLiteRepository
 
 
 HEADERS = (
@@ -259,3 +262,90 @@ def test_excel_aggregates_model_errors_when_case_id_is_missing():
         (2, "initial_state_json"),
         (2, "input_json"),
     }
+
+
+def test_service_import_excel_creates_trimmed_dataset_with_unpublished_draft(tmp_path):
+    service = DatasetService(SQLiteRepository(tmp_path / "import.db"))
+    cases = published_version_with_all_fields().cases
+
+    dataset, draft = service.import_excel(
+        build_excel(published_version_with_all_fields()),
+        "  Imported dataset  ",
+        "  Imported description  ",
+    )
+
+    assert dataset.name == "Imported dataset"
+    assert dataset.description == "Imported description"
+    assert draft.dataset_id == dataset.id
+    assert draft.status == DatasetVersionStatus.DRAFT
+    assert draft.version is None
+    assert draft.cases == cases
+    assert service.get_draft(dataset.id) == draft
+    with pytest.raises(ValueError, match="unknown dataset version"):
+        service.get_version(dataset.id, 1)
+
+
+def test_service_import_excel_rejects_blank_dataset_name(tmp_path):
+    service = DatasetService(SQLiteRepository(tmp_path / "blank-name.db"))
+
+    with pytest.raises(ValueError, match="dataset name is required"):
+        service.import_excel(build_excel(published_version_with_all_fields()), "  ")
+
+    assert service.list_datasets(include_archived=True) == []
+
+
+def test_service_import_excel_malformed_workbook_creates_no_records(tmp_path):
+    repository = SQLiteRepository(tmp_path / "malformed.db")
+    service = DatasetService(repository)
+
+    with pytest.raises(DatasetExcelValidationError):
+        service.import_excel(b"not an xlsx", "Imported dataset")
+
+    assert service.list_datasets(include_archived=True) == []
+    with repository._connect() as db:
+        assert db.execute("SELECT COUNT(*) FROM dataset_versions").fetchone()[0] == 0
+
+
+def test_service_import_excel_rolls_back_dataset_when_draft_save_fails(tmp_path):
+    repository = SQLiteRepository(tmp_path / "rollback.db")
+    service = DatasetService(repository)
+    with repository._connect() as db:
+        db.execute(
+            """
+            CREATE TRIGGER fail_draft_insert
+            BEFORE INSERT ON dataset_versions
+            BEGIN
+                SELECT RAISE(FAIL, 'draft save failed');
+            END
+            """
+        )
+
+    with pytest.raises(sqlite3.IntegrityError, match="draft save failed"):
+        service.import_excel(
+            build_excel(published_version_with_all_fields()), "Imported dataset"
+        )
+
+    assert service.list_datasets(include_archived=True) == []
+    with repository._connect() as db:
+        assert db.execute("SELECT COUNT(*) FROM dataset_versions").fetchone()[0] == 0
+
+
+def test_service_export_excel_rejects_draft(tmp_path):
+    service = DatasetService(SQLiteRepository(tmp_path / "draft-export.db"))
+    dataset, _ = service.import_excel(
+        build_excel(published_version_with_all_fields()), "Imported dataset"
+    )
+
+    with pytest.raises(ValueError):
+        service.export_excel(dataset.id, 1)
+
+
+def test_service_export_excel_round_trips_published_version(tmp_path):
+    service = DatasetService(SQLiteRepository(tmp_path / "published-export.db"))
+    cases = published_version_with_all_fields().cases
+    dataset, _ = service.import_excel(
+        build_excel(published_version_with_all_fields()), "Imported dataset"
+    )
+    published = service.publish_draft(dataset.id)
+
+    assert parse_excel(service.export_excel(dataset.id, published.version)) == cases

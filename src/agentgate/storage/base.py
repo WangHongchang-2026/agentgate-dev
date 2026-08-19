@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Protocol
+from typing import ContextManager, Protocol
 
 from agentgate.domain import Dataset, DatasetVersion, Result, Run, Trace
 
 
 class AgentGateRepository(Protocol):
+    def transaction(self) -> ContextManager[None]: ...
     def save_dataset(self, dataset: Dataset) -> None: ...
     def get_dataset(self, dataset_id: str) -> Dataset | None: ...
     def list_datasets(self, include_archived: bool = False) -> list[Dataset]: ...
