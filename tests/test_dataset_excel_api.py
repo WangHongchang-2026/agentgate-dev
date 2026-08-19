@@ -2,6 +2,7 @@ from io import BytesIO
 
 import openpyxl
 from fastapi.testclient import TestClient
+from starlette.datastructures import UploadFile
 
 from agentgate.case import build_excel
 from agentgate.domain import Case, CaseTurn, DatasetVersion
@@ -161,6 +162,27 @@ def test_excel_import_rejects_bodies_over_ten_mebibytes_before_creating_a_datase
         assert response.status_code == 422
         assert response.json()["detail"][0]["message"] == "XLSX upload exceeds 10 MiB"
         assert _dataset_ids(client) == before
+
+
+def test_excel_import_reads_at_most_one_byte_beyond_the_upload_limit(tmp_path, monkeypatch):
+    original_read = UploadFile.read
+    read_sizes: list[int] = []
+
+    async def record_read(upload: UploadFile, size: int = -1) -> bytes:
+        read_sizes.append(size)
+        return await original_read(upload, size)
+
+    monkeypatch.setattr(UploadFile, "read", record_read)
+
+    with TestClient(create_app(tmp_path / "bounded-read-excel-api.db")) as client:
+        response = client.post(
+            "/api/datasets/import/excel",
+            data={"name": "Bounded read"},
+            files={"file": ("invalid.xlsx", b"not an xlsx", XLSX_MEDIA_TYPE)},
+        )
+
+        assert response.status_code == 422
+        assert read_sizes == [10 * 1024 * 1024 + 1]
 
 
 def test_excel_import_returns_all_malformed_workbook_issues_and_creates_no_dataset(tmp_path):

@@ -269,7 +269,7 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
         try:
             if not file.filename or not file.filename.lower().endswith(".xlsx"):
                 raise _excel_upload_error("file must have a .xlsx filename")
-            content = await file.read()
+            content = await file.read(MAX_EXCEL_UPLOAD_BYTES + 1)
             if len(content) > MAX_EXCEL_UPLOAD_BYTES:
                 raise _excel_upload_error("XLSX upload exceeds 10 MiB")
             dataset, version = datasets.import_excel(content, name, description)
