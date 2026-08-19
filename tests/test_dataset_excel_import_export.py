@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 from io import BytesIO
+from zipfile import ZIP_DEFLATED, ZipFile
 
 import openpyxl
 import pytest
@@ -216,3 +217,45 @@ def test_excel_reports_input_byte_limit_before_reading_workbook():
     assert issues[0].sheet == "Cases"
     assert issues[0].row is None
     assert issues[0].column is None
+
+
+def _corrupt_cases_xml(content):
+    corrupted = BytesIO()
+    with ZipFile(BytesIO(content)) as source, ZipFile(corrupted, "w", ZIP_DEFLATED) as target:
+        for member in source.infolist():
+            data = source.read(member.filename)
+            if member.filename == "xl/worksheets/sheet1.xml":
+                data = b"<worksheet"
+            target.writestr(member, data)
+    return corrupted.getvalue()
+
+
+def test_excel_wraps_lazy_worksheet_xml_errors_as_import_issues():
+    issues = _issues(_corrupt_cases_xml(_workbook_bytes()))
+
+    assert issues[0].sheet == "Cases"
+    assert issues[0].row is None
+    assert issues[0].column is None
+    assert issues[0].message.startswith("invalid XLSX content")
+
+
+def test_excel_aggregates_model_errors_when_case_id_is_missing():
+    issues = _issues(_workbook_bytes((
+        _valid_row(
+            case_id=None,
+            category="unknown",
+            difficulty="impossible",
+            tags_json="{}",
+            initial_state_json="[]",
+            input_json="[]",
+        ),
+    )))
+
+    assert {(issue.row, issue.column) for issue in issues} >= {
+        (2, "case_id"),
+        (2, "category"),
+        (2, "difficulty"),
+        (2, "tags_json"),
+        (2, "initial_state_json"),
+        (2, "input_json"),
+    }

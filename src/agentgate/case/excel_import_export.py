@@ -9,6 +9,7 @@ import json
 from json import JSONDecodeError
 from typing import Any
 from zipfile import BadZipFile
+from xml.etree.ElementTree import ParseError
 
 from openpyxl import Workbook, load_workbook
 from openpyxl.utils.exceptions import InvalidFileException
@@ -113,14 +114,9 @@ def parse_excel(content: bytes) -> tuple[Case, ...]:
         raise DatasetExcelValidationError((ExcelImportIssue(
             SHEET_NAME, None, None, f"input exceeds {MAX_INPUT_BYTES} byte limit"
         ),))
+    workbook = None
     try:
         workbook = load_workbook(BytesIO(content), read_only=True, data_only=True)
-    except (BadZipFile, InvalidFileException, OSError, ValueError) as exc:
-        raise DatasetExcelValidationError((ExcelImportIssue(
-            SHEET_NAME, None, None, f"invalid XLSX content: {exc}"
-        ),)) from exc
-
-    try:
         if SHEET_NAME not in workbook.sheetnames:
             raise DatasetExcelValidationError((ExcelImportIssue(
                 SHEET_NAME, None, None, f"required worksheet '{SHEET_NAME}' is missing"
@@ -134,6 +130,7 @@ def parse_excel(content: bytes) -> tuple[Case, ...]:
 
         issues: list[ExcelImportIssue] = []
         cases: dict[str, list[_Row]] = {}
+        anonymous_cases: list[list[_Row]] = []
         for row_number, values in enumerate(rows, start=2):
             if row_number > MAX_DATA_ROWS + 1:
                 issues.append(ExcelImportIssue(
@@ -146,9 +143,11 @@ def parse_excel(content: bytes) -> tuple[Case, ...]:
             case_id = parsed.cells["case_id"]
             if not _is_blank(case_id):
                 cases.setdefault(str(case_id), []).append(parsed)
+            else:
+                anonymous_cases.append([parsed])
 
         output: list[Case] = []
-        for case_rows in cases.values():
+        for case_rows in [*cases.values(), *anonymous_cases]:
             _validate_case_structure(case_rows, issues)
             parsed_case = _build_case(case_rows, issues)
             if parsed_case is not None:
@@ -157,8 +156,15 @@ def parse_excel(content: bytes) -> tuple[Case, ...]:
         if issues:
             raise DatasetExcelValidationError(tuple(issues))
         return tuple(output)
+    except DatasetExcelValidationError:
+        raise
+    except (BadZipFile, InvalidFileException, OSError, ParseError, ValueError) as exc:
+        raise DatasetExcelValidationError((ExcelImportIssue(
+            SHEET_NAME, None, None, f"invalid XLSX content: {exc}"
+        ),)) from exc
     finally:
-        workbook.close()
+        if workbook is not None:
+            workbook.close()
 
 
 def _compact_json(value: Any) -> str:
