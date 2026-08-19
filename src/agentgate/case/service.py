@@ -9,8 +9,13 @@ from agentgate.domain import Case, Dataset, DatasetVersion, DatasetVersionStatus
 from agentgate.storage.base import AgentGateRepository
 
 from .import_export import DatasetExport, build_export, parse_export
-from .excel_import_export import build_excel, parse_excel
-from .validation import validate_dataset_version
+from .excel_import_export import (
+    DatasetExcelValidationError,
+    build_excel,
+    excel_issues_from_dataset_validation,
+    parse_excel,
+)
+from .validation import DatasetValidationError, validate_dataset_version
 
 
 def utcnow() -> datetime:
@@ -215,6 +220,12 @@ class DatasetService:
             dataset_description=dataset.description,
             cases=cases,
         )
+        try:
+            validate_dataset_version(draft)
+        except DatasetValidationError as exc:
+            raise DatasetExcelValidationError(
+                excel_issues_from_dataset_validation(exc.issues, draft.cases)
+            ) from exc
         with self.repository.transaction():
             self.repository.save_dataset(dataset)
             self.repository.save_dataset_version(draft)

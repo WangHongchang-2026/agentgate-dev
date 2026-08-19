@@ -98,7 +98,10 @@ Turn. Rows sharing a `case_id` form one multi-turn Case, whose `turn_order` valu
 | 15 | `policy_rules_json` | No | JSON array of policy-rule strings; defaults to `[]`. |
 | 16 | `turn_notes` | No | Per-Turn notes; defaults to an empty string. |
 
-All `*_json` cells contain JSON text, not spreadsheet formulas or native cell objects. For
+All `*_json` cells contain JSON text, not spreadsheet formulas or native cell objects. Formula
+cells are rejected in every column rather than evaluated or read from cached results. On export,
+text that begins with `=` (for example, a Case ID or note) is written as literal text, so it does
+not become a formula and round-trips without adding an apostrophe. For
 example, `tags_json` can be `["loan","multi-turn"]`, `initial_state_json` can be
 `{"customer_id":"c-17","risk":"unknown"}`, and `input_json` can be
 `{"message":"I want to apply for a loan"}`. An `expectations_json` cell can contain:
@@ -126,8 +129,17 @@ rows; they must agree for a shared `case_id`.
 The import is all-or-nothing. A malformed workbook, missing required values, invalid JSON,
 conflicting repeated Case values, duplicate IDs/orders, or non-contiguous `turn_order` values
 creates no Dataset. Validation responses identify each issue with `sheet`, `row`, `column`, and
-`message`. The upload limit is 10 MiB, and the `Cases` worksheet can contain at most 10,000 data
-rows (not including the header).
+`message`. Each text cell is limited to 32,767 characters and must contain only XML 1.0 legal
+characters; an export that cannot represent a cell losslessly returns a structured validation
+error instead of truncating it.
+
+The `.xlsx` file itself is limited to exactly 10 MiB, and the complete multipart request envelope
+is limited to 11 MiB to allow normal form-data overhead while rejecting oversized requests before
+multipart parsing. The `Cases` worksheet can contain at most 10,000 data rows (not including the
+header). Before openpyxl reads a workbook, AgentGate also rejects ZIP packages with more than
+100 MiB total uncompressed data, any entry larger than 50 MiB uncompressed, or any entry whose
+compression ratio exceeds 200:1. These conservative archive limits protect against obvious ZIP
+bombs; unusually high-compression legitimate workbooks may require the thresholds to be tuned.
 
 Dataset name and description are not workbook columns. Supply them in the Web import dialog or as
 multipart request fields. Import assigns a new Dataset ID while preserving the Case, Turn, and

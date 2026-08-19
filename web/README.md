@@ -27,6 +27,8 @@ published version can be downloaded with **Export Excel**, which calls
 `GET /api/datasets/{dataset_id}/versions/{version}/export/excel`.
 
 Excel workbooks require a `Cases` sheet and use one data row per Turn. Multi-turn rows share a
-`case_id` and have contiguous 1-based `turn_order` values. They are limited to 10 MiB and 10,000
-data rows. See the root [`README.md`](../README.md#dataset-excel-import-and-export) for the exact
-column schema, JSON-cell examples, and API curl commands.
+`case_id` and have contiguous 1-based `turn_order` values. Formula cells are rejected. Files are
+limited to 10 MiB, the multipart envelope to 11 MiB, and the sheet to 10,000 data rows. ZIP
+expansion and Excel cell-representability limits are documented in the root
+[`README.md`](../README.md#dataset-excel-import-and-export), together with the exact column schema,
+JSON-cell examples, and API curl commands.

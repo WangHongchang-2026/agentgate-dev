@@ -8,10 +8,12 @@ from typing import Any
 
 from fastapi import APIRouter, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
+from starlette.concurrency import run_in_threadpool
 
 from agentgate.case import (
+    DatasetExcelExportError,
     DatasetExcelValidationError,
     DatasetExport,
     DatasetValidationError,
@@ -56,11 +58,77 @@ class ReorderCasesRequest(BaseModel):
 
 EXCEL_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 MAX_EXCEL_UPLOAD_BYTES = 10 * 1024 * 1024
+MAX_EXCEL_REQUEST_BYTES = 11 * 1024 * 1024
+
+
+class ExcelRequestBodyLimitMiddleware:
+    """Bound the complete multipart envelope before FastAPI parses form data."""
+
+    def __init__(self, app: Any, max_bytes: int) -> None:
+        self.app = app
+        self.max_bytes = max_bytes
+
+    async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
+        if not (
+            scope["type"] == "http"
+            and scope.get("method") == "POST"
+            and scope.get("path") == "/api/datasets/import/excel"
+        ):
+            await self.app(scope, receive, send)
+            return
+
+        headers = dict(scope.get("headers", ()))
+        content_length = headers.get(b"content-length")
+        if content_length is not None:
+            try:
+                declared_size = int(content_length)
+            except ValueError:
+                declared_size = 0
+            if declared_size > self.max_bytes:
+                await self._reject(scope, receive, send)
+                return
+
+        messages: list[dict[str, Any]] = []
+        received_size = 0
+        while True:
+            message = await receive()
+            messages.append(message)
+            if message["type"] == "http.disconnect":
+                break
+            if message["type"] != "http.request":
+                continue
+            received_size += len(message.get("body", b""))
+            if received_size > self.max_bytes:
+                await self._reject(scope, receive, send)
+                return
+            if not message.get("more_body", False):
+                break
+
+        message_index = 0
+
+        async def replay_receive() -> dict[str, Any]:
+            nonlocal message_index
+            if message_index < len(messages):
+                message = messages[message_index]
+                message_index += 1
+                return message
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        await self.app(scope, replay_receive, send)
+
+    async def _reject(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
+        response = JSONResponse(
+            status_code=422,
+            content={"detail": [_excel_issue_detail(
+                f"multipart request body exceeds {self.max_bytes // (1024 * 1024)} MiB"
+            )]},
+        )
+        await response(scope, receive, send)
 
 
 def _raise_dataset_error(exc: ValueError, status_code: int = 422) -> None:
     detail: Any = str(exc)
-    if isinstance(exc, DatasetExcelValidationError):
+    if isinstance(exc, (DatasetExcelExportError, DatasetExcelValidationError)):
         detail = [
             {
                 "sheet": item.sheet,
@@ -73,6 +141,10 @@ def _raise_dataset_error(exc: ValueError, status_code: int = 422) -> None:
     elif isinstance(exc, DatasetValidationError):
         detail = [item.model_dump(mode="json") for item in exc.issues]
     raise HTTPException(status_code=status_code, detail=detail) from exc
+
+
+def _excel_issue_detail(message: str) -> dict[str, Any]:
+    return {"sheet": "Cases", "row": None, "column": None, "message": message}
 
 
 def _excel_upload_error(message: str) -> DatasetExcelValidationError:
@@ -91,6 +163,10 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
     service = EvaluationService(repository)
     datasets = service.dataset_service
     app = FastAPI(title="AgentGate", version="0.1.0")
+    app.add_middleware(
+        ExcelRequestBodyLimitMiddleware,
+        max_bytes=MAX_EXCEL_REQUEST_BYTES,
+    )
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
@@ -272,7 +348,9 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
             content = await file.read(MAX_EXCEL_UPLOAD_BYTES + 1)
             if len(content) > MAX_EXCEL_UPLOAD_BYTES:
                 raise _excel_upload_error("XLSX upload exceeds 10 MiB")
-            dataset, version = datasets.import_excel(content, name, description)
+            dataset, version = await run_in_threadpool(
+                datasets.import_excel, content, name, description
+            )
             return {"dataset": dataset, "version": version}
         except ValueError as exc:
             _raise_dataset_error(exc)
@@ -288,6 +366,8 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
                 media_type=EXCEL_MEDIA_TYPE,
                 headers={"Content-Disposition": f'attachment; filename="{filename}"'},
             )
+        except DatasetExcelExportError as exc:
+            _raise_dataset_error(exc)
         except ValueError as exc:
             _raise_dataset_error(exc, 404)
 

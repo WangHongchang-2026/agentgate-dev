@@ -1,13 +1,15 @@
 from datetime import UTC, datetime
 from io import BytesIO
 import sqlite3
-from zipfile import ZIP_DEFLATED, ZipFile
+from zipfile import ZIP_DEFLATED, ZIP_STORED, ZipFile
 
 import openpyxl
 import pytest
 
+import agentgate.case.excel_import_export as excel_codec
 from agentgate.case.excel_import_export import (
     DatasetExcelValidationError,
+    ExcelImportIssue,
     build_excel,
     parse_excel,
 )
@@ -111,6 +113,37 @@ def test_excel_round_trip_preserves_multiturn_case_and_ids():
     assert parse_excel(content) == version.cases
 
 
+def test_excel_export_keeps_formula_like_text_literal_and_lossless():
+    case = Case(
+        id="=1+1",
+        name='=HYPERLINK("https://example.test","Case")',
+        notes="=1+1",
+        turns=(CaseTurn(
+            id='=HYPERLINK("https://example.test","Turn")',
+            input={"message": "hello"},
+            expected_skill="=1+1",
+            notes='=HYPERLINK("https://example.test","Notes")',
+        ),),
+    )
+    version = DatasetVersion(dataset_id="formula-text", cases=(case,))
+
+    content = build_excel(version)
+
+    workbook = openpyxl.load_workbook(BytesIO(content), read_only=True, data_only=False)
+    row = next(workbook["Cases"].iter_rows(min_row=2))
+    formula_like_columns = (0, 1, 2, 7, 10, 15)
+    assert all(row[index].data_type == "s" for index in formula_like_columns)
+    assert tuple(row[index].value for index in formula_like_columns) == (
+        "=1+1",
+        '=HYPERLINK("https://example.test","Case")',
+        "=1+1",
+        '=HYPERLINK("https://example.test","Turn")',
+        "=1+1",
+        '=HYPERLINK("https://example.test","Notes")',
+    )
+    assert parse_excel(content) == version.cases
+
+
 def _workbook_bytes(rows=(), headers=HEADERS, sheet_name="Cases"):
     workbook = openpyxl.Workbook()
     sheet = workbook.active
@@ -160,6 +193,25 @@ def test_excel_aggregates_blank_and_malformed_json_cells():
         (2, "input_json"), (2, "tags_json"), (3, "expectations_json"),
     }
     assert all(issue.sheet == "Cases" and issue.message for issue in issues)
+
+
+def test_excel_rejects_formula_cells_instead_of_using_cached_results():
+    issues = _issues(_workbook_bytes((
+        _valid_row(
+            input_json="=1+1",
+            expected_skill='=HYPERLINK("https://example.test","Skill")',
+        ),
+    )))
+
+    formula_issues = {
+        (issue.row, issue.column, issue.message)
+        for issue in issues
+        if "formula" in issue.message.lower()
+    }
+    assert formula_issues == {
+        (2, "input_json", "Excel formulas are not allowed"),
+        (2, "expected_skill", "Excel formulas are not allowed"),
+    }
 
 
 def test_excel_reports_conflicting_case_fields_and_duplicate_turn_ids():
@@ -222,6 +274,52 @@ def test_excel_reports_input_byte_limit_before_reading_workbook():
     assert issues[0].column is None
 
 
+def test_excel_export_preserves_a_cell_at_the_excel_character_limit():
+    name = "x" * 32_767
+    version = DatasetVersion(
+        dataset_id="cell-limit",
+        cases=(Case(name=name, turns=(CaseTurn(input={"message": "hello"}),)),),
+    )
+
+    assert parse_excel(build_excel(version))[0].name == name
+
+
+def test_excel_export_rejects_a_cell_above_the_excel_character_limit():
+    version = DatasetVersion(
+        dataset_id="cell-too-long",
+        cases=(Case(
+            name="x" * 32_768,
+            turns=(CaseTurn(input={"message": "hello"}),),
+        ),),
+    )
+
+    with pytest.raises(ValueError) as error:
+        build_excel(version)
+
+    assert type(error.value).__name__ == "DatasetExcelExportError"
+    issue = error.value.issues[0]
+    assert (issue.sheet, issue.row, issue.column) == ("Cases", 2, "case_name")
+    assert "32,767" in issue.message
+
+
+def test_excel_export_rejects_xml_illegal_control_characters_as_a_structured_error():
+    version = DatasetVersion(
+        dataset_id="illegal-xml",
+        cases=(Case(
+            name="bad\x01name",
+            turns=(CaseTurn(input={"message": "hello"}),),
+        ),),
+    )
+
+    with pytest.raises(ValueError) as error:
+        build_excel(version)
+
+    assert type(error.value).__name__ == "DatasetExcelExportError"
+    issue = error.value.issues[0]
+    assert (issue.sheet, issue.row, issue.column) == ("Cases", 2, "case_name")
+    assert "XML" in issue.message
+
+
 def _corrupt_cases_xml(content):
     corrupted = BytesIO()
     with ZipFile(BytesIO(content)) as source, ZipFile(corrupted, "w", ZIP_DEFLATED) as target:
@@ -233,6 +331,47 @@ def _corrupt_cases_xml(content):
     return corrupted.getvalue()
 
 
+def _zip_bytes(entries: tuple[tuple[str, bytes], ...], compression=ZIP_DEFLATED) -> bytes:
+    content = BytesIO()
+    with ZipFile(content, "w", compression) as archive:
+        for name, value in entries:
+            archive.writestr(name, value)
+    return content.getvalue()
+
+
+def test_excel_rejects_an_archive_with_an_oversized_uncompressed_entry(monkeypatch):
+    monkeypatch.setattr(
+        excel_codec, "MAX_XLSX_ENTRY_UNCOMPRESSED_BYTES", 100,
+    )
+    content = _zip_bytes((("xl/worksheets/sheet1.xml", b"x" * 101),), ZIP_STORED)
+
+    issues = _issues(content)
+
+    assert any("single-entry uncompressed limit" in issue.message for issue in issues)
+
+
+def test_excel_rejects_an_archive_above_the_total_uncompressed_limit(monkeypatch):
+    monkeypatch.setattr(
+        excel_codec, "MAX_XLSX_UNCOMPRESSED_BYTES", 150,
+    )
+    content = _zip_bytes((
+        ("xl/worksheets/sheet1.xml", b"x" * 80),
+        ("xl/sharedStrings.xml", b"y" * 80),
+    ), ZIP_STORED)
+
+    issues = _issues(content)
+
+    assert any("total uncompressed limit" in issue.message for issue in issues)
+
+
+def test_excel_rejects_an_archive_entry_with_an_extreme_compression_ratio():
+    content = _zip_bytes((("xl/worksheets/sheet1.xml", b"x" * 100_000),))
+
+    issues = _issues(content)
+
+    assert any("compression ratio" in issue.message for issue in issues)
+
+
 def test_excel_wraps_lazy_worksheet_xml_errors_as_import_issues():
     issues = _issues(_corrupt_cases_xml(_workbook_bytes()))
 
@@ -240,6 +379,18 @@ def test_excel_wraps_lazy_worksheet_xml_errors_as_import_issues():
     assert issues[0].row is None
     assert issues[0].column is None
     assert issues[0].message.startswith("invalid XLSX content")
+
+
+def test_excel_does_not_normalize_application_value_errors_as_package_errors(monkeypatch):
+    def raise_application_error(*_args, **_kwargs):
+        raise ValueError("application parsing defect")
+
+    monkeypatch.setattr(excel_codec, "_build_case", raise_application_error)
+
+    with pytest.raises(ValueError, match="application parsing defect") as error:
+        parse_excel(_workbook_bytes((_valid_row(),)))
+
+    assert not isinstance(error.value, DatasetExcelValidationError)
 
 
 def test_excel_aggregates_model_errors_when_case_id_is_missing():
@@ -304,6 +455,124 @@ def test_service_import_excel_malformed_workbook_creates_no_records(tmp_path):
     assert service.list_datasets(include_archived=True) == []
     with repository._connect() as db:
         assert db.execute("SELECT COUNT(*) FROM dataset_versions").fetchone()[0] == 0
+
+
+def _repository_record_counts(repository: SQLiteRepository) -> tuple[int, int]:
+    with repository._connect() as db:
+        return (
+            db.execute("SELECT COUNT(*) FROM datasets").fetchone()[0],
+            db.execute("SELECT COUNT(*) FROM dataset_versions").fetchone()[0],
+        )
+
+
+def test_service_import_excel_rejects_an_empty_workbook_before_persistence(tmp_path):
+    repository = SQLiteRepository(tmp_path / "empty-workbook.db")
+    service = DatasetService(repository)
+
+    with pytest.raises(DatasetExcelValidationError) as error:
+        service.import_excel(_workbook_bytes(), "Empty workbook")
+
+    assert error.value.issues == (
+        ExcelImportIssue(
+            sheet="Cases",
+            row=None,
+            column=None,
+            message="测评集至少需要一个用例",
+        ),
+    )
+    assert _repository_record_counts(repository) == (0, 0)
+
+
+def test_service_import_excel_maps_empty_input_validation_to_its_source_cell(tmp_path):
+    repository = SQLiteRepository(tmp_path / "empty-input.db")
+    service = DatasetService(repository)
+
+    with pytest.raises(DatasetExcelValidationError) as error:
+        service.import_excel(
+            _workbook_bytes((_valid_row(input_json="{}"),)),
+            "Empty input",
+        )
+
+    issue = error.value.issues[0]
+    assert (issue.sheet, issue.row, issue.column) == ("Cases", 2, "input_json")
+    assert issue.message == "每一轮必须包含输入"
+    assert _repository_record_counts(repository) == (0, 0)
+
+
+def test_service_import_excel_maps_tool_overlap_to_required_tools_cell(tmp_path):
+    repository = SQLiteRepository(tmp_path / "tool-overlap.db")
+    service = DatasetService(repository)
+
+    with pytest.raises(DatasetExcelValidationError) as error:
+        service.import_excel(
+            _workbook_bytes((_valid_row(
+                required_tools_json='["lookup"]',
+                forbidden_tools_json='["lookup"]',
+            ),)),
+            "Tool overlap",
+        )
+
+    issue = error.value.issues[0]
+    assert (issue.sheet, issue.row, issue.column) == (
+        "Cases", 2, "required_tools_json",
+    )
+    assert "lookup" in issue.message
+    assert _repository_record_counts(repository) == (0, 0)
+
+
+def test_service_import_excel_maps_duplicate_expectation_ids_to_expectations_cell(tmp_path):
+    repository = SQLiteRepository(tmp_path / "duplicate-expectation.db")
+    service = DatasetService(repository)
+    first_expectation = (
+        '[{"id":"duplicate","kind":"output","condition":'
+        '{"kind":"equals","expected":"one"}}]'
+    )
+    second_expectation = (
+        '[{"id":"duplicate","kind":"output","condition":'
+        '{"kind":"equals","expected":"two"}}]'
+    )
+
+    with pytest.raises(DatasetExcelValidationError) as error:
+        service.import_excel(
+            _workbook_bytes((
+                _valid_row(expectations_json=first_expectation),
+                _valid_row(
+                    turn_id="turn-2",
+                    turn_order=2,
+                    expectations_json=second_expectation,
+                ),
+            )),
+            "Duplicate expectations",
+        )
+
+    issue = error.value.issues[0]
+    assert (issue.sheet, issue.row, issue.column) == (
+        "Cases", 3, "expectations_json",
+    )
+    assert issue.message == "同一用例内期望 ID 必须唯一"
+    assert _repository_record_counts(repository) == (0, 0)
+
+
+def test_service_import_excel_rejects_unsupported_json_schema_before_persistence(tmp_path):
+    repository = SQLiteRepository(tmp_path / "json-schema.db")
+    service = DatasetService(repository)
+    expectations = (
+        '[{"id":"schema","kind":"output","condition":'
+        '{"kind":"matches_json_schema","json_schema":{"type":"string"}}}]'
+    )
+
+    with pytest.raises(DatasetExcelValidationError) as error:
+        service.import_excel(
+            _workbook_bytes((_valid_row(expectations_json=expectations),)),
+            "Unsupported schema",
+        )
+
+    issue = error.value.issues[0]
+    assert (issue.sheet, issue.row, issue.column) == (
+        "Cases", 2, "expectations_json",
+    )
+    assert issue.message == "JSON Schema 检查尚未实现，不能发布该用例"
+    assert _repository_record_counts(repository) == (0, 0)
 
 
 def test_service_import_excel_rolls_back_dataset_when_draft_save_fails(tmp_path):

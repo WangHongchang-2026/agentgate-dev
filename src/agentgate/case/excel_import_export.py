@@ -7,16 +7,20 @@ from dataclasses import dataclass
 from io import BytesIO
 import json
 from json import JSONDecodeError
+import re
 from typing import Any
-from zipfile import BadZipFile
+from zipfile import BadZipFile, ZipFile
 from xml.etree.ElementTree import ParseError
 
 from openpyxl import Workbook, load_workbook
+from openpyxl.cell import WriteOnlyCell
 from openpyxl.utils.exceptions import InvalidFileException
 from pydantic import ValidationError
 
 from agentgate.domain import Case, DatasetVersion
 from agentgate.domain.base import thaw_json
+
+from .validation import ValidationIssue
 
 
 SHEET_NAME = "Cases"
@@ -48,6 +52,24 @@ REQUIRED_COLUMNS = (
 REQUIRED_NON_JSON_COLUMNS = ("case_id", "case_name", "turn_id", "turn_order")
 MAX_INPUT_BYTES = 10 * 1024 * 1024
 MAX_DATA_ROWS = 10_000
+MAX_EXCEL_CELL_CHARACTERS = 32_767
+MAX_XLSX_UNCOMPRESSED_BYTES = 100 * 1024 * 1024
+MAX_XLSX_ENTRY_UNCOMPRESSED_BYTES = 50 * 1024 * 1024
+MAX_XLSX_COMPRESSION_RATIO = 200
+_CONTENT_TYPES_PART = "[Content_Types].xml"
+_PACKAGE_EXCEPTIONS = (
+    BadZipFile,
+    EOFError,
+    InvalidFileException,
+    KeyError,
+    OSError,
+    ParseError,
+)
+_DATASET_VALIDATION_PATH = re.compile(
+    r"^cases\[(?P<case>\d+)\]"
+    r"(?:\.turns\[(?P<turn>\d+)\])?"
+    r"(?:\.(?P<field>.*))?$"
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,6 +93,27 @@ class DatasetExcelValidationError(ValueError):
         super().__init__(details or "Excel workbook validation failed")
 
 
+@dataclass(frozen=True, slots=True)
+class ExcelExportIssue:
+    sheet: str
+    row: int | None
+    column: str | None
+    message: str
+
+
+class DatasetExcelExportError(ValueError):
+    """Cells that cannot be represented losslessly in an XLSX workbook."""
+
+    def __init__(self, issues: tuple[ExcelExportIssue, ...]) -> None:
+        self.issues = issues
+        details = "; ".join(
+            f"{issue.sheet}!{issue.column or '*'}"
+            f"{f' row {issue.row}' if issue.row is not None else ''}: {issue.message}"
+            for issue in issues
+        )
+        super().__init__(details or "Excel workbook export failed")
+
+
 @dataclass(slots=True)
 class _Row:
     number: int
@@ -78,14 +121,73 @@ class _Row:
     turn_order: int | None
 
 
+def excel_issues_from_dataset_validation(
+    validation_issues: Iterable[ValidationIssue], cases: tuple[Case, ...],
+) -> tuple[ExcelImportIssue, ...]:
+    """Map Dataset validation paths back to their originating workbook cells."""
+    row_starts: list[int] = []
+    next_row = 2
+    for case in cases:
+        row_starts.append(next_row)
+        next_row += len(case.turns)
+
+    issues: list[ExcelImportIssue] = []
+    for issue in validation_issues:
+        if issue.path == "cases":
+            issues.append(ExcelImportIssue(SHEET_NAME, None, None, issue.message))
+            continue
+        match = _DATASET_VALIDATION_PATH.fullmatch(issue.path)
+        if match is None:
+            issues.append(ExcelImportIssue(SHEET_NAME, None, None, issue.message))
+            continue
+        case_index = int(match.group("case"))
+        if case_index >= len(cases):
+            issues.append(ExcelImportIssue(SHEET_NAME, None, None, issue.message))
+            continue
+        turn_text = match.group("turn")
+        turn_index = int(turn_text) if turn_text is not None else None
+        if turn_index is not None and turn_index >= len(cases[case_index].turns):
+            issues.append(ExcelImportIssue(SHEET_NAME, row_starts[case_index], None, issue.message))
+            continue
+        row = row_starts[case_index] + (turn_index or 0)
+        field = match.group("field")
+        column = _dataset_validation_column(field, turn_index is not None)
+        issues.append(ExcelImportIssue(SHEET_NAME, row, column, issue.message))
+    return tuple(issues)
+
+
+def _dataset_validation_column(field: str | None, is_turn: bool) -> str | None:
+    if not is_turn:
+        return {
+            "id": "case_id",
+            "name": "case_name",
+            "notes": "case_description",
+            "tags": "tags_json",
+            "initial_state": "initial_state_json",
+        }.get(field or "")
+    if field is None:
+        return "required_tools_json"
+    if field == "id":
+        return "turn_id"
+    if field == "input":
+        return "input_json"
+    if field.startswith("expectations["):
+        return "expectations_json"
+    return {
+        "expected_skill": "expected_skill",
+        "required_tools": "required_tools_json",
+        "forbidden_tools": "forbidden_tools_json",
+        "policy_rules": "policy_rules_json",
+        "notes": "turn_notes",
+    }.get(field)
+
+
 def build_excel(version: DatasetVersion) -> bytes:
     """Serialize a DatasetVersion's Cases to the stable single-sheet XLSX format."""
-    workbook = Workbook(write_only=True)
-    sheet = workbook.create_sheet(SHEET_NAME)
-    sheet.append(HEADERS)
+    rows: list[tuple[Any, ...]] = []
     for case in version.cases:
         for turn_order, turn in enumerate(case.turns, start=1):
-            sheet.append((
+            rows.append((
                 case.id,
                 case.name,
                 case.notes,
@@ -103,9 +205,63 @@ def build_excel(version: DatasetVersion) -> bytes:
                 _compact_json(turn.policy_rules),
                 turn.notes,
             ))
+    export_issues = _excel_export_issues(rows)
+    if export_issues:
+        raise DatasetExcelExportError(tuple(export_issues))
+
+    workbook = Workbook(write_only=True)
+    sheet = workbook.create_sheet(SHEET_NAME)
+    sheet.append(_write_only_row(sheet, HEADERS))
+    for row in rows:
+        sheet.append(_write_only_row(sheet, row))
     content = BytesIO()
     workbook.save(content)
     return content.getvalue()
+
+
+def _excel_export_issues(rows: list[tuple[Any, ...]]) -> list[ExcelExportIssue]:
+    issues: list[ExcelExportIssue] = []
+    for row_number, row in enumerate(rows, start=2):
+        for column, value in zip(HEADERS, row, strict=True):
+            if not isinstance(value, str):
+                continue
+            if len(value) > MAX_EXCEL_CELL_CHARACTERS:
+                issues.append(ExcelExportIssue(
+                    SHEET_NAME,
+                    row_number,
+                    column,
+                    "cell text exceeds Excel's 32,767 character limit",
+                ))
+            if any(not _is_legal_xml_character(character) for character in value):
+                issues.append(ExcelExportIssue(
+                    SHEET_NAME,
+                    row_number,
+                    column,
+                    "cell text contains a character that is not legal in XML",
+                ))
+    return issues
+
+
+def _is_legal_xml_character(character: str) -> bool:
+    codepoint = ord(character)
+    return (
+        codepoint in (0x09, 0x0A, 0x0D)
+        or 0x20 <= codepoint <= 0xD7FF
+        or 0xE000 <= codepoint <= 0xFFFD
+        or 0x10000 <= codepoint <= 0x10FFFF
+    )
+
+
+def _write_only_row(sheet: Any, values: Iterable[Any]) -> tuple[Any, ...]:
+    output: list[Any] = []
+    for value in values:
+        if isinstance(value, str):
+            cell = WriteOnlyCell(sheet, value=value)
+            cell.data_type = "s"
+            output.append(cell)
+        else:
+            output.append(value)
+    return tuple(output)
 
 
 def parse_excel(content: bytes) -> tuple[Case, ...]:
@@ -114,30 +270,57 @@ def parse_excel(content: bytes) -> tuple[Case, ...]:
         raise DatasetExcelValidationError((ExcelImportIssue(
             SHEET_NAME, None, None, f"input exceeds {MAX_INPUT_BYTES} byte limit"
         ),))
-    workbook = None
+    _validate_xlsx_archive(content)
+    workbook = _load_xlsx_workbook(content)
     try:
-        workbook = load_workbook(BytesIO(content), read_only=True, data_only=True)
         if SHEET_NAME not in workbook.sheetnames:
             raise DatasetExcelValidationError((ExcelImportIssue(
                 SHEET_NAME, None, None, f"required worksheet '{SHEET_NAME}' is missing"
             ),))
         sheet = workbook[SHEET_NAME]
-        rows = sheet.iter_rows(values_only=True)
-        header = tuple(next(rows, ()))
+        try:
+            rows = iter(sheet.iter_rows())
+        except _PACKAGE_EXCEPTIONS as exc:
+            raise _invalid_xlsx_error(exc) from exc
+        header_cells = _next_worksheet_row(rows) or ()
+        header = tuple(cell.value for cell in header_cells)
         header_issues = _header_issues(header)
+        header_issues.extend(
+            ExcelImportIssue(
+                SHEET_NAME,
+                1,
+                HEADERS[index] if index < len(HEADERS) else None,
+                "Excel formulas are not allowed",
+            )
+            for index, cell in enumerate(header_cells)
+            if cell.data_type == "f"
+        )
         if header_issues:
             raise DatasetExcelValidationError(tuple(header_issues))
 
         issues: list[ExcelImportIssue] = []
         cases: dict[str, list[_Row]] = {}
         anonymous_cases: list[list[_Row]] = []
-        for row_number, values in enumerate(rows, start=2):
+        row_number = 2
+        while (row_cells := _next_worksheet_row(rows)) is not None:
             if row_number > MAX_DATA_ROWS + 1:
                 issues.append(ExcelImportIssue(
                     SHEET_NAME, row_number, None,
                     f"worksheet exceeds {MAX_DATA_ROWS} data row limit",
                 ))
                 break
+            values: list[Any] = []
+            for column, cell in zip(HEADERS, row_cells, strict=True):
+                if cell.data_type == "f":
+                    issues.append(ExcelImportIssue(
+                        SHEET_NAME,
+                        row_number,
+                        column,
+                        "Excel formulas are not allowed",
+                    ))
+                    values.append(_formula_fallback(column, row_number))
+                else:
+                    values.append(cell.value)
             cells = dict(zip(HEADERS, values, strict=True))
             parsed = _parse_row(cells, row_number, issues)
             case_id = parsed.cells["case_id"]
@@ -145,6 +328,7 @@ def parse_excel(content: bytes) -> tuple[Case, ...]:
                 cases.setdefault(str(case_id), []).append(parsed)
             else:
                 anonymous_cases.append([parsed])
+            row_number += 1
 
         output: list[Case] = []
         for case_rows in [*cases.values(), *anonymous_cases]:
@@ -156,15 +340,99 @@ def parse_excel(content: bytes) -> tuple[Case, ...]:
         if issues:
             raise DatasetExcelValidationError(tuple(issues))
         return tuple(output)
-    except DatasetExcelValidationError:
-        raise
-    except (BadZipFile, InvalidFileException, OSError, ParseError, ValueError) as exc:
-        raise DatasetExcelValidationError((ExcelImportIssue(
-            SHEET_NAME, None, None, f"invalid XLSX content: {exc}"
-        ),)) from exc
     finally:
-        if workbook is not None:
-            workbook.close()
+        workbook.close()
+
+
+def _validate_xlsx_archive(content: bytes) -> None:
+    try:
+        with ZipFile(BytesIO(content)) as archive:
+            members = archive.infolist()
+            names = {member.filename for member in members}
+    except (BadZipFile, OSError) as exc:
+        raise _invalid_xlsx_error(exc) from exc
+
+    issues: list[ExcelImportIssue] = []
+    total_uncompressed = sum(member.file_size for member in members)
+    for member in members:
+        if member.file_size > MAX_XLSX_ENTRY_UNCOMPRESSED_BYTES:
+            issues.append(ExcelImportIssue(
+                SHEET_NAME,
+                None,
+                None,
+                f"archive entry '{member.filename}' exceeds the "
+                f"{MAX_XLSX_ENTRY_UNCOMPRESSED_BYTES // (1024 * 1024)} MiB "
+                "single-entry uncompressed limit",
+            ))
+        ratio = member.file_size / max(member.compress_size, 1)
+        if ratio > MAX_XLSX_COMPRESSION_RATIO:
+            issues.append(ExcelImportIssue(
+                SHEET_NAME,
+                None,
+                None,
+                f"archive entry '{member.filename}' exceeds the "
+                f"{MAX_XLSX_COMPRESSION_RATIO}:1 compression ratio limit",
+            ))
+    if total_uncompressed > MAX_XLSX_UNCOMPRESSED_BYTES:
+        issues.append(ExcelImportIssue(
+            SHEET_NAME,
+            None,
+            None,
+            f"archive exceeds the {MAX_XLSX_UNCOMPRESSED_BYTES // (1024 * 1024)} MiB "
+            "total uncompressed limit",
+        ))
+    if issues:
+        raise DatasetExcelValidationError(tuple(issues))
+    if _CONTENT_TYPES_PART not in names:
+        raise DatasetExcelValidationError((ExcelImportIssue(
+            SHEET_NAME,
+            None,
+            None,
+            f"invalid XLSX content: missing {_CONTENT_TYPES_PART}",
+        ),))
+
+
+def _load_xlsx_workbook(content: bytes) -> Any:
+    try:
+        return load_workbook(BytesIO(content), read_only=True, data_only=False)
+    except _PACKAGE_EXCEPTIONS as exc:
+        raise _invalid_xlsx_error(exc) from exc
+
+
+def _next_worksheet_row(rows: Any) -> tuple[Any, ...] | None:
+    try:
+        return tuple(next(rows))
+    except StopIteration:
+        return None
+    except _PACKAGE_EXCEPTIONS as exc:
+        raise _invalid_xlsx_error(exc) from exc
+
+
+def _invalid_xlsx_error(exc: BaseException) -> DatasetExcelValidationError:
+    return DatasetExcelValidationError((ExcelImportIssue(
+        SHEET_NAME, None, None, f"invalid XLSX content: {exc}"
+    ),))
+
+
+def _formula_fallback(column: str, row: int) -> Any:
+    return {
+        "case_id": f"invalid-formula-case-{row}",
+        "case_name": "Invalid formula",
+        "case_description": "",
+        "category": "positive",
+        "difficulty": "medium",
+        "tags_json": "[]",
+        "initial_state_json": "{}",
+        "turn_id": f"invalid-formula-turn-{row}",
+        "turn_order": 1,
+        "input_json": "{}",
+        "expected_skill": None,
+        "expectations_json": "[]",
+        "required_tools_json": "[]",
+        "forbidden_tools_json": "[]",
+        "policy_rules_json": "[]",
+        "turn_notes": "",
+    }[column]
 
 
 def _compact_json(value: Any) -> str:
