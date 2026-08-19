@@ -101,6 +101,18 @@ test('shows structured validation when an empty draft cannot be published', asyn
   await expect(page.getByText('测评集至少需要一个用例', { exact: true })).toBeVisible()
 })
 
+test('only exposes Excel export for a published Dataset version', async ({ page }) => {
+  await page.goto('/datasets')
+  await createDataset(page, uniqueDatasetName('Excel 导出状态'))
+  await expect(page.getByTestId('export-excel')).toHaveCount(0)
+
+  await page.getByTestId('add-case').click()
+  await page.getByTestId('case-name').fill('可导出的用例')
+  await page.getByTestId('save-case').click()
+  await page.getByTestId('publish-draft').click()
+  await expect(page.getByTestId('export-excel')).toBeVisible()
+})
+
 test('imports an exported Excel dataset as a publishable draft', async ({ page }) => {
   await page.goto('/datasets')
   const workbook = await exportedWorkbook(page, uniqueDatasetName('Excel 源测评集'))

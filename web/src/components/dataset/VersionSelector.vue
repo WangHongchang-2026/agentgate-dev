@@ -35,7 +35,7 @@ const emit = defineEmits<{
         <el-button size="small" @click="emit('discard')">放弃草稿</el-button>
         <el-button type="success" size="small" :loading="busy" data-testid="publish-draft" @click="emit('publish')">验证并发布</el-button>
       </template>
-      <template v-else>
+      <template v-else-if="versions.find(item => item.id === activeId)?.status === 'published'">
         <el-button
           size="small"
           :disabled="versions.some(item => item.status === 'draft')"
@@ -43,12 +43,12 @@ const emit = defineEmits<{
           @click="emit('createDraft', versions.find(item => item.id === activeId)?.version ?? null)"
         >新建版本</el-button>
         <el-button
-          v-if="versions.find(item => item.id === activeId)?.version"
+          v-if="versions.find(item => item.id === activeId)?.status === 'published' && versions.find(item => item.id === activeId)?.version"
           size="small"
           @click="emit('export', versions.find(item => item.id === activeId)!.version!)"
         >导出 JSON</el-button>
         <el-button
-          v-if="versions.find(item => item.id === activeId)?.version"
+          v-if="versions.find(item => item.id === activeId)?.status === 'published' && versions.find(item => item.id === activeId)?.version"
           size="small"
           data-testid="export-excel"
           @click="emit('exportExcel', versions.find(item => item.id === activeId)!.version!)"
