@@ -64,3 +64,91 @@ The first demo should be a loan approval agent:
 ## P1 Demo
 
 The repository contains a working SQLite-backed loan-approval evaluation slice with a deterministic target, CLI, REST/OTLP HTTP endpoints, and Chinese Vue UI. See `docs/progress.md` for verified implementation status and `docs/demo-test-guide.md` for the complete setup and test walkthrough.
+
+## Dataset Excel import and export
+
+Datasets can be exchanged as Excel workbooks for authoring and review. Excel import creates a
+new Dataset with a Draft version; it does not modify an existing Dataset. Publish that Draft in
+the Dataset workspace before it can be used for evaluation or exported. The existing JSON import
+and export workflow is unchanged.
+
+### Workbook format
+
+Upload an `.xlsx` workbook with a required worksheet named `Cases`. Its first row
+must contain these columns, in this exact order; each following row represents one conversation
+Turn. Rows sharing a `case_id` form one multi-turn Case, whose `turn_order` values must be
+1-based and contiguous.
+
+| # | Column | Required | Meaning |
+| --- | --- | --- | --- |
+| 1 | `case_id` | Yes | Stable Case ID; repeated for every Turn in the Case. |
+| 2 | `case_name` | Yes | Case display name; must be the same on every row for that Case. |
+| 3 | `case_description` | No | Case notes/description; defaults to an empty string. |
+| 4 | `category` | No | `positive`, `negative`, or `boundary`; defaults to `positive`. |
+| 5 | `difficulty` | No | `easy`, `medium`, or `hard`; defaults to `medium`. |
+| 6 | `tags_json` | No | JSON array of Case tag strings; defaults to `[]`. |
+| 7 | `initial_state_json` | No | JSON object containing the Case's initial state; defaults to `{}`. |
+| 8 | `turn_id` | Yes | Stable Turn ID, unique within its Case. |
+| 9 | `turn_order` | Yes | Integer ordering the Turns within the Case, starting at 1 with no gaps. |
+| 10 | `input_json` | Yes | JSON object supplied to the agent for this Turn. |
+| 11 | `expected_skill` | No | Optional expected skill name. |
+| 12 | `expectations_json` | Yes | JSON array of expectation objects; use `[]` when none are needed. |
+| 13 | `required_tools_json` | No | JSON array of tool names that must be called; defaults to `[]`. |
+| 14 | `forbidden_tools_json` | No | JSON array of tool names that must not be called; defaults to `[]`. |
+| 15 | `policy_rules_json` | No | JSON array of policy-rule strings; defaults to `[]`. |
+| 16 | `turn_notes` | No | Per-Turn notes; defaults to an empty string. |
+
+All `*_json` cells contain JSON text, not spreadsheet formulas or native cell objects. For
+example, `tags_json` can be `["loan","multi-turn"]`, `initial_state_json` can be
+`{"customer_id":"c-17","risk":"unknown"}`, and `input_json` can be
+`{"message":"I want to apply for a loan"}`. An `expectations_json` cell can contain:
+
+```json
+[
+  {
+    "id": "expect-output-1",
+    "kind": "output",
+    "path": null,
+    "condition": {"kind": "matches_pattern", "pattern": "(?i)application"},
+    "name": "Mentions the application"
+  }
+]
+```
+
+Here is a two-row, multi-turn example. The Case-level values are intentionally repeated on both
+rows; they must agree for a shared `case_id`.
+
+| case_id | case_name | case_description | category | difficulty | tags_json | initial_state_json | turn_id | turn_order | input_json | expected_skill | expectations_json | required_tools_json | forbidden_tools_json | policy_rules_json | turn_notes |
+| --- | --- | --- | --- | --- | --- | --- | --- | ---: | --- | --- | --- | --- | --- | --- | --- |
+| `loan-1` | `Loan application` | `Collect application details` | `positive` | `medium` | `["loan","multi-turn"]` | `{"customer_id":"c-17"}` | `loan-1-turn-1` | 1 | `{"message":"I want to apply"}` | `collect_application` | `[]` | `["lookup_customer"]` | `[]` | `["collect applicant consent"]` | `Ask for consent.` |
+| `loan-1` | `Loan application` | `Collect application details` | `positive` | `medium` | `["loan","multi-turn"]` | `{"customer_id":"c-17"}` | `loan-1-turn-2` | 2 | `{"message":"I consent. My income is 90000."}` | `submit_application` | `[{"id":"expect-output-2","kind":"output","condition":{"kind":"matches_pattern","pattern":"(?i)submitted"}}]` | `["create_application"]` | `["approve_loan"]` | `["do not approve directly"]` | `Submit only.` |
+
+The import is all-or-nothing. A malformed workbook, missing required values, invalid JSON,
+conflicting repeated Case values, duplicate IDs/orders, or non-contiguous `turn_order` values
+creates no Dataset. Validation responses identify each issue with `sheet`, `row`, `column`, and
+`message`. The upload limit is 10 MiB, and the `Cases` worksheet can contain at most 10,000 data
+rows (not including the header).
+
+Dataset name and description are not workbook columns. Supply them in the Web import dialog or as
+multipart request fields. Import assigns a new Dataset ID while preserving the Case, Turn, and
+Expectation IDs from the workbook. It always creates a Draft and requires a manual publish step.
+
+### REST API
+
+Import uses multipart form data with a required Excel file and Dataset name; the description is
+optional:
+
+```bash
+curl -X POST http://localhost:8000/api/datasets/import/excel \
+  -F 'file=@loan-cases.xlsx;type=application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' \
+  -F 'name=Loan regression suite' \
+  -F 'description=Multi-turn loan evaluation cases'
+```
+
+Excel export is available only for a published Dataset version. It downloads an `.xlsx` workbook
+without changing JSON export behavior:
+
+```bash
+curl --fail --output loan-regression-v1.xlsx \
+  http://localhost:8000/api/datasets/<dataset_id>/versions/1/export/excel
+```
