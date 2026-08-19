@@ -31,10 +31,7 @@ const dialogMode = ref<'create'|'copy'>('create')
 const dialogName = ref('')
 const dialogDescription = ref('')
 const importInput = ref<HTMLInputElement|null>(null)
-const excelImportDialog = ref(false)
-const excelImportName = ref('')
-const excelImportDescription = ref('')
-const excelImportFile = ref<File|null>(null)
+const excelImportInput = ref<HTMLInputElement|null>(null)
 const excelImportIssues = ref<ExcelImportIssue[]>([])
 const cloneJson = <T>(value: T): T => JSON.parse(JSON.stringify(value))
 
@@ -311,15 +308,12 @@ async function importDataset(event: Event) {
 }
 
 function openExcelImport() {
-  excelImportName.value = ''
-  excelImportDescription.value = ''
-  excelImportFile.value = null
   excelImportIssues.value = []
-  excelImportDialog.value = true
+  excelImportInput.value?.click()
 }
 
-function chooseExcelFile(event: Event) {
-  excelImportFile.value = (event.target as HTMLInputElement).files?.[0] ?? null
+function datasetNameFromExcel(file: File) {
+  return file.name.replace(/\.xlsx$/i, '').trim() || 'Excel Dataset'
 }
 
 function isExcelImportIssue(value: unknown): value is ExcelImportIssue {
@@ -328,18 +322,14 @@ function isExcelImportIssue(value: unknown): value is ExcelImportIssue {
     && typeof (value as ExcelImportIssue).message === 'string'
 }
 
-async function submitExcelImport() {
-  if (!excelImportName.value.trim()) return ElMessage.warning('请输入测评集名称')
-  if (!excelImportFile.value) return ElMessage.warning('请选择 .xlsx 文件')
+async function importExcelDataset(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
   busy.value = true
   excelImportIssues.value = []
   try {
-    const result = await datasetApi.importExcel(
-      excelImportFile.value,
-      excelImportName.value,
-      excelImportDescription.value,
-    )
-    excelImportDialog.value = false
+    const result = await datasetApi.importExcel(file, datasetNameFromExcel(file), '')
     await loadDatasets(result.dataset.id)
     ElMessage.success('Excel 已导入为草稿')
   } catch (error) {
@@ -350,6 +340,7 @@ async function submitExcelImport() {
     showError(error, '导入 Excel 失败')
   } finally {
     busy.value = false
+    input.value = ''
   }
 }
 
@@ -402,7 +393,6 @@ onMounted(async () => {
         <b>{{ activeDataset.name }}</b>
         <span>{{ activeVersion?.status === 'draft' ? '编辑草稿' : `查看 v${activeVersion?.version ?? '—'}` }}</span>
       </div>
-      <el-button size="small" data-testid="import-excel" @click="openExcelImport">导入 Excel</el-button>
     </div>
 
     <VersionSelector
@@ -437,8 +427,9 @@ onMounted(async () => {
         @select="selectDataset"
         @create="openCreate"
         @copy="openCopy"
-        @archive="archiveDataset"
-        @import="openImport"
+      @archive="archiveDataset"
+      @import="openImport"
+      @import-excel="openExcelImport"
       />
       <CaseTable
         :items="activeVersion?.cases ?? []"
@@ -475,6 +466,15 @@ onMounted(async () => {
     </div>
 
     <input ref="importInput" class="hidden-file-input" type="file" accept="application/json,.json" @change="importDataset" />
+    <input ref="excelImportInput" class="hidden-file-input" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" data-testid="excel-import-file" @change="importExcelDataset" />
+
+    <el-alert v-if="excelImportIssues.length" class="validation-alert" title="Excel 文件存在以下问题" type="error" :closable="false" show-icon>
+      <ul data-testid="excel-import-issues">
+        <li v-for="(issue, index) in excelImportIssues" :key="`${issue.sheet}-${issue.row}-${issue.column}-${issue.message}`" :data-testid="`excel-import-issue-${index}`">
+          工作表 <b data-testid="excel-import-issue-sheet">{{ issue.sheet }}</b> · 行 <span data-testid="excel-import-issue-row">{{ issue.row ?? '—' }}</span> · 列 <span data-testid="excel-import-issue-column">{{ issue.column ?? '—' }}</span>：{{ issue.message }}
+        </li>
+      </ul>
+    </el-alert>
 
     <el-dialog v-model="datasetDialog" :title="dialogMode === 'create' ? '新建测评集' : '复制测评集'" width="min(460px, 92vw)">
       <el-form label-position="top">
@@ -484,20 +484,5 @@ onMounted(async () => {
       <template #footer><el-button @click="datasetDialog = false">取消</el-button><el-button type="primary" :loading="busy" data-testid="submit-dataset" @click="submitDatasetDialog">确认</el-button></template>
     </el-dialog>
 
-    <el-dialog v-model="excelImportDialog" title="导入 Excel" width="min(460px, 92vw)">
-      <el-form label-position="top">
-        <el-form-item label="名称"><el-input v-model="excelImportName" data-testid="excel-import-name" /></el-form-item>
-        <el-form-item label="描述"><el-input v-model="excelImportDescription" type="textarea" :rows="3" /></el-form-item>
-        <el-form-item label="Excel 文件"><input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" data-testid="excel-import-file" @change="chooseExcelFile" /></el-form-item>
-      </el-form>
-      <el-alert v-if="excelImportIssues.length" title="Excel 文件存在以下问题" type="error" :closable="false" show-icon>
-        <ul data-testid="excel-import-issues">
-          <li v-for="(issue, index) in excelImportIssues" :key="`${issue.sheet}-${issue.row}-${issue.column}-${issue.message}`" :data-testid="`excel-import-issue-${index}`">
-            工作表 <b data-testid="excel-import-issue-sheet">{{ issue.sheet }}</b> · 行 <span data-testid="excel-import-issue-row">{{ issue.row ?? '—' }}</span> · 列 <span data-testid="excel-import-issue-column">{{ issue.column ?? '—' }}</span>：{{ issue.message }}
-          </li>
-        </ul>
-      </el-alert>
-      <template #footer><el-button @click="excelImportDialog = false">取消</el-button><el-button type="primary" :loading="busy" data-testid="submit-excel-import" @click="submitExcelImport">导入</el-button></template>
-    </el-dialog>
   </section>
 </template>

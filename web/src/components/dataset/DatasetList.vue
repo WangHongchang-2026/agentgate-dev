@@ -13,6 +13,7 @@ const emit = defineEmits<{
   copy: [item: DatasetSummary]
   archive: [item: DatasetSummary]
   import: []
+  importExcel: []
 }>()
 
 const query = ref('')
@@ -52,6 +53,7 @@ const filtered = computed(() => {
     </div>
     <div class="dataset-list-actions">
       <el-button size="small" @click="emit('import')">导入 JSON</el-button>
+      <el-button size="small" data-testid="import-excel" @click="emit('importExcel')">导入 Excel</el-button>
       <el-dropdown v-if="items.find(item => item.id === selectedId)" trigger="click">
         <el-button size="small">更多</el-button>
         <template #dropdown>

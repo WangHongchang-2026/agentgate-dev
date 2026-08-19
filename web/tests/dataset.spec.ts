@@ -119,18 +119,11 @@ test('imports an exported Excel dataset as a publishable draft', async ({ page }
   const importedName = uniqueDatasetName('Excel 导入测评集')
 
   await page.getByTestId('import-excel').click()
-  const dialog = page.getByRole('dialog', { name: '导入 Excel' })
-  await dialog.getByTestId('excel-import-file').setInputFiles({
-    name: 'source.xlsx',
+  await page.getByTestId('excel-import-file').setInputFiles({
+    name: `${importedName}.xlsx`,
     mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     buffer: workbook,
   })
-  await dialog.getByTestId('submit-excel-import').click()
-  await expect(page.getByText('请输入测评集名称')).toBeVisible()
-  await expect(dialog).toBeVisible()
-
-  await dialog.getByTestId('excel-import-name').fill(importedName)
-  await dialog.getByTestId('submit-excel-import').click()
   await expect(page.getByText('Excel 已导入为草稿')).toBeVisible()
   await expect(page.getByText(importedName, { exact: true }).first()).toBeVisible()
   await expect(page.getByText('当前草稿', { exact: true })).toBeVisible()
@@ -140,22 +133,18 @@ test('imports an exported Excel dataset as a publishable draft', async ({ page }
   await expect(page.getByText('已发布 v1')).toBeVisible()
 })
 
-test('keeps the Excel import dialog open and displays structured workbook errors', async ({ page }) => {
+test('displays structured workbook errors after direct Excel selection', async ({ page }) => {
   await page.goto('/datasets')
   const before = await page.request.get('/api/datasets')
   const datasetCount = (await before.json()).length
   await page.getByTestId('import-excel').click()
-  const dialog = page.getByRole('dialog', { name: '导入 Excel' })
-  await dialog.getByTestId('excel-import-name').fill('无效 Excel')
-  await dialog.getByTestId('excel-import-file').setInputFiles({
+  await page.getByTestId('excel-import-file').setInputFiles({
     name: 'invalid.xlsx',
     mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     buffer: Buffer.from('not an XLSX workbook'),
   })
-  await dialog.getByTestId('submit-excel-import').click()
 
-  const issue = dialog.getByTestId('excel-import-issue-0')
-  await expect(dialog).toBeVisible()
+  const issue = page.getByTestId('excel-import-issue-0')
   await expect(issue.getByTestId('excel-import-issue-sheet')).toHaveText('Cases')
   await expect(issue.getByTestId('excel-import-issue-row')).toHaveText('—')
   await expect(issue.getByTestId('excel-import-issue-column')).toHaveText('—')
