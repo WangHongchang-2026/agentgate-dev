@@ -33,6 +33,7 @@ const dialogDescription = ref('')
 const importInput = ref<HTMLInputElement|null>(null)
 const excelImportInput = ref<HTMLInputElement|null>(null)
 const excelImportIssues = ref<ExcelImportIssue[]>([])
+const importErrors = ref<string[]>([])
 const cloneJson = <T>(value: T): T => JSON.parse(JSON.stringify(value))
 
 const activeVersion = computed<DatasetVersion|null>(
@@ -288,7 +289,21 @@ async function exportExcelVersion(version: number) {
 }
 
 function openImport() {
+  importErrors.value = []
+  excelImportIssues.value = []
   importInput.value?.click()
+}
+
+function importErrorMessages(error: unknown, fallback: string) {
+  if (error instanceof ApiError && Array.isArray(error.detail)) {
+    return error.detail.map(item => {
+      if (typeof item === 'object' && item !== null && 'message' in item) {
+        return String((item as { message: unknown }).message)
+      }
+      return JSON.stringify(item)
+    })
+  }
+  return [error instanceof Error ? error.message : fallback]
 }
 
 async function importDataset(event: Event) {
@@ -298,16 +313,18 @@ async function importDataset(event: Event) {
   try {
     const payload = JSON.parse(await file.text()) as DatasetExport
     const result = await datasetApi.importDataset(payload)
+    importErrors.value = []
     await loadDatasets(result.dataset.id)
     ElMessage.success('测评集已导入')
   } catch (error) {
-    showError(error, '导入失败')
+    importErrors.value = importErrorMessages(error, 'JSON 导入失败').map(message => `JSON：${message}`)
   } finally {
     input.value = ''
   }
 }
 
 function openExcelImport() {
+  importErrors.value = []
   excelImportIssues.value = []
   excelImportInput.value?.click()
 }
@@ -337,7 +354,7 @@ async function importExcelDataset(event: Event) {
       excelImportIssues.value = error.detail.filter(isExcelImportIssue)
       if (excelImportIssues.value.length) return
     }
-    showError(error, '导入 Excel 失败')
+    importErrors.value = importErrorMessages(error, 'Excel 导入失败').map(message => `Excel：${message}`)
   } finally {
     busy.value = false
     input.value = ''
@@ -394,6 +411,23 @@ onMounted(async () => {
         <span>{{ activeVersion?.status === 'draft' ? '编辑草稿' : `查看 v${activeVersion?.version ?? '—'}` }}</span>
       </div>
     </div>
+
+    <el-alert
+      v-if="importErrors.length || excelImportIssues.length"
+      class="validation-alert"
+      title="导入失败"
+      type="error"
+      :closable="false"
+      show-icon
+      data-testid="dataset-import-errors"
+    >
+      <ul v-if="excelImportIssues.length" data-testid="excel-import-issues">
+        <li v-for="(issue, index) in excelImportIssues" :key="`${issue.sheet}-${issue.row}-${issue.column}-${issue.message}`" :data-testid="`excel-import-issue-${index}`">
+          工作表 <b data-testid="excel-import-issue-sheet">{{ issue.sheet }}</b> · 行 <span data-testid="excel-import-issue-row">{{ issue.row ?? '—' }}</span> · 列 <span data-testid="excel-import-issue-column">{{ issue.column ?? '—' }}</span>：{{ issue.message }}
+        </li>
+      </ul>
+      <ul v-else><li v-for="message in importErrors" :key="message">{{ message }}</li></ul>
+    </el-alert>
 
     <VersionSelector
       v-if="activeDatasetId"
@@ -467,14 +501,6 @@ onMounted(async () => {
 
     <input ref="importInput" class="hidden-file-input" type="file" accept="application/json,.json" @change="importDataset" />
     <input ref="excelImportInput" class="hidden-file-input" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" data-testid="excel-import-file" @change="importExcelDataset" />
-
-    <el-alert v-if="excelImportIssues.length" class="validation-alert" title="Excel 文件存在以下问题" type="error" :closable="false" show-icon>
-      <ul data-testid="excel-import-issues">
-        <li v-for="(issue, index) in excelImportIssues" :key="`${issue.sheet}-${issue.row}-${issue.column}-${issue.message}`" :data-testid="`excel-import-issue-${index}`">
-          工作表 <b data-testid="excel-import-issue-sheet">{{ issue.sheet }}</b> · 行 <span data-testid="excel-import-issue-row">{{ issue.row ?? '—' }}</span> · 列 <span data-testid="excel-import-issue-column">{{ issue.column ?? '—' }}</span>：{{ issue.message }}
-        </li>
-      </ul>
-    </el-alert>
 
     <el-dialog v-model="datasetDialog" :title="dialogMode === 'create' ? '新建测评集' : '复制测评集'" width="min(460px, 92vw)">
       <el-form label-position="top">

@@ -152,6 +152,20 @@ test('displays structured workbook errors after direct Excel selection', async (
   expect((await after.json())).toHaveLength(datasetCount)
 })
 
+test('displays JSON import errors at the top of the Dataset page', async ({ page }) => {
+  await page.goto('/datasets')
+  await page.getByTestId('import-json').click()
+  await page.locator('input[accept="application/json,.json"]').setInputFiles({
+    name: 'invalid.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from('{invalid json'),
+  })
+
+  const alert = page.getByTestId('dataset-import-errors')
+  await expect(alert).toBeVisible()
+  await expect(alert).toContainText('JSON')
+})
+
 test('downloads a published Dataset as Excel', async ({ page }) => {
   await page.goto('/datasets')
   const name = uniqueDatasetName('Excel-download')
