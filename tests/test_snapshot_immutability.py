@@ -4,6 +4,7 @@ import sqlite3
 import pytest
 
 from agentgate.domain import Case, CaseTurn, GateSpec, MetricPlan, Run, RunSnapshot, TargetSnapshot
+from agentgate.domain.base import content_sha256
 from agentgate.demo.loan import LOAN_DATASET_VERSION
 from agentgate.evaluator import EVALUATORS
 from agentgate.storage.sqlite import SQLiteRepository
@@ -50,3 +51,18 @@ def test_repository_rejects_tampered_snapshot(tmp_path):
         db.execute("UPDATE runs SET payload=? WHERE id=?", (json.dumps(payload), run.id))
     with pytest.raises(ValueError, match="hash mismatch"):
         repository.get_run(run.id)
+
+
+def test_snapshot_accepts_hash_created_before_selected_case_field():
+    original = snapshot()
+    payload = original.model_dump(
+        mode="json", exclude={"snapshot_sha256", "selected_case_ids"}
+    )
+    serialized = original.model_dump(mode="json")
+    serialized.pop("selected_case_ids")
+    serialized["snapshot_sha256"] = content_sha256(payload)
+
+    restored = RunSnapshot.model_validate(serialized)
+
+    assert restored.selected_case_ids is None
+    assert restored.snapshot_sha256 == serialized["snapshot_sha256"]

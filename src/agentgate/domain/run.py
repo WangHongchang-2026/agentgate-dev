@@ -40,12 +40,17 @@ class RunSnapshot(DomainModel):
     primary_evaluator_ids: tuple[str, ...]
     metric_plan: MetricPlan
     gate_spec: GateSpec
+    selected_case_ids: tuple[str, ...] | None = None
     created_at: datetime = Field(default_factory=utcnow)
     snapshot_sha256: str = ""
 
     @model_validator(mode="after")
     def set_or_verify_hash(self) -> "RunSnapshot":
         payload = self.model_dump(mode="json", exclude={"snapshot_sha256"})
+        # Keep hashes produced before selected-case execution was introduced readable.
+        # A real selection remains part of the immutable execution snapshot.
+        if payload["selected_case_ids"] is None:
+            payload.pop("selected_case_ids")
         expected = content_sha256(payload)
         if self.snapshot_sha256 and self.snapshot_sha256 != expected:
             raise ValueError("RunSnapshot content hash mismatch")
@@ -65,3 +70,6 @@ class Run(DomainModel):
     started_at: datetime | None = None
     completed_at: datetime | None = None
     error: str | None = None
+    parent_run_id: str | None = None
+    root_run_id: str | None = None
+    rerun_case_id: str | None = None

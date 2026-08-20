@@ -44,30 +44,51 @@ class RunEngine:
     def run(
         self, dataset: DatasetVersion, target: Target, target_version: str,
         provider: str = "deterministic", evaluators=EVALUATORS,
+        *, target_snapshot: TargetSnapshot | None = None,
+        metric_plan: MetricPlan | None = None, gate_spec: GateSpec | None = None,
+        selected_case_ids: tuple[str, ...] | None = None,
+        parent_run_id: str | None = None, root_run_id: str | None = None,
+        rerun_case_id: str | None = None,
     ) -> Run:
         if dataset.status != DatasetVersionStatus.PUBLISHED:
             raise ValueError("only published Dataset versions can be evaluated")
         selected = tuple(evaluators)
         validate_evaluation_plan(dataset, selected)
+        case_ids = {case.id for case in dataset.cases}
+        if selected_case_ids is not None:
+            if not selected_case_ids:
+                raise ValueError("selected Case IDs cannot be empty")
+            if len(selected_case_ids) != len(set(selected_case_ids)):
+                raise ValueError("selected Case IDs must be unique")
+            unknown = set(selected_case_ids) - case_ids
+            if unknown:
+                raise ValueError(f"unknown selected Cases: {', '.join(sorted(unknown))}")
         snapshot = RunSnapshot(
             dataset=dataset,
-            target=TargetSnapshot(
+            target=target_snapshot or TargetSnapshot(
                 name="loan-agent", version=target_version, provider=provider
             ),
             evaluator_specs=selected,
             primary_evaluator_ids=tuple(item.id for item in selected),
-            metric_plan=MetricPlan(),
-            gate_spec=GateSpec(),
+            metric_plan=metric_plan or MetricPlan(),
+            gate_spec=gate_spec or GateSpec(),
+            selected_case_ids=selected_case_ids,
         )
         run = Run(
             snapshot=snapshot,
             status=RunStatus.RUNNING,
             started_at=datetime.now(UTC),
+            parent_run_id=parent_run_id,
+            root_run_id=root_run_id,
+            rerun_case_id=rerun_case_id,
         )
         self.repository.save_run(run)
         results = []
         try:
-            for case in dataset.cases:
+            cases = dataset.cases if selected_case_ids is None else tuple(
+                case for case in dataset.cases if case.id in set(selected_case_ids)
+            )
+            for case in cases:
                 trace = self.scheduler.execute(target, run.id, case, target_version)
                 self.repository.save_trace(trace)
                 results.extend(evaluate_case(case, trace, snapshot.evaluator_specs))

@@ -48,8 +48,8 @@ npm run test:e2e
 ```
 
 The browser suite covers desktop and Pixel 7 layouts with a dedicated SQLite database.
-Excel import/export, automatic generation, and single-Case rerun remain deferred as
-described below.
+Excel import/export and single-Case rerun were implemented after checkpoints 1–3.
+Automatic generation and the regression-set workflow remain deferred as described below.
 
 ## Original gap (resolved)
 
@@ -342,9 +342,10 @@ appear to own the same behavior.
 
 ### 4. Later capabilities
 
-- Excel import/export.
+- Excel import/export. — done
 - Automatic generation into a draft.
-- Single-Case rerun and regression-set workflow.
+- Single-Case rerun. — done
+- Regression-set workflow.
 
 ## Acceptance test
 
@@ -369,4 +370,4 @@ round trips, desktop layout, and mobile editing.
 - Full lineage graphs.
 - Collaborative editing and merge handling.
 - Permanent deletion of published versions referenced by Runs.
-- Excel and automatic generation until the core editor is verified.
+- Automatic generation until the core editor is verified.

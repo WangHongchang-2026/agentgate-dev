@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { api, type DatasetOption, type EvaluatorOption, type Overview, type Report, type Run, type Trace, type Version } from './api/client'
+import { api, type DatasetOption, type EvaluatorOption, type Overview, type Report, type RerunComparison, type Run, type Trace, type Version } from './api/client'
 import DatasetWorkspace from './pages/DatasetWorkspace.vue'
 
 const overview = ref<Overview>({ total_runs: 0, completed_runs: 0, case_count: 0, latest: null })
@@ -16,10 +16,21 @@ const report = ref<Report|null>(null)
 const trace = ref<Trace|null>(null)
 const loading = ref(false)
 const traceOpen = ref(false)
+const rerunOpen = ref(false)
+const rerunLoading = ref(false)
+const rerunCaseId = ref('')
+const rerunVersion = ref('')
+const comparison = ref<RerunComparison|null>(null)
 const page = ref<'evaluate'|'datasets'>(location.pathname.startsWith('/datasets') ? 'datasets' : 'evaluate')
 
 const caseNames = computed(() => Object.fromEntries((report.value?.run.snapshot.dataset.cases ?? []).map(c => [c.id, c.name])))
 const failed = computed(() => report.value?.results.filter(item => item.outcome === 'fail') ?? [])
+const caseResults = computed(() => (report.value?.run.snapshot.dataset.cases ?? [])
+  .filter(item => report.value?.results.some(result => result.case_id === item.id))
+  .map(item => ({
+    case: item,
+    results: report.value?.results.filter(result => result.case_id === item.id) ?? [],
+  })))
 const selectedAgent = computed(() => versions.value.find(item => item.id === selectedVersion.value))
 const selectedDatasetInfo = computed(() => datasets.value.find(item => item.id === selectedDataset.value))
 
@@ -51,8 +62,30 @@ async function launch() {
   } finally { loading.value = false }
 }
 
-async function openRun(id: string) { report.value = await api.report(id); trace.value = null }
+async function openRun(id: string) {
+  report.value = await api.report(id)
+  trace.value = null
+  comparison.value = report.value.run.parent_run_id ? await api.comparison(id) : null
+}
 async function openTrace(caseId: string) { if (!report.value) return; trace.value = await api.trace(report.value.run.id, caseId); traceOpen.value = true }
+function openRerun(caseId: string) {
+  rerunCaseId.value = caseId
+  rerunVersion.value = versions.value.find(item => item.is_latest)?.id ?? versions.value[0]?.id ?? ''
+  rerunOpen.value = true
+}
+async function submitRerun() {
+  if (!report.value || !rerunCaseId.value || !rerunVersion.value) return
+  rerunLoading.value = true
+  try {
+    const rerun = await api.rerunCase(report.value.run.id, rerunCaseId.value, rerunVersion.value)
+    comparison.value = await api.comparison(rerun.id)
+    rerunOpen.value = false
+    await refresh()
+    ElMessage.success('单用例重跑完成，已生成前后对比')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '单用例重跑失败')
+  } finally { rerunLoading.value = false }
+}
 function navigate(next: 'evaluate'|'datasets') {
   page.value = next
   const path = next === 'datasets' ? '/datasets' : '/'
@@ -66,8 +99,10 @@ async function showCreatedRun(run: Run) {
   requestAnimationFrame(() => document.querySelector('#result-report')?.scrollIntoView({ behavior: 'smooth' }))
 }
 const asPercent = (score: number|null) => score === null ? 'N/A' : `${Math.round(score * 100)}%`
-const outcomeText = { pass: '通过', fail: '失败', review: '待复核', not_applicable: '不适用', error: '评估错误' }
+const outcomeText: Record<string, string> = { pass: '通过', fail: '失败', review: '待复核', not_applicable: '不适用', error: '评估错误' }
 const outcomeType = (outcome: string) => outcome === 'pass' ? 'success' : outcome === 'not_applicable' ? 'info' : outcome === 'review' ? 'warning' : 'danger'
+const comparisonText: Record<string, string> = { improved: '改善', regressed: '退化', mixed: '有改善也有退化', unchanged: '无变化', incomparable: '不可比较' }
+const comparisonType = (status: string) => status === 'improved' ? 'success' : status === 'regressed' || status === 'mixed' ? 'danger' : status === 'unchanged' ? 'info' : 'warning'
 
 onMounted(() => {
   window.addEventListener('popstate', onPopState)
@@ -150,21 +185,23 @@ onUnmounted(() => window.removeEventListener('popstate', onPopState))
           <div class="report-grid">
             <article class="report-panel">
               <div class="panel-title"><h3>全部检查结果</h3><el-tag type="danger" plain>{{ failed.length }} 项失败</el-tag></div>
-              <div v-for="item in report.results" :key="`${item.case_id}-${item.evaluator_id}`" class="result-item">
-                <div class="result-head">
-                  <span><b>{{ caseNames[item.case_id] }} · {{ item.evaluator_name }}</b><small>{{ item.reason }}</small></span>
-                  <el-tag :type="outcomeType(item.outcome)" size="small">{{ outcomeText[item.outcome] }}</el-tag>
+              <div v-for="group in caseResults" :key="group.case.id" class="case-result-group" :data-testid="`case-result-${group.case.id}`">
+                <div class="case-result-title">
+                  <b>{{ group.case.name }}</b>
+                  <span><el-button link type="primary" @click="openTrace(group.case.id)">查看Trace</el-button><el-button type="primary" plain size="small" :data-testid="`rerun-case-${group.case.id}`" @click="openRerun(group.case.id)">重新运行此Case</el-button></span>
                 </div>
-                <ul v-if="item.checks.length" class="check-list">
-                  <li v-for="check in item.checks" :key="check.id">
-                    <span>
-                      {{ check.name }} · {{ check.reason }}
-                      <small v-if="check.expected !== null || check.actual !== null" class="expected-actual">期望 {{ JSON.stringify(check.expected) }} · 实际 {{ check.actual_missing ? '字段不存在' : JSON.stringify(check.actual) }}</small>
-                    </span>
-                    <el-tag :type="outcomeType(check.outcome)" size="small" effect="plain">{{ outcomeText[check.outcome] }}</el-tag>
-                  </li>
-                </ul>
-                <button v-if="item.outcome === 'fail'" class="trace-link" @click="openTrace(item.case_id)">查看失败轨迹 →</button>
+                <div v-for="item in group.results" :key="`${item.case_id}-${item.evaluator_id}`" class="result-item">
+                  <div class="result-head">
+                    <span><b>{{ item.evaluator_name }}</b><small>{{ item.reason }}</small></span>
+                    <el-tag :type="outcomeType(item.outcome)" size="small">{{ outcomeText[item.outcome] }}</el-tag>
+                  </div>
+                  <ul v-if="item.checks.length" class="check-list">
+                    <li v-for="check in item.checks" :key="check.id">
+                      <span>{{ check.name }} · {{ check.reason }}<small v-if="check.expected !== null || check.actual !== null" class="expected-actual">期望 {{ JSON.stringify(check.expected) }} · 实际 {{ check.actual_missing ? '字段不存在' : JSON.stringify(check.actual) }}</small></span>
+                      <el-tag :type="outcomeType(check.outcome)" size="small" effect="plain">{{ outcomeText[check.outcome] }}</el-tag>
+                    </li>
+                  </ul>
+                </div>
               </div>
             </article>
 
@@ -179,11 +216,33 @@ onUnmounted(() => window.removeEventListener('popstate', onPopState))
           </div>
         </template>
         <el-empty v-else description="尚无结果，请先在上方运行评估" />
+        <article v-if="comparison" class="rerun-comparison" data-testid="rerun-comparison">
+          <div class="panel-title"><div><h3>单用例重跑对比 · {{ comparison.case_name }}</h3><small>{{ comparison.before_target_version }} → {{ comparison.after_target_version }}</small></div><el-tag :type="comparisonType(comparison.overall)" effect="dark">{{ comparisonText[comparison.overall] }}</el-tag></div>
+          <div class="comparison-summary">{{ comparison.counts.improved }} 改善 · {{ comparison.counts.regressed }} 退化 · {{ comparison.counts.unchanged }} 无变化 · {{ comparison.counts.incomparable }} 不可比较</div>
+          <el-table :data="comparison.evaluators" size="small">
+            <el-table-column prop="evaluator_name" label="评估器" min-width="150" />
+            <el-table-column label="原结果" min-width="180"><template #default="scope">{{ scope.row.before ? `${outcomeText[scope.row.before.outcome]} · ${asPercent(scope.row.before.score)}` : '—' }}</template></el-table-column>
+            <el-table-column label="新结果" min-width="180"><template #default="scope">{{ scope.row.after ? `${outcomeText[scope.row.after.outcome]} · ${asPercent(scope.row.after.score)}` : '—' }}</template></el-table-column>
+            <el-table-column label="变化" width="110"><template #default="scope"><el-tag :type="comparisonType(scope.row.status)" size="small">{{ comparisonText[scope.row.status] }}</el-tag></template></el-table-column>
+          </el-table>
+          <el-button link type="primary" @click="openRun(comparison.rerun_run_id)">打开重跑完整报告 →</el-button>
+        </article>
       </section>
     </main>
     <main v-else class="dataset-main"><DatasetWorkspace @run-created="showCreatedRun" /></main>
 
-    <el-drawer v-model="traceOpen" title="失败用例轨迹" size="min(520px, 92vw)">
+    <el-dialog v-model="rerunOpen" title="重新运行单个Case" width="500px">
+      <template v-if="report">
+        <p><b>Case：</b>{{ caseNames[rerunCaseId] }}</p>
+        <p><b>固定Dataset：</b>{{ report.run.snapshot.dataset.dataset_name }} v{{ report.run.snapshot.dataset.version }}</p>
+        <p><b>原Agent版本：</b>{{ report.run.snapshot.target.version }}</p>
+        <el-form label-position="top"><el-form-item label="重跑Agent版本"><el-select v-model="rerunVersion" data-testid="rerun-version-select" style="width: 100%"><el-option v-for="item in versions" :key="item.id" :label="`${item.label} · ${item.id}${item.is_latest ? '（最新）' : ''}`" :value="item.id" /></el-select></el-form-item></el-form>
+        <el-alert type="info" :closable="false" show-icon title="Case、评估器、Metric和Gate均复用原Run配置。" />
+      </template>
+      <template #footer><el-button @click="rerunOpen = false">取消</el-button><el-button type="primary" :loading="rerunLoading" :disabled="!rerunVersion" data-testid="submit-rerun" @click="submitRerun">开始重跑</el-button></template>
+    </el-dialog>
+
+    <el-drawer v-model="traceOpen" title="用例轨迹" size="min(520px, 92vw)">
       <template v-if="trace">
         <p class="trace-case">{{ caseNames[trace.case_id] }}</p>
         <div v-if="trace.turns.length" class="trace-turns">

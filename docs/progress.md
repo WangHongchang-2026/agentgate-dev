@@ -20,7 +20,8 @@ Markers:
 | --- | --- | --- | --- |
 | ✅ | Domain contracts | Immutable Pydantic models for Cases, Datasets, evaluations, Runs, Traces, Results, Metrics, Gates, and reports | `src/agentgate/domain/` |
 | ✅ | Dataset and Case P1 workflow | SQLite CRUD, drafts, immutable published versions, copy/reorder, validation, canonical JSON plus lossless/safety-bounded Excel import/export, multi-turn Cases, and Web editor | `src/agentgate/case/`, `src/agentgate/storage/sqlite.py`, `src/agentgate/server/application.py`, `web/src/pages/DatasetWorkspace.vue` |
-| ⬜ | Later Dataset features | Automatic Case/template generation and single-Case rerun are not implemented | Plans remain under `docs/dataset/` |
+| ✅ | Single-Case rerun | Reuses the original RunSnapshot Case and evaluation configuration, permits a new Demo Agent version, records rerun lineage, and compares evaluator outcomes | `src/agentgate/run/core.py`, `src/agentgate/control/core.py`, `web/src/App.vue` |
+| ⬜ | Later Dataset features | Automatic Case/template generation and regression-set workflow are not implemented | Plans remain under `docs/dataset/` |
 | ✅ | Evaluator kernel | Registration, plan validation, observations, operators, scoring, dependency resolution, N/A, and ERROR isolation | `src/agentgate/evaluator/` |
 | ✅ | Rule evaluators | Seven rules: routing, required tool, forbidden tool, tool arguments, final state, final output, and policy compliance | `src/agentgate/evaluator/rules/` |
 | 🟡 | JSON Schema evaluation | `MatchesJsonSchema` is a domain contract, but pre-run validation intentionally rejects it because no runtime operator exists | `src/agentgate/domain/expectation.py`, `src/agentgate/evaluator/validation.py` |
@@ -120,10 +121,10 @@ npm run test:e2e
 
 Current automated evidence:
 
-- Python: 96 unit/API/CLI/integration tests pass.
+- Python: 113 unit/API/CLI/integration tests pass.
 - Vue TypeScript typecheck: pass.
 - Vue production build: pass.
-- Playwright: 14 desktop and Pixel 7 checks pass. Tests use dedicated ports 18000/15173 and
+- Playwright: 18 desktop and Pixel 7 checks pass. Tests use dedicated ports 18000/15173 and
   a per-run SQLite database, so they never reuse the public demo service or old payloads.
 
 The deterministic acceptance expectation is:
@@ -146,6 +147,6 @@ The deterministic acceptance expectation is:
 - Public benchmark integrations.
 - LLM Judge and Hybrid evaluator runtime.
 - A/B consistency enforcement.
-- Static Skill analysis, automatic Dataset/template generation, and single-Case rerun.
+- Static Skill analysis, automatic Dataset/template generation, and regression-set workflow.
 - Credential management.
 - Ordered-sequence operators.
