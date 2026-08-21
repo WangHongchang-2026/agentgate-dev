@@ -2,7 +2,7 @@
 
 ## Status
 
-This is the proposed architecture, not a claim that every file and API already exists. See [progress.md](../progress.md) for verified implementation status.
+This document separates the current P1 structure from the recommended architecture. Every file or API not marked implemented is a planned boundary. See [progress.md](../progress.md) for verified project status.
 
 ## Terms
 
@@ -77,60 +77,76 @@ Only one control plane owns a job. In external mode, AgentGate does not add a se
                   Queue + scheduler + Job
 ```
 
-## Proposed code structure
+## Current code structure
 
 ```text
 src/agentgate/
-├── server/
-│   ├── app.py
-│   └── api.py
-├── control_plane/
-│   ├── models.py
-│   ├── repository.py
-│   ├── queue.py
-│   ├── scheduler.py
-│   └── service.py
-├── integrations/
-│   └── external_control_plane/
-│       ├── api.py
-│       ├── contracts.py
-│       ├── mapper.py
-│       ├── auth.py
-│       └── callbacks.py
-├── run/
-│   ├── interface.py
-│   ├── service.py
-│   └── engine.py
-├── domain/run.py
-└── storage/
-    ├── base.py
-    └── sqlite.py
+|-- control_plane/
+|   `-- service.py
+|-- queue/
+|   |-- models.py
+|   |-- repository.py
+|   |-- service.py
+|   `-- worker.py
+|-- run/
+|   |-- core.py
+|   |-- engine.py
+|   |-- lifecycle.py
+|   |-- scheduler.py
+|   |-- snapshot.py
+|   `-- targets/
+|-- server/
+|   |-- app.py
+|   |-- application.py
+|   |-- routes.py
+|   `-- services.py
+|-- evaluator/
+|-- trace/
+|-- result/
+|-- domain/run.py
+`-- storage/
+    |-- base.py
+    `-- sqlite.py
 ```
 
-## File responsibilities
+The working P1 path is currently synchronous:
 
-| File | Responsibility |
-| --- | --- |
-| `server/app.py` | Creates FastAPI and registers public and internal APIs. |
-| `server/api.py` | APIs used by AgentGate's own Web UI. |
-| `control_plane/models.py` | Local job, queue, retry, and scheduling models. |
-| `control_plane/repository.py` | Persistence interface for control-plane jobs. |
-| `control_plane/queue.py` | Local POC queue implementation. |
-| `control_plane/scheduler.py` | Selects and dispatches runnable local jobs; not a production scheduler. |
-| `control_plane/service.py` | Local job lifecycle, retry, cancellation, and status transitions. |
-| `integrations/external_control_plane/api.py` | Inbound Internal Execution API for an external control plane. |
-| `integrations/external_control_plane/contracts.py` | External request and response models. |
-| `integrations/external_control_plane/mapper.py` | Maps external requests to Run requests and maps responses back. |
-| `integrations/external_control_plane/auth.py` | Authenticates external control-plane calls. |
-| `integrations/external_control_plane/callbacks.py` | Delivers optional signed status callbacks; polling remains available as fallback. |
-| `run/interface.py` | Stable Python execution interface for the local control plane. |
-| `run/service.py` | Run lifecycle, idempotency, cancellation, status, and reports. |
-| `run/engine.py` | Case execution, trace capture, and evaluator invocation. |
-| `domain/run.py` | Shared Pydantic run requests, snapshots, status, and identity. |
-| `storage/base.py` | Persistence interfaces suitable for SQLite and later PostgreSQL. |
-| `storage/sqlite.py` | POC SQLite persistence. |
+```text
+CLI or FastAPI
+    -> control_plane/EvaluationService
+    -> run/RunEngine
+    -> Trace + Evaluators
+    -> Results + Metrics + Gate
+```
+
+`queue/`, `run/scheduler.py`, and most split `server/` modules are currently scaffolds. They are valid package boundaries and must not be moved under `control_plane/` merely to match a diagram.
+
+## Current and planned file responsibilities
+
+| File or package | Status | Responsibility |
+| --- | --- | --- |
+| `control_plane/service.py` | Implemented | Local POC evaluation launch and read-model orchestration. It will later own Job lifecycle. |
+| `queue/` | Scaffolded | Independent local queue, repository, and worker boundary. |
+| `run/core.py` | Implemented | Current RunEngine implementation. |
+| `run/scheduler.py` | Scaffolded | Local POC dispatch boundary; not a production scheduler. |
+| `server/application.py` | Implemented | Creates FastAPI and currently defines the public API routes. |
+| `server/app.py`, `routes.py`, `services.py` | Scaffolded | Future split of application assembly, routes, and dependency wiring. |
+| `domain/run.py` | Implemented | Shared Pydantic Run, RunSnapshot, status, and target snapshot models. |
+| `storage/base.py` | Implemented | Persistence interfaces suitable for SQLite and later PostgreSQL. |
+| `storage/sqlite.py` | Implemented | POC SQLite persistence. |
+| `integrations/external_control_plane/` | Planned | Future inbound execution contracts, mapping, authentication, and signed callbacks. |
 
 The external integration is inbound: an external control plane owns scheduling and calls AgentGate. No outbound scheduler adapter is needed for this design.
+
+## Required structural changes
+
+The architecture does not require a mass package move. Future implementation should:
+
+1. Add Job models and lifecycle behavior inside `control_plane/`.
+2. Keep `queue/` independent and connect it to the local control plane through interfaces.
+3. Add a stable RunService boundary inside `run/` without moving RunEngine.
+4. Split HTTP route definitions out of `server/application.py` when the Internal Execution API is implemented.
+5. Add `integrations/external_control_plane/` only when external integration work begins.
 
 ## API and interface design
 

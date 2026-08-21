@@ -6,7 +6,7 @@ from pathlib import Path
 
 import typer
 
-from agentgate.control.core import EvaluationService
+from agentgate.control_plane import EvaluationService
 from agentgate.storage.sqlite import SQLiteRepository
 
 app = typer.Typer(help="AgentGate 演示评估工具", no_args_is_help=True)

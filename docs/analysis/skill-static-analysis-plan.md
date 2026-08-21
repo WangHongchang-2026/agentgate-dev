@@ -246,8 +246,11 @@ evaluator/
 optimizer/
   consumes static reports plus dynamic Results later
 
-control/server/
-  exposes application workflow and API
+control_plane/
+  exposes application workflow
+
+server/
+  exposes HTTP API
 
 web/
   presents findings and review actions
@@ -722,7 +725,7 @@ Optimizer owner
 Shared integration
   storage/base.py
   storage/sqlite.py
-  control/
+  control_plane/
   server/
   web navigation
 ```
@@ -766,7 +769,7 @@ agentgate-goal/
 │   │   ├── base.py                             [MOD] Analysis report/review repository
 │   │   └── sqlite.py                           [MOD] Analysis tables and reuse lookup
 │   │
-│   ├── control/
+│   ├── control_plane/
 │   │   └── service.py                          [MOD] Analysis application workflow
 │   │
 │   ├── server/

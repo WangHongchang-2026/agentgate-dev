@@ -125,7 +125,7 @@ evaluator/    Plan validation, observations, operators, Rules, scoring, runner
 result/       Multi-Result metric calculation, release Gate, report construction
 run/          Target execution and complete Run orchestration
 trace/        Telemetry receivers/importers and canonical normalization
-control/      Shared application service used by CLI and FastAPI
+control_plane/ Local control-plane service used by CLI and FastAPI
 ```
 
 Dependencies point toward `domain/`; domain models never import runtime services.

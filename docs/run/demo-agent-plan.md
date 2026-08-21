@@ -535,7 +535,7 @@ Trace owner
 
 Shared integration
   pyproject.toml
-  control/core.py
+  control_plane/service.py
   run/core.py
   server test fixtures
 ```
@@ -576,7 +576,7 @@ agentgate-goal/
 │   │   ├── normalizer.py                      [MOD] Demo semantic output/state attributes
 │   │   └── receivers/otlp_http.py             [MOD] OTLP HTTP protobuf receiver
 │   │
-│   ├── control/core.py                        [MOD] Select Demo TargetRef through catalog
+│   ├── control_plane/service.py               [MOD] Select Demo TargetRef through catalog
 │   └── server/application.py                  [MOD] Wait for correlated complete Trace
 │
 ├── tests/

@@ -602,7 +602,7 @@ never come from hidden defaults in calculation functions.
 `loan_approval`, and emits a real routing-decision span. Risky continues to violate
 blocking policy; fixed continues to pass.
 
-`control/core.py` removes hard-coded evaluator/metric mappings and returns kind,
+`control_plane/service.py` removes hard-coded evaluator/metric mappings and returns kind,
 dimension, metric, severity, evaluator type, operator, and version from each spec.
 
 Update `web/src/api/client.ts`, `web/src/App.vue`, and `web/src/style.css`. The upper

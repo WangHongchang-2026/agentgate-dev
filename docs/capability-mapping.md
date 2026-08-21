@@ -14,15 +14,15 @@ means its boundary is reserved; it does not mean the capability is implemented.
 
 | ID | Capability | Primary owner | Supporting modules | Status |
 | --- | --- | --- | --- | --- |
-| CAP-01 | Batch evaluation target coverage | `run/` | `case/`, `control/` | scaffolded |
+| CAP-01 | Batch evaluation target coverage | `run/` | `case/`, `control_plane/` | scaffolded |
 | CAP-02 | Merged Skill datasets | `case/` | `lineage/` | scaffolded |
-| CAP-03 | Dedicated router-agent datasets | `case/` | `control/` | scaffolded |
+| CAP-03 | Dedicated router-agent datasets | `case/` | `control_plane/` | scaffolded |
 | CAP-04 | Agent and workflow evaluation | `run/targets/` | `trace/` | scaffolded |
 | CAP-05 | Unified execution engine | `run/` | `evaluator/`, `result/` | complete |
 | CAP-06 | Concurrency, timeout, sampling, retry | `run/` | `queue/` | scaffolded |
-| CAP-07 | Shared and private model credentials | `queue/` | `control/`, `run/` | scaffolded |
+| CAP-07 | Shared and private model credentials | `queue/` | `control_plane/`, `run/` | scaffolded |
 | CAP-08 | Result and relationship visualization | `web/` | `result/`, `lineage/` | partial |
-| CAP-09 | Independent evaluator management | `evaluator/` | `control/` | partial |
+| CAP-09 | Independent evaluator management | `evaluator/` | `control_plane/` | partial |
 | CAP-10 | Rule, LLM Judge, and Hybrid evaluators | `evaluator/` | `result/` | partial |
 | CAP-11 | Quantitative score and explanation | `evaluator/` | `result/` | complete |
 | CAP-12 | Evaluator version management | `lineage/` | `evaluator/` | scaffolded |

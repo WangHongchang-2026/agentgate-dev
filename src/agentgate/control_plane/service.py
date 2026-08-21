@@ -1,3 +1,5 @@
+"""Local control-plane service shared by CLI, HTTP, and the Web UI."""
+
 from __future__ import annotations
 
 from agentgate.case import DatasetService
@@ -8,7 +10,7 @@ from agentgate.storage.base import AgentGateRepository
 
 
 class EvaluationService:
-    """Shared application service used by CLI, HTTP, and the Web control panel."""
+    """Coordinate evaluation launches and read models for the local POC."""
 
     def __init__(self, repository: AgentGateRepository) -> None:
         self.repository = repository

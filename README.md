@@ -37,7 +37,7 @@ src/agentgate/
   queue/         # Public reservation and queue orchestration
   optimizer/     # Badcase analysis and human-reviewed recommendations
   lineage/       # Asset versions and dependency lineage
-  control/       # Shared operations used by CLI/API/Web
+  control_plane/ # Local control-plane service used by CLI/API/Web
   cli/           # Command-line entry point
   server/        # REST API entry point
 

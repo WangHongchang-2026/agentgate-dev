@@ -34,7 +34,7 @@ Markers:
 | ✅ | Local Run execution | Published Dataset execution, immutable RunSnapshot, Python-function target, local scheduler, persistence, and report construction | `src/agentgate/run/core.py` |
 | 🟡 | External target integration | Target protocol exists, but HTTP, process, trace-only, framework, catalog, and external-version adapters are empty boundaries | `src/agentgate/run/targets/`, `src/agentgate/run/external/` |
 | 🟡 | Scheduler | Local synchronous execution and external scheduler protocol exist; production scheduling is deferred | `src/agentgate/run/core.py`, `src/agentgate/run/scheduler.py` |
-| ✅ | Control API and CLI | FastAPI and Typer use the same working `EvaluationService` | `src/agentgate/control/core.py`, `src/agentgate/server/`, `src/agentgate/cli/` |
+| ✅ | Control API and CLI | FastAPI and Typer use the same working `EvaluationService` | `src/agentgate/control_plane/service.py`, `src/agentgate/server/`, `src/agentgate/cli/` |
 | ✅ | Chinese Web UI | Real APIs support overview, launch, report/detail, trace drill-down, and Dataset/Case editing on desktop and mobile | `web/src/` |
 | ✅ | Canonical Trace and basic OTLP/HTTP | Canonical Trace persistence, normalization, and real OTLP/HTTP JSON `POST /v1/traces` ingestion | `src/agentgate/domain/trace.py`, `src/agentgate/trace/normalizer.py`, `src/agentgate/trace/receivers/otlp_http.py` |
 | 🟡 | Advanced Trace ingestion | Multi-batch merge/deduplication, completeness/conflict lifecycle, protobuf, OTLP/gRPC, and importers are not implemented | `src/agentgate/trace/receivers/otlp_grpc.py`, `src/agentgate/trace/importers/` |
@@ -59,7 +59,9 @@ Markers:
 - The demo target exposes loan approval, credit inquiry, repayment plan, and complaint capabilities. `loan-agent-v1-risky` directly approves the high-risk case; `loan-agent-v2-fixed` sends it to human review.
 - Deterministic execution is the default. An optional OpenAI-compatible provider is isolated behind `AgentProvider`.
 - `LocalScheduler` is the POC executor behind `ExternalSchedulerAdapter`; no production scheduler is included.
-- FastAPI and Typer use the same `EvaluationService`.
+- FastAPI and Typer use the same `EvaluationService`, now located in the explicit
+  `control_plane/` package. The independent `queue/`, `run/`, and `server/` boundaries
+  remain in place.
 - OTLP/HTTP JSON ingestion is available at `POST /v1/traces`; parsing and normalization
   live under `trace/`, while the FastAPI route only delegates. Health is separate at
   `GET /health`. OTLP/gRPC remains an intentionally reserved boundary.

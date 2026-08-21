@@ -199,7 +199,7 @@ trace/
 case/
   owns Case input and expectations; does not invoke targets
 
-control/
+control_plane/
   selects a Target and Dataset and starts a Run
 
 server/cli/web
@@ -715,7 +715,7 @@ Dataset owner
 Shared integration files
   domain/run.py
   run/core.py
-  control/core.py
+  control_plane/service.py
   server/application.py
   web target selector
 ```
@@ -759,7 +759,7 @@ agentgate-goal/
 │   │   ├── loan.py                        [MOD] Expose Demo adapter-compatible versions
 │   │   └── provider.py                    [MOD] Keep model provider internal to Demo target
 │   │
-│   ├── control/
+│   ├── control_plane/
 │   │   └── core.py                        [MOD] Resolve target before launch; after Dataset merge
 │   │
 │   ├── server/

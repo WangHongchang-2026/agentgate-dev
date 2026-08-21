@@ -81,7 +81,7 @@ agentgate-goal/
 │   ├── run/
 │   │   └── core.py                          [MOD] Validate plan and snapshot MetricPlan/GateSpec/hash
 │   │
-│   ├── control/
+│   ├── control_plane/
 │   │   └── core.py                          [MOD] Remove hard-coded evaluator/metric mappings
 │   │
 │   ├── demo/

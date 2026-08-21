@@ -3,7 +3,11 @@ from types import SimpleNamespace
 from fastapi.testclient import TestClient
 import pytest
 
-from agentgate.control.core import EvaluationService, _comparison_status, _overall_comparison
+from agentgate.control_plane.service import (
+    EvaluationService,
+    _comparison_status,
+    _overall_comparison,
+)
 from agentgate.server.application import create_app
 from agentgate.storage.sqlite import SQLiteRepository
 

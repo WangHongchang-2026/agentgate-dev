@@ -1,4 +1,4 @@
-from agentgate.control.core import EvaluationService
+from agentgate.control_plane import EvaluationService
 from agentgate.domain import (
     Dimension, FailureStage, Outcome, RuleEvaluatorSpec, SpanKind, Trace, TraceSpan,
 )

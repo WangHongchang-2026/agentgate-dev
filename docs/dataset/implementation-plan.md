@@ -172,7 +172,7 @@ Add `src/agentgate/case/service.py` with workflows shared by HTTP and future CLI
 - import/export canonical JSON;
 - resolve a published DatasetVersion for a Run.
 
-The service does not execute evaluations. `control/core.py` selects a published version
+The service does not execute evaluations. `control_plane/service.py` selects a published version
 and passes it to RunEngine.
 
 ## Persistence
@@ -294,7 +294,7 @@ src/agentgate/
 ├── case/import_export.py              [ADD] Canonical JSON import/export
 ├── storage/base.py                    [MOD] Dataset repository contract
 ├── storage/sqlite.py                  [MOD] Dataset/version persistence
-├── control/core.py                    [MOD] Resolve stored version for Run launch
+├── control_plane/service.py           [MOD] Resolve stored version for Run launch
 ├── server/application.py              [MOD] Dataset and Case endpoints
 └── demo/loan.py                       [MOD] Seed demo data through DatasetService
 

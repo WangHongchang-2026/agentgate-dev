@@ -11,7 +11,7 @@ Code ownership:
 - `src/agentgate/domain/expectation.py`: expected outcomes and comparison conditions.
 - `src/agentgate/case/`: Dataset/Case application logic.
 - `src/agentgate/storage/`: persistence interfaces and adapters.
-- `src/agentgate/control/` and `src/agentgate/server/`: APIs used by CLI and Web UI.
+- `src/agentgate/control_plane/` and `src/agentgate/server/`: services and APIs used by CLI and Web UI.
 
 The current vertical slice persists Datasets and immutable versions in SQLite. The seeded
 loan Dataset is published version 1; user-created drafts and Cases are managed through

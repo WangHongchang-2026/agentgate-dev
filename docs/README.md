@@ -14,16 +14,16 @@ working notes, and implementation plans live under the module that owns them.
 
 ## Module documents
 
-| Module | Documentation | Responsibility |
-| --- | --- | --- |
-| Dataset and Case | [dataset/](dataset/) | Dataset versions, Cases, import/export, and editing |
-| Evaluator | [evaluator/](evaluator/) | Rule, LLM Judge, Hybrid, operators, and execution |
-| Static analysis | [analysis/](analysis/) | Skill conflict, confusion, and Prompt alignment |
-| Run | [run/](run/) | Run snapshots and target execution |
-| Trace | [trace/](trace/) | Canonical traces and telemetry ingestion |
-| Result | [result/](result/) | Scores, metrics, reports, and release gates |
-| Control plane | [control-plane/design.md](control-plane/design.md) | Job ownership, queue and scheduler boundaries, and external execution integration |
-| Control panel | [control-panel/](control-panel/) | Web UI and application workflows |
+| Module | Documentation | Current source | Responsibility |
+| --- | --- | --- | --- |
+| Dataset and Case | [dataset/](dataset/) | `src/agentgate/case/`, `domain/case.py` | Dataset versions, Cases, import/export, and editing |
+| Evaluator | [evaluator/](evaluator/) | `src/agentgate/evaluator/` | Rule, LLM Judge, Hybrid, operators, and execution |
+| Static analysis | [analysis/](analysis/) | Planned | Skill conflict, confusion, and Prompt alignment |
+| Run | [run/](run/) | `src/agentgate/run/` | Run snapshots and target execution |
+| Trace | [trace/](trace/) | `src/agentgate/trace/` | Canonical traces and telemetry ingestion |
+| Result | [result/](result/) | `src/agentgate/result/` | Scores, metrics, reports, and release gates |
+| Control plane | [control-plane/design.md](control-plane/design.md) | `src/agentgate/control_plane/`, `queue/`, `server/` | Job ownership, queue and scheduler boundaries, and external execution integration |
+| Control panel | [control-panel/](control-panel/) | `web/` | Web UI and application workflows |
 
 ## Documentation rule
 

@@ -19,7 +19,7 @@ from agentgate.case import (
     DatasetValidationError,
     ExcelImportIssue,
 )
-from agentgate.control.core import EvaluationService
+from agentgate.control_plane import EvaluationService
 from agentgate.domain import Case
 from agentgate.storage.sqlite import SQLiteRepository
 from agentgate.trace.receivers.otlp_http import ingest_otlp_http_json
