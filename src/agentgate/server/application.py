@@ -22,6 +22,10 @@ class LaunchRequest(BaseModel):
     evaluator_ids: list[str] | None = None
 
 
+class RerunCaseRequest(BaseModel):
+    target_version: str | None = None
+
+
 class CreateDatasetRequest(BaseModel):
     name: str
     description: str = ""
@@ -253,6 +257,24 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
         if report is None:
             raise HTTPException(status_code=404, detail="run not found")
         return report
+
+    @api.post("/runs/{run_id}/cases/{case_id}/rerun", status_code=201)
+    def rerun_case(run_id: str, case_id: str, request: RerunCaseRequest):
+        try:
+            return service.rerun_case(run_id, case_id, request.target_version)
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @api.get("/runs/{run_id}/comparison")
+    def rerun_comparison(run_id: str):
+        try:
+            return service.rerun_comparison(run_id)
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @api.get("/runs/{run_id}/traces/{case_id}")
     def trace_detail(run_id: str, case_id: str):
