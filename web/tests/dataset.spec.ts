@@ -16,8 +16,8 @@ async function addSelectValues(page: Page, testId: string, values: string[]) {
   }
 }
 
-test('creates, publishes, runs, and versions a Dataset through the real UI', async ({ page }) => {
-  const name = `高风险审批集-${Date.now()}`
+test('creates, publishes, runs, and versions a Dataset through the real UI', async ({ page }, testInfo) => {
+  const name = `高风险审批集-${testInfo.project.name}-${Date.now()}`
   await page.goto('/datasets')
   await expect(page.getByRole('heading', { name: '测评集与用例管理' })).toBeVisible()
 
@@ -71,9 +71,9 @@ test('creates, publishes, runs, and versions a Dataset through the real UI', asy
   await expect(caseGroup.getByText('最终状态', { exact: true })).toBeVisible()
 })
 
-test('shows structured validation when an empty draft cannot be published', async ({ page }) => {
+test('shows structured validation when an empty draft cannot be published', async ({ page }, testInfo) => {
   await page.goto('/datasets')
-  await createDataset(page, `空测评集-${Date.now()}`)
+  await createDataset(page, `空测评集-${testInfo.project.name}-${Date.now()}`)
   await page.getByTestId('publish-draft').click()
   await expect(page.getByText('草稿尚不能发布')).toBeVisible()
   await expect(page.getByText('测评集至少需要一个用例', { exact: true })).toBeVisible()
