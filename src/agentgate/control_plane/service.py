@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from agentgate.application import ResultReader, RunManagement, TargetCatalog
 from agentgate.case import DatasetService
 from agentgate.demo.loan import LOAN_DATASET, LOAN_DATASET_VERSION, LoanAgent
 from agentgate.evaluator import EVALUATORS
@@ -15,6 +16,11 @@ class EvaluationService:
     def __init__(self, repository: AgentGateRepository) -> None:
         self.repository = repository
         self.engine = RunEngine(repository)
+        self.target_catalog = TargetCatalog()
+        self.run_management = RunManagement(
+            repository, self.engine, self.target_catalog
+        )
+        self.result_reader = ResultReader(repository, self.engine)
         self.dataset_service = DatasetService(repository)
         self.dataset_service.seed(LOAN_DATASET, LOAN_DATASET_VERSION)
 
@@ -57,19 +63,24 @@ class EvaluationService:
         }
 
     def run_detail(self, run_id: str):
-        return self.engine.report(run_id)
+        return self.result_reader.run_detail(run_id)
+
+    def rerun_case(
+        self, run_id: str, case_id: str, target_version: str | None = None,
+    ):
+        return self.run_management.rerun_case(run_id, case_id, target_version)
+
+    def rerun_comparison(self, rerun_run_id: str) -> dict:
+        return self.result_reader.rerun_comparison(rerun_run_id)
+
+    def latest_target_version(self) -> str:
+        return self.run_management.latest_target_version()
 
     def trace(self, run_id: str, case_id: str):
-        return self.repository.get_trace(run_id, case_id)
+        return self.result_reader.trace(run_id, case_id)
 
-    def versions(self) -> list[dict[str, str]]:
-        return [
-            {
-                "id": version,
-                "label": "风险版本" if version.endswith("risky") else "修复版本",
-            }
-            for version in LoanAgent.versions
-        ]
+    def versions(self) -> list[dict]:
+        return list(self.target_catalog.versions())
 
     def datasets(self) -> list[dict]:
         summaries = []
