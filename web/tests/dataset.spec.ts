@@ -67,7 +67,8 @@ test('creates, publishes, runs, and versions a Dataset through the real UI', asy
 
   await page.getByTestId('nav-evaluate').click()
   await expect(page.getByText(new RegExp(`${name} v1`))).toBeVisible()
-  await expect(page.getByText(/高风险申请必须人工复核 · 最终状态/).first()).toBeVisible()
+  const caseGroup = page.locator('.case-result-group').filter({ hasText: '高风险申请必须人工复核' })
+  await expect(caseGroup.getByText('最终状态', { exact: true })).toBeVisible()
 })
 
 test('shows structured validation when an empty draft cannot be published', async ({ page }) => {

@@ -33,6 +33,12 @@ main { max-width: 1200px; margin: -24px auto 0; padding: 0 24px 56px; }
 .failure:hover { border-color: #e85d75; } .failure small { display: block; color: #7a676b; margin-top: 5px; } .failure em { font-style: normal; color: #d7445f; white-space: nowrap; font-size: 12px; }
 .result-item { border-top: 1px solid #e7edec; padding: 12px 0; }
 .result-item:first-of-type { border-top: 0; }
+.case-result-group { border: 1px solid #e1e9e7; border-radius: 10px; margin-top: 12px; padding: 0 12px 8px; }
+.case-result-title { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; }
+.case-result-title > span { display: flex; align-items: center; }
+.rerun-comparison { margin: 16px 28px 28px; border: 1px solid #d9e5e2; border-radius: 13px; padding: 18px; background: #fbfdfc; }
+.rerun-comparison .panel-title > div small { display: block; color: #718086; margin-top: 4px; }
+.comparison-summary { margin: 12px 0; color: #526268; font-size: 13px; }
 .result-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
 .result-head small { display: block; color: #718086; margin-top: 4px; line-height: 1.4; }
 .check-list { list-style: none; padding: 0; margin: 9px 0 0 12px; }
