@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from agentgate.domain import Case, Dataset, DatasetPurpose, DatasetVersion
+from agentgate.domain import Case, Dataset, DatasetVersion
 from agentgate.storage.base import AgentGateRepository
 
 from .import_export import DatasetExport, build_export, parse_export
@@ -35,17 +35,10 @@ class DatasetService:
             raise ValueError(f"unknown dataset: {dataset_id}")
         return dataset
 
-    def create_dataset(
-        self,
-        name: str,
-        description: str = "",
-        purpose: DatasetPurpose = DatasetPurpose.STANDARD,
-    ) -> Dataset:
+    def create_dataset(self, name: str, description: str = "") -> Dataset:
         if not name.strip():
             raise ValueError("dataset name is required")
-        dataset = Dataset(
-            name=name.strip(), description=description.strip(), purpose=purpose,
-        )
+        dataset = Dataset(name=name.strip(), description=description.strip())
         self.repository.save_dataset(dataset)
         return dataset
 
@@ -187,13 +180,12 @@ class DatasetService:
     def copy_dataset(
         self, source_dataset_id: str, name: str, source_version: int | None = None
     ) -> tuple[Dataset, DatasetVersion]:
-        source_dataset = self.get_dataset(source_dataset_id)
         source = (
             self.get_version(source_dataset_id, source_version)
             if source_version is not None
             else self.latest_published(source_dataset_id)
         )
-        dataset = self.create_dataset(name, purpose=source_dataset.purpose)
+        dataset = self.create_dataset(name)
         draft = DatasetVersion(
             dataset_id=dataset.id,
             dataset_name=dataset.name,
