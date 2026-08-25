@@ -9,9 +9,9 @@ const id = encodeURIComponent
 
 export const datasetApi = {
   list: () => request<DatasetSummary[]>('/api/datasets'),
-  create: (name: string, description = '') =>
+  create: (name: string, description = '', purpose: 'standard'|'regression' = 'standard') =>
     request<DatasetMutation>('/api/datasets', {
-      method: 'POST', headers, body: JSON.stringify({ name, description }),
+      method: 'POST', headers, body: JSON.stringify({ name, description, purpose }),
     }),
   detail: (datasetId: string) =>
     request<DatasetDetail>(`/api/datasets/${id(datasetId)}`),

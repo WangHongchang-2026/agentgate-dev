@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 
 from agentgate.case import DatasetExport, DatasetValidationError
 from agentgate.control_plane import EvaluationService
-from agentgate.domain import Case
+from agentgate.domain import Case, DatasetPurpose
 from agentgate.storage.sqlite import SQLiteRepository
 from agentgate.trace.receivers.otlp_http import ingest_otlp_http_json
 
@@ -29,6 +29,14 @@ class RerunCaseRequest(BaseModel):
 class CreateDatasetRequest(BaseModel):
     name: str
     description: str = ""
+    purpose: DatasetPurpose = DatasetPurpose.STANDARD
+
+
+class AddRegressionCaseRequest(BaseModel):
+    regression_dataset_id: str | None = None
+    new_dataset_name: str | None = None
+    new_dataset_description: str = ""
+    reason: str = ""
 
 
 class UpdateDatasetRequest(BaseModel):
@@ -89,7 +97,9 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
     @api.post("/datasets", status_code=201)
     def create_dataset(request: CreateDatasetRequest):
         try:
-            dataset = datasets.create_dataset(request.name, request.description)
+            dataset = datasets.create_dataset(
+                request.name, request.description, request.purpose,
+            )
             draft = datasets.create_draft(dataset.id)
             return {"dataset": dataset, "draft": draft}
         except ValueError as exc:
@@ -271,6 +281,25 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
     def rerun_comparison(run_id: str):
         try:
             return service.rerun_comparison(run_id)
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @api.post("/runs/{run_id}/cases/{case_id}/regression", status_code=201)
+    def add_case_to_regression_dataset(
+        run_id: str, case_id: str, request: AddRegressionCaseRequest,
+    ):
+        try:
+            dataset, draft, copied = service.add_case_to_regression_dataset(
+                run_id=run_id,
+                case_id=case_id,
+                regression_dataset_id=request.regression_dataset_id,
+                new_dataset_name=request.new_dataset_name,
+                new_dataset_description=request.new_dataset_description,
+                reason=request.reason,
+            )
+            return {"dataset": dataset, "draft": draft, "case": copied}
         except LookupError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except ValueError as exc:

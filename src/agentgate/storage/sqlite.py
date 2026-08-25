@@ -96,6 +96,36 @@ class SQLiteRepository:
                 ),
             )
 
+    def save_dataset_with_draft(
+        self, dataset: Dataset, draft: DatasetVersion
+    ) -> None:
+        if draft.dataset_id != dataset.id:
+            raise ValueError("draft must belong to Dataset")
+        if draft.status != DatasetVersionStatus.DRAFT:
+            raise ValueError("initial DatasetVersion must be a draft")
+        with self._connect() as db:
+            db.execute(
+                """
+                INSERT INTO datasets(id,name,archived,updated_at,payload)
+                VALUES(?,?,?,?,?)
+                """,
+                (
+                    dataset.id, dataset.name, int(dataset.archived),
+                    dataset.updated_at.isoformat(), self._json(dataset),
+                ),
+            )
+            db.execute(
+                """
+                INSERT INTO dataset_versions(
+                    id,dataset_id,version,status,created_at,content_sha256,payload
+                ) VALUES(?,?,?,?,?,?,?)
+                """,
+                (
+                    draft.id, draft.dataset_id, draft.version, draft.status.value,
+                    draft.created_at.isoformat(), draft.content_sha256, self._json(draft),
+                ),
+            )
+
     def get_dataset(self, dataset_id: str) -> Dataset | None:
         with self._connect() as db:
             row = db.execute(

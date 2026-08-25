@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+from uuid import uuid4
+
 from agentgate.case import DatasetService
 from agentgate.demo.loan import LOAN_DATASET, LOAN_DATASET_VERSION, LoanAgent
 from agentgate.evaluator import EVALUATORS
+from agentgate.domain import (
+    Case, CaseProvenance, Dataset, DatasetPurpose, DatasetVersion, RunStatus,
+)
 from agentgate.run.core import RunEngine
 from agentgate.storage.base import AgentGateRepository
 
@@ -58,6 +64,93 @@ class EvaluationService:
 
     def run_detail(self, run_id: str):
         return self.engine.report(run_id)
+
+    def add_case_to_regression_dataset(
+        self, *, run_id: str, case_id: str,
+        regression_dataset_id: str | None,
+        new_dataset_name: str | None,
+        new_dataset_description: str = "",
+        reason: str = "",
+    ) -> tuple[Dataset, DatasetVersion, Case]:
+        if (regression_dataset_id is None) == (new_dataset_name is None):
+            raise ValueError("choose exactly one regression Dataset target")
+        source_run = self.repository.get_run(run_id)
+        if source_run is None:
+            raise LookupError("run not found")
+        if source_run.status != RunStatus.COMPLETED:
+            raise ValueError("only completed Runs can add regression Cases")
+        source_case = next(
+            (item for item in source_run.snapshot.dataset.cases if item.id == case_id),
+            None,
+        )
+        if source_case is None:
+            raise LookupError("case not found in source Run snapshot")
+        source_version = source_run.snapshot.dataset.version
+        if source_version is None:
+            raise ValueError("source Run Dataset must be published")
+        source_case_id = (
+            source_case.provenance.source_case_id
+            if source_case.provenance is not None
+            else source_case.id
+        )
+        copied = source_case.model_copy(update={
+            "id": str(uuid4()),
+            "provenance": CaseProvenance(
+                source_run_id=source_run.id,
+                source_dataset_id=source_run.snapshot.dataset.dataset_id,
+                source_dataset_version=source_version,
+                source_case_id=source_case_id,
+                captured_at=datetime.now(UTC),
+                reason=reason.strip(),
+            ),
+        })
+
+        if regression_dataset_id is None:
+            name = (new_dataset_name or "").strip()
+            if not name:
+                raise ValueError("regression Dataset name is required")
+            dataset = Dataset(
+                name=name,
+                description=new_dataset_description.strip(),
+                purpose=DatasetPurpose.REGRESSION,
+            )
+            draft = DatasetVersion(
+                dataset_id=dataset.id,
+                dataset_name=dataset.name,
+                dataset_description=dataset.description,
+                cases=(copied,),
+            )
+            self.repository.save_dataset_with_draft(dataset, draft)
+            return dataset, draft, copied
+
+        try:
+            dataset = self.dataset_service.get_dataset(regression_dataset_id)
+        except ValueError as exc:
+            raise LookupError("regression Dataset not found") from exc
+        if dataset.archived:
+            raise ValueError("archived regression Dataset cannot be edited")
+        if dataset.purpose != DatasetPurpose.REGRESSION:
+            raise ValueError("target must be a regression Dataset")
+        draft = self.dataset_service.get_draft(dataset.id)
+        effective_cases = (
+            draft.cases
+            if draft is not None
+            else (
+                self.repository.get_latest_dataset_version(dataset.id).cases
+                if self.repository.get_latest_dataset_version(dataset.id) is not None
+                else ()
+            )
+        )
+        if any(
+            item.provenance is not None
+            and item.provenance.source_case_id == source_case_id
+            for item in effective_cases
+        ):
+            raise ValueError("source Case already exists in regression Dataset")
+        if draft is None:
+            draft = self.dataset_service.create_draft(dataset.id)
+        updated = self.dataset_service.save_case(dataset.id, copied)
+        return dataset, updated, copied
 
     def rerun_case(
         self, run_id: str, case_id: str, target_version: str | None = None,

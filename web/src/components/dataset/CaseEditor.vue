@@ -77,6 +77,17 @@ function save() {
       >
         <ul><li v-for="issue in validationIssues" :key="`${issue.path}-${issue.message}`">{{ issue.message }}</li></ul>
       </el-alert>
+      <el-alert
+        v-if="form.provenance"
+        type="info"
+        :closable="false"
+        class="case-provenance"
+        data-testid="case-provenance"
+      >
+        <template #title>回归来源 · Run {{ form.provenance.source_run_id }}</template>
+        <p>Dataset {{ form.provenance.source_dataset_id }} v{{ form.provenance.source_dataset_version }} · Case {{ form.provenance.source_case_id }}</p>
+        <p v-if="form.provenance.reason">加入原因：{{ form.provenance.reason }}</p>
+      </el-alert>
       <div class="case-meta-grid">
         <el-form-item label="用例名称">
           <el-input v-model="form.name" data-testid="case-name" />

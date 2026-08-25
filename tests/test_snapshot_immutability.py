@@ -58,11 +58,32 @@ def test_snapshot_accepts_hash_created_before_selected_case_field():
     payload = original.model_dump(
         mode="json", exclude={"snapshot_sha256", "selected_case_ids"}
     )
+    for case in payload["dataset"]["cases"]:
+        case.pop("provenance", None)
     serialized = original.model_dump(mode="json")
     serialized.pop("selected_case_ids")
+    for case in serialized["dataset"]["cases"]:
+        case.pop("provenance", None)
     serialized["snapshot_sha256"] = content_sha256(payload)
 
     restored = RunSnapshot.model_validate(serialized)
 
     assert restored.selected_case_ids is None
+    assert restored.snapshot_sha256 == serialized["snapshot_sha256"]
+
+
+def test_snapshot_accepts_hash_created_before_case_provenance_field():
+    original = snapshot()
+    payload = original.model_dump(mode="json", exclude={"snapshot_sha256"})
+    payload.pop("selected_case_ids")
+    for case in payload["dataset"]["cases"]:
+        case.pop("provenance", None)
+    serialized = original.model_dump(mode="json")
+    serialized.pop("selected_case_ids")
+    for case in serialized["dataset"]["cases"]:
+        case.pop("provenance", None)
+    serialized["snapshot_sha256"] = content_sha256(payload)
+
+    restored = RunSnapshot.model_validate(serialized)
+
     assert restored.snapshot_sha256 == serialized["snapshot_sha256"]

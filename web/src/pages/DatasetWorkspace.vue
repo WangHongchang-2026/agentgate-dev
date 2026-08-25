@@ -105,6 +105,7 @@ function newCase(): EvaluationCase {
     difficulty: 'medium',
     tags: [],
     notes: '',
+    provenance: null,
     initial_state: {},
     turns: [{
       id: crypto.randomUUID(),

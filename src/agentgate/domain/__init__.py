@@ -2,8 +2,8 @@
 
 from .base import DomainModel, FrozenJsonObject, canonical_json, content_sha256, freeze_json
 from .case import (
-    Case, CaseCategory, CaseDifficulty, CaseTurn, Dataset, DatasetVersion,
-    DatasetVersionStatus,
+    Case, CaseCategory, CaseDifficulty, CaseProvenance, CaseTurn, Dataset,
+    DatasetPurpose, DatasetVersion, DatasetVersionStatus,
 )
 from .evaluation import (
     ChildRef, Dimension, EvaluatorSpec, HybridEvaluatorSpec, JudgeConfig, JudgeEvidence,

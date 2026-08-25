@@ -21,6 +21,14 @@ const rerunLoading = ref(false)
 const rerunCaseId = ref('')
 const rerunVersion = ref('')
 const comparison = ref<RerunComparison|null>(null)
+const regressionOpen = ref(false)
+const regressionLoading = ref(false)
+const regressionCaseId = ref('')
+const regressionMode = ref<'existing'|'new'>('new')
+const regressionDatasetId = ref('')
+const regressionName = ref('')
+const regressionDescription = ref('')
+const regressionReason = ref('')
 const page = ref<'evaluate'|'datasets'>(location.pathname.startsWith('/datasets') ? 'datasets' : 'evaluate')
 
 const caseNames = computed(() => Object.fromEntries((report.value?.run.snapshot.dataset.cases ?? []).map(c => [c.id, c.name])))
@@ -33,6 +41,7 @@ const caseResults = computed(() => (report.value?.run.snapshot.dataset.cases ?? 
   })))
 const selectedAgent = computed(() => versions.value.find(item => item.id === selectedVersion.value))
 const selectedDatasetInfo = computed(() => datasets.value.find(item => item.id === selectedDataset.value))
+const regressionDatasets = computed(() => datasets.value.filter(item => item.purpose === 'regression'))
 
 async function refresh() {
   const [summary, targetVersions, datasetOptions, evaluatorOptions, recentRuns] = await Promise.all([
@@ -86,10 +95,46 @@ async function submitRerun() {
     ElMessage.error(error instanceof Error ? error.message : '单用例重跑失败')
   } finally { rerunLoading.value = false }
 }
+function openRegression(caseId: string) {
+  regressionCaseId.value = caseId
+  regressionMode.value = regressionDatasets.value.length ? 'existing' : 'new'
+  regressionDatasetId.value = regressionDatasets.value[0]?.id ?? ''
+  regressionName.value = ''
+  regressionDescription.value = ''
+  regressionReason.value = ''
+  regressionOpen.value = true
+}
+async function submitRegression() {
+  if (!report.value || !regressionCaseId.value) return
+  if (regressionMode.value === 'existing' && !regressionDatasetId.value) return ElMessage.warning('请选择回归集')
+  if (regressionMode.value === 'new' && !regressionName.value.trim()) return ElMessage.warning('请输入回归集名称')
+  regressionLoading.value = true
+  try {
+    const result = await api.addCaseToRegressionDataset(
+      report.value.run.id,
+      regressionCaseId.value,
+      regressionMode.value === 'existing'
+        ? { regression_dataset_id: regressionDatasetId.value, reason: regressionReason.value }
+        : {
+            new_dataset_name: regressionName.value,
+            new_dataset_description: regressionDescription.value,
+            reason: regressionReason.value,
+          },
+    )
+    regressionOpen.value = false
+    await refresh()
+    ElMessage.success(`已加入回归集“${result.dataset.name}”草稿`)
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '加入回归集失败')
+  } finally { regressionLoading.value = false }
+}
 function navigate(next: 'evaluate'|'datasets') {
   page.value = next
   const path = next === 'datasets' ? '/datasets' : '/'
   if (location.pathname !== path) history.pushState({}, '', path)
+  if (next === 'evaluate') {
+    refresh().catch(error => ElMessage.error(`无法刷新评估配置：${error.message}`))
+  }
 }
 function onPopState() { page.value = location.pathname.startsWith('/datasets') ? 'datasets' : 'evaluate' }
 async function showCreatedRun(run: Run) {
@@ -140,7 +185,7 @@ onUnmounted(() => window.removeEventListener('popstate', onPopState))
           <article class="config-card">
             <div class="card-index">D</div><label>Dataset</label>
             <el-select v-model="selectedDataset" data-testid="dataset-select" aria-label="数据集">
-              <el-option v-for="item in datasets" :key="item.id" :label="`${item.name} · v${item.version}`" :value="item.id" />
+              <el-option v-for="item in datasets" :key="item.id" :label="`${item.purpose === 'regression' ? '回归集 · ' : ''}${item.name} · v${item.version}`" :value="item.id" />
             </el-select>
             <p>{{ selectedDatasetInfo?.description }} · {{ selectedDatasetInfo?.case_count ?? 0 }} 个用例</p>
           </article>
@@ -188,7 +233,7 @@ onUnmounted(() => window.removeEventListener('popstate', onPopState))
               <div v-for="group in caseResults" :key="group.case.id" class="case-result-group" :data-testid="`case-result-${group.case.id}`">
                 <div class="case-result-title">
                   <b>{{ group.case.name }}</b>
-                  <span><el-button link type="primary" @click="openTrace(group.case.id)">查看Trace</el-button><el-button type="primary" plain size="small" :data-testid="`rerun-case-${group.case.id}`" @click="openRerun(group.case.id)">重新运行此Case</el-button></span>
+                  <span><el-button link type="primary" @click="openTrace(group.case.id)">查看Trace</el-button><el-button type="warning" plain size="small" :data-testid="`regression-case-${group.case.id}`" @click="openRegression(group.case.id)">加入回归集</el-button><el-button type="primary" plain size="small" :data-testid="`rerun-case-${group.case.id}`" @click="openRerun(group.case.id)">重新运行此Case</el-button></span>
                 </div>
                 <div v-for="item in group.results" :key="`${item.case_id}-${item.evaluator_id}`" class="result-item">
                   <div class="result-head">
@@ -240,6 +285,31 @@ onUnmounted(() => window.removeEventListener('popstate', onPopState))
         <el-alert type="info" :closable="false" show-icon title="Case、评估器、Metric和Gate均复用原Run配置。" />
       </template>
       <template #footer><el-button @click="rerunOpen = false">取消</el-button><el-button type="primary" :loading="rerunLoading" :disabled="!rerunVersion" data-testid="submit-rerun" @click="submitRerun">开始重跑</el-button></template>
+    </el-dialog>
+
+    <el-dialog v-model="regressionOpen" title="加入回归集" width="540px">
+      <template v-if="report">
+        <p><b>Case：</b>{{ caseNames[regressionCaseId] }}</p>
+        <p><b>来源：</b>{{ report.run.snapshot.dataset.dataset_name }} v{{ report.run.snapshot.dataset.version }} · Run {{ report.run.id }}</p>
+        <el-radio-group v-model="regressionMode" data-testid="regression-mode">
+          <el-radio-button value="existing" :disabled="!regressionDatasets.length">已有回归集</el-radio-button>
+          <el-radio-button value="new">新建回归集</el-radio-button>
+        </el-radio-group>
+        <el-form label-position="top" class="regression-form">
+          <el-form-item v-if="regressionMode === 'existing'" label="目标回归集">
+            <el-select v-model="regressionDatasetId" data-testid="regression-dataset-select" style="width: 100%">
+              <el-option v-for="item in regressionDatasets" :key="item.id" :label="item.name" :value="item.id" />
+            </el-select>
+          </el-form-item>
+          <template v-else>
+            <el-form-item label="回归集名称"><el-input v-model="regressionName" data-testid="regression-name" /></el-form-item>
+            <el-form-item label="说明"><el-input v-model="regressionDescription" /></el-form-item>
+          </template>
+          <el-form-item label="加入原因（可选）"><el-input v-model="regressionReason" type="textarea" :rows="2" data-testid="regression-reason" /></el-form-item>
+        </el-form>
+        <el-alert type="info" :closable="false" title="Case将从本次Run快照复制到回归集草稿，发布后可按普通测评集运行。" />
+      </template>
+      <template #footer><el-button @click="regressionOpen = false">取消</el-button><el-button type="primary" :loading="regressionLoading" data-testid="submit-regression" @click="submitRegression">确认加入</el-button></template>
     </el-dialog>
 
     <el-drawer v-model="traceOpen" title="用例轨迹" size="min(520px, 92vw)">

@@ -1,5 +1,5 @@
 import type {
-  DatasetSummary, DatasetVersion, EvaluationCase, JsonObject,
+  DatasetRecord, DatasetSummary, DatasetVersion, EvaluationCase, JsonObject,
 } from '../types/dataset'
 
 export interface Version { id: string; label: string; is_latest: boolean }
@@ -128,6 +128,17 @@ export interface Overview {
   case_count: number
   latest: Report|null
 }
+export interface AddRegressionCaseRequest {
+  regression_dataset_id?: string
+  new_dataset_name?: string
+  new_dataset_description?: string
+  reason?: string
+}
+export interface AddRegressionCaseResponse {
+  dataset: DatasetRecord
+  draft: DatasetVersion
+  case: EvaluationCase
+}
 
 export class ApiError extends Error {
   status: number
@@ -182,6 +193,15 @@ export const api = {
       body: JSON.stringify({ target_version: targetVersion }),
     }),
   comparison: (runId: string) => request<RerunComparison>(`/api/runs/${runId}/comparison`),
+  addCaseToRegressionDataset: (
+    runId: string, caseId: string, payload: AddRegressionCaseRequest,
+  ) => request<AddRegressionCaseResponse>(
+    `/api/runs/${encodeURIComponent(runId)}/cases/${encodeURIComponent(caseId)}/regression`,
+    {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    },
+  ),
   trace: (runId: string, caseId: string) =>
     request<Trace>(`/api/runs/${runId}/traces/${caseId}`),
 }

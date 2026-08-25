@@ -43,6 +43,7 @@ const filtered = computed(() => {
       >
         <span><b>{{ item.name }}</b><small>{{ item.description || '暂无描述' }}</small></span>
         <span class="dataset-badges">
+          <el-tag v-if="item.purpose === 'regression'" size="small" type="danger" effect="plain">回归集</el-tag>
           <el-tag size="small" effect="plain">v{{ item.version ?? '—' }}</el-tag>
           <el-tag v-if="item.has_draft" size="small" type="warning">草稿</el-tag>
           <small>{{ item.case_count }} 用例</small>

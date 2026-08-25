@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import Literal
 from uuid import uuid4
 
 from pydantic import Field, model_validator
@@ -28,9 +29,24 @@ class CaseDifficulty(StrEnum):
     HARD = "hard"
 
 
+class DatasetPurpose(StrEnum):
+    STANDARD = "standard"
+    REGRESSION = "regression"
+
+
 class DatasetVersionStatus(StrEnum):
     DRAFT = "draft"
     PUBLISHED = "published"
+
+
+class CaseProvenance(DomainModel):
+    source_type: Literal["run_result"] = "run_result"
+    source_run_id: str
+    source_dataset_id: str
+    source_dataset_version: int
+    source_case_id: str
+    captured_at: datetime
+    reason: str = ""
 
 
 class CaseTurn(DomainModel):
@@ -53,6 +69,7 @@ class Case(DomainModel):
     difficulty: CaseDifficulty = CaseDifficulty.MEDIUM
     tags: tuple[str, ...] = ()
     notes: str = ""
+    provenance: CaseProvenance | None = None
 
     @property
     def input(self) -> FrozenJsonObject:
@@ -64,6 +81,7 @@ class Dataset(DomainModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
     name: str
     description: str = ""
+    purpose: DatasetPurpose = DatasetPurpose.STANDARD
     archived: bool = False
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
@@ -91,9 +109,15 @@ class DatasetVersion(DomainModel):
                 raise ValueError("published DatasetVersion requires version and published_at")
         elif self.version is not None or self.published_at is not None:
             raise ValueError("draft DatasetVersion cannot have version or published_at")
+        cases = []
+        for case in self.cases:
+            serialized = case.model_dump(mode="json")
+            if serialized["provenance"] is None:
+                del serialized["provenance"]
+            cases.append(serialized)
         payload = {
             "dataset_id": self.dataset_id,
-            "cases": [case.model_dump(mode="json") for case in self.cases],
+            "cases": cases,
             "notes": self.notes,
         }
         expected = content_sha256(payload)

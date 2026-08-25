@@ -51,6 +51,11 @@ class RunSnapshot(DomainModel):
         # A real selection remains part of the immutable execution snapshot.
         if payload["selected_case_ids"] is None:
             payload.pop("selected_case_ids")
+        # Keep hashes produced before regression Case provenance was introduced readable.
+        # Non-null provenance remains part of every new regression Run snapshot hash.
+        for case in payload["dataset"]["cases"]:
+            if case.get("provenance") is None:
+                case.pop("provenance", None)
         expected = content_sha256(payload)
         if self.snapshot_sha256 and self.snapshot_sha256 != expected:
             raise ValueError("RunSnapshot content hash mismatch")

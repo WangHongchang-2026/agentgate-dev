@@ -5,6 +5,17 @@ export interface JsonObject { [key: string]: JsonValue }
 export type CaseCategory = 'positive' | 'negative' | 'boundary'
 export type CaseDifficulty = 'easy' | 'medium' | 'hard'
 export type DatasetVersionStatus = 'draft' | 'published'
+export type DatasetPurpose = 'standard' | 'regression'
+
+export interface CaseProvenance {
+  source_type: 'run_result'
+  source_run_id: string
+  source_dataset_id: string
+  source_dataset_version: number
+  source_case_id: string
+  captured_at: string
+  reason: string
+}
 
 export type Condition =
   | { kind: 'equals'; expected: JsonValue }
@@ -51,6 +62,7 @@ export interface EvaluationCase {
   difficulty: CaseDifficulty
   tags: string[]
   notes: string
+  provenance: CaseProvenance | null
 }
 
 export interface DatasetRecord {
@@ -60,6 +72,7 @@ export interface DatasetRecord {
   archived: boolean
   created_at: string
   updated_at: string
+  purpose: DatasetPurpose
 }
 
 export interface DatasetSummary extends DatasetRecord {
