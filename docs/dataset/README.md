@@ -7,6 +7,7 @@ workflows.
 Detailed plans:
 
 - [Dataset and Case management](implementation-plan.md)
+- [Automatic Dataset generation](automatic-generation-plan.md)
 - [Regression-set workflow](regression-set-plan.md)
 - [Regression-set design record](regression-set-design.md)
 - [Excel import/export design](import-export-plan.md)
