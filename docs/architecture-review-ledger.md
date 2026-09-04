@@ -82,9 +82,8 @@ Current Level 2 progress:
   job dispatcher.
 - `integrations/`: completed.
 - `application/`: completed.
-- `storage/`: in progress; structure, `repository.py`, and `artifacts.py`
-  boundaries are confirmed.
-- Current next item: `storage/sqlite.py`.
+- `storage/`: completed.
+- Current next folder: `cli/`.
 - `domain/` exists in the user's implementation but its Level 2 contents have not yet been reviewed.
 
 ## Global architecture decisions
@@ -726,8 +725,30 @@ Rules:
 - `postgres.py`, `migrations/`, and object-storage-specific modules are added
   only when those capabilities are implemented.
 
+### `sqlite.py`
+
+- Implements the `AgentGateRepository` contract with SQLite.
+- Owns connection handling, POC schema initialization, transactions, canonical
+  domain-object JSON serialization/deserialization, SQL queries, constraints, and
+  indexes.
+- Uses selected relational columns for identity, filtering, ordering, and indexes,
+  while retaining complete immutable domain objects as canonical JSON payloads.
+- Likely persisted areas include Datasets and versions, Runs, CaseRuns/Attempts,
+  Traces, Results, Evaluator versions, Run asset references, and Artifact metadata;
+  the exact schema is finalized during the domain audit.
+- Application/domain code decides whether an operation such as Dataset publishing
+  is valid and constructs the intended domain change; SQLite guarantees the
+  related writes are atomic.
+- For the Celery-backed POC, enable foreign keys, WAL mode, a bounded busy timeout,
+  and short transactions. Move to PostgreSQL when write concurrency or volume
+  exceeds the POC profile.
+- Demo Agent business state is not AgentGate persistence. Move the current
+  `business_state` table and methods into the Demo/example implementation.
+- Does not define lifecycle rules, construct Dataset versions, execute Agents or
+  Evaluators, calculate metrics, or return Web-specific data.
+
 ## Next review item
 
 ```text
-storage/sqlite.py
+cli/
 ```
