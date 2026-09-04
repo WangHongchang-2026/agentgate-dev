@@ -81,10 +81,8 @@ Current Level 2 progress:
 - `queue/`: no top-level package in `refactor-1`; demo async execution uses a Celery
   job dispatcher.
 - `integrations/`: completed.
-- `application/`: in progress; `run_management.py`,
-  `dataset_management.py`, `target_catalog.py`,
-  `evaluator_management.py`, and `result_reader.py` are confirmed.
-- Current next item: `application/lineage_queries.py`.
+- `application/`: completed.
+- Current next folder: `storage/`.
 - `domain/` exists in the user's implementation but its Level 2 contents have not yet been reviewed.
 
 ## Global architecture decisions
@@ -648,6 +646,21 @@ application/
   operations in `result_reader.py`. Split them later only if dashboard analytics
   develops substantial independent complexity.
 
+### `application/lineage_queries.py`
+
+- Provides read-only version relationship and usage-history queries for
+  reproducibility, audit, regression, and impact inspection.
+- Reads immutable asset references recorded by `RunManifest` and indexed by
+  storage, including Target, Dataset, Evaluator, Prompt, model, Tool, and effective
+  configuration versions or hashes.
+- Answers both directions: which exact assets a Run used, and which Runs used one
+  exact asset version.
+- Does not write lineage independently, construct Run manifests, implement SQL, or
+  build a graph database.
+- The top-level `lineage/` scaffold is removed in `refactor-1`. Add a dedicated
+  lineage capability later only for multi-hop graph traversal, dependency impact
+  analysis, or graph visualization.
+
 ### `application/run_management.py`
 
 - Owns the complete Run lifecycle use case: Run creation, submission,
@@ -666,5 +679,5 @@ application/
 ## Next review item
 
 ```text
-application/lineage_queries.py
+storage/
 ```
