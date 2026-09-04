@@ -82,7 +82,9 @@ Current Level 2 progress:
   job dispatcher.
 - `integrations/`: completed.
 - `application/`: completed.
-- Current next folder: `storage/`.
+- `storage/`: in progress; structure, `repository.py`, and `artifacts.py`
+  boundaries are confirmed.
+- Current next item: `storage/sqlite.py`.
 - `domain/` exists in the user's implementation but its Level 2 contents have not yet been reviewed.
 
 ## Global architecture decisions
@@ -139,7 +141,8 @@ Removed:
 - `writer.py`: renamed to `export.py`.
 - `validation.py`: removed because format parsing belongs in `formats/`, field and invariant validation belongs in `domain/`, and external Tool/Policy/Evaluator availability checks belong in Run preflight.
 - `models.py`: must not duplicate models already defined under `domain/`.
-- `repository.py`: repository abstractions should remain in the existing domain architecture, with implementations in `storage/`.
+- `repository.py`: do not define a Case-specific repository. The shared persistence
+  contract belongs in `storage/repository.py`, with implementations in `storage/`.
 
 ## `run/` Level 2 result
 
@@ -260,10 +263,12 @@ Design decisions:
 Removed/deferred:
 
 - `graph.py`: P1 uses OTel parent-child Span relationships. Add `execution_graph.py` later only when complex multi-Agent, causal, state-transition, or trajectory analysis requires it.
-- `collector.py`: AgentGate should consume traces produced by the Agent or existing observability platform, not build another full collector. A lightweight POC OTLP receiver, if required, belongs in `integrations/observability/otlp_receiver.py`.
+- `collector.py`: AgentGate should consume traces produced by the Agent or existing observability platform, not build another full collector. A lightweight POC OTLP receiver, if required, belongs in `integrations/observability/otlp_http_receiver.py`.
 - `correlation.py`: Attempt stores `trace_id`; Target Adapter obtains or returns it; observability integration fetches the trace. Add a separate correlator only for future complex cross-trace merging.
 - `evidence.py`: each Evaluator knows what evidence it needs and returns evidence span references in its EvaluationResult. Trace should not guess evaluator-specific evidence.
-- `repository.py`: repository abstractions belong in the existing domain architecture and implementations in `storage/`; external traces can remain referenced in observability platforms.
+- `repository.py`: do not define a Trace-specific repository. The shared persistence
+  contract belongs in `storage/repository.py`; external traces can remain referenced
+  in observability platforms.
 
 ## `evaluator/` Level 2 result
 
@@ -434,7 +439,7 @@ Ownership:
 
 - `domain/`: RunManifest and versioned asset references;
 - `storage/`: persist indexed references and query Runs by asset;
-- `application/lineage.py`: expose queries such as "Which Runs used Dataset version 3?";
+- `application/lineage_queries.py`: expose queries such as "Which Runs used Dataset version 3?";
 - `server/`: expose the query API.
 
 Add a full `lineage/` package later only for multi-hop graph traversal, dependency impact
@@ -676,8 +681,53 @@ application/
 - P1 keeps submission and worker-side execution in one module. Split them only if
   the module develops substantial independent complexity.
 
-## Next review item
+## `storage/` Level 2 progress
+
+Confirmed `refactor-1` structure:
 
 ```text
 storage/
+├── __init__.py
+├── repository.py
+├── sqlite.py
+└── artifacts.py
+```
+
+This is three functional modules and four Python files including `__init__.py`.
+
+### `repository.py`
+
+- Renamed from `base.py` because the file defines the persistence repository
+  contract rather than a general base class.
+- Initially contains one `AgentGateRepository` protocol for object-level
+  persistence operations used by application and core capabilities.
+- Keeps SQL and database-specific behavior out of application code.
+- A test or future PostgreSQL implementation can satisfy the same contract.
+- Split into capability-specific repository protocols only when the combined
+  contract develops real independent complexity.
+
+### `artifacts.py`
+
+- Stores and retrieves file-like or large Agent execution outputs such as code
+  diffs, generated documents, test reports, screenshots, and stdout/stderr.
+- `run/artifacts.py` discovers outputs, calculates hashes, and creates Artifact
+  metadata; `storage/artifacts.py` stores and retrieves the actual bytes.
+- POC uses a local Artifact directory. S3, MinIO, or customer object-storage
+  adapters are deferred.
+- Database records hold Artifact identity, media type, size, checksum, and storage
+  location rather than large file contents.
+
+Rules:
+
+- SQLite/PostgreSQL is authoritative for AgentGate Runs and Results; Redis/Celery
+  state is operational only.
+- Storage does not define domain invariants, execute Runs or Evaluators, calculate
+  metrics, expose HTTP, or format UI responses.
+- `postgres.py`, `migrations/`, and object-storage-specific modules are added
+  only when those capabilities are implemented.
+
+## Next review item
+
+```text
+storage/sqlite.py
 ```
