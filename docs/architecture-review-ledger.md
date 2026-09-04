@@ -84,7 +84,7 @@ Current Level 2 progress:
 - `application/`: in progress; `run_management.py`,
   `dataset_management.py`, `target_catalog.py`,
   `evaluator_management.py`, and `result_reader.py` are confirmed.
-- Current next item: `application/overview.py`.
+- Current next item: `application/lineage_queries.py`.
 - `domain/` exists in the user's implementation but its Level 2 contents have not yet been reviewed.
 
 ## Global architecture decisions
@@ -571,7 +571,6 @@ application/
 ├── target_catalog.py
 ├── evaluator_management.py
 ├── result_reader.py
-├── overview.py
 └── lineage_queries.py
 ```
 
@@ -632,7 +631,8 @@ application/
 ### `application/result_reader.py`
 
 - Provides the read-only application boundary for Run reports, Case results,
-  Badcases, Trace details, and Artifact references used by Web, CLI, and APIs.
+  Badcases, Trace details, Artifact references, and dashboard overview summaries
+  used by Web, CLI, and APIs.
 - Loads and combines canonical stored data through repository interfaces and
   delegates canonical report construction to `result/report.py`.
 - May retrieve an externally stored Trace through an observability adapter, then
@@ -643,6 +643,10 @@ application/
   `dataset_management.py`.
 - Keep this module initially. Remove it later if implementation proves it is only
   a one-call repository forwarding layer.
+- Do not create `application/overview.py` in `refactor-1`. Dashboard totals,
+  running/completed counts, recent Runs, and latest summary data remain read
+  operations in `result_reader.py`. Split them later only if dashboard analytics
+  develops substantial independent complexity.
 
 ### `application/run_management.py`
 
@@ -662,5 +666,5 @@ application/
 ## Next review item
 
 ```text
-application/overview.py
+application/lineage_queries.py
 ```
