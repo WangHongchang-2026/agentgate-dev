@@ -105,7 +105,7 @@ Available foundations:
 
 Missing:
 
-- no `analysis/` source module;
+- no `skill_analysis/` source module;
 - no persisted analysis specification or report;
 - no normalized definition of conflict, confusion, or Prompt mismatch;
 - no deterministic description checks;
@@ -240,10 +240,10 @@ the original finding.
 run/targets/
   resolves external TargetDescriptor
 
-analysis/
+skill_analysis/
   owns static analyzers, findings, report, scoring, and suggestions
 
-domain/analysis.py
+domain/skill_analysis.py
   owns persisted analysis specifications and outputs
 
 evaluator/
@@ -299,7 +299,7 @@ check. The analyzer must not invent unavailable Prompt or description content.
 
 ## Domain Model
 
-Add `src/agentgate/domain/analysis.py`.
+Add `src/agentgate/domain/skill_analysis.py`.
 
 ### AnalysisKind
 
@@ -713,8 +713,8 @@ error or sampled strategy above it; it must not start an unbounded number of LLM
 
 ```text
 Static analysis owner
-  domain/analysis.py
-  analysis/
+  domain/skill_analysis.py
+  skill_analysis/
   analysis persistence
   analysis-focused API and tests
 
@@ -757,7 +757,7 @@ agentgate-goal/
 │   │   ├── __init__.py                         [MOD] Export analysis contracts
 │   │   └── analysis.py                         [ADD] Specs, findings, reports, reviews, matrix
 │   │
-│   ├── analysis/
+│   ├── skill_analysis/
 │   │   ├── __init__.py                         [ADD] Public analysis API
 │   │   ├── base.py                             [ADD] Analyzer Protocol
 │   │   ├── models.py                           [ADD] Runtime candidates/features/errors
@@ -813,8 +813,8 @@ agentgate-goal/
 │   └── web/tests/skill-analysis.spec.ts        [ADD]
 │
 └── docs/
-    ├── analysis/README.md                      [ADD]
-    ├── analysis/skill-static-analysis-plan.md  [ADD] This document
+    ├── skill-analysis/README.md                      [ADD]
+    ├── skill-analysis/skill-static-analysis-plan.md  [ADD] This document
     ├── progress.md                             [MOD] Only after verification
     └── capability-mapping.md                   [MOD] Only after acceptance
 ```

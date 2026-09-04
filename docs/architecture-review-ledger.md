@@ -4,34 +4,33 @@ Last updated: 2026-09-04
 
 ## Review baseline and reconciliation status
 
-The source of truth is the Git branch `goal/p1-demo`, not `main` and not the earlier conceptual directory proposal.
+The behavioral baseline is the Git branch `goal/p1-demo`; the target structural authority is `docs/architecture.md`.
 
-The Level 2 first-pass reviews for `case/`, `run/`, `trace/`, and `evaluator/` are
-complete and remain useful architecture decisions. They are not discarded. Specific
-keep/delete/rename decisions that conflict with working `goal/p1-demo` behavior must be
-revalidated before implementation on `refactor-1`.
+The Level 2 review is complete. The consolidated target architecture is recorded in
+`docs/architecture.md`. The working `goal/p1-demo` behavior remains the migration
+baseline even when its current files are renamed, split, or removed.
 
-Confirmed mismatches requiring re-review include:
+P1 behavior-preservation inputs include:
 
-- `case/validation.py` has a real publish-time whole-Dataset validation role; the earlier deletion decision is withdrawn pending re-review.
-- `evaluator/registry.py` is implemented and resolves evaluator/operator implementations and versions; the earlier deletion decision is withdrawn pending re-review.
-- `evaluator/runner.py` is implemented with per-turn evaluation, dependency resolution, memoization, and error Results; the earlier replacement decision is withdrawn pending re-review.
+- Preserve the publish-time whole-Dataset checks currently in `case/validation.py`; move field and Dataset invariants to `domain/` and availability/preflight checks to application Run or Dataset workflows.
+- Preserve evaluator/operator implementation and version resolution currently in `evaluator/registry.py`; refactor-1 uses explicit application composition instead of a dynamic registry.
+- Preserve per-turn evaluation, dependency resolution, memoization, and error Results currently in `evaluator/runner.py`; the behavior moves behind `evaluator/executor.py`.
 - `evaluator/models.py` contains runtime-only, non-persisted evaluation models; the earlier blanket assumption that all models belong in `domain/` was incorrect.
-- `trace/receivers/otlp_http.py` is an implemented lightweight OTLP ingestion boundary; it must be assessed separately from building a full observability collector.
-- `run/core.py` currently contains the working P1 RunEngine, Target protocol, scheduler adapter, and Python function target; the empty scaffold files cannot be reviewed independently of this implementation.
-- `result/` on `goal/p1-demo` contains implemented `calc_metrics.py`, `gate.py`, and `service.py`; it does not contain `verdict.py`.
+- Preserve the lightweight OTLP ingestion behavior in `trace/receivers/otlp_http.py`; protocol handling moves to `integrations/observability/otlp_http_receiver.py` and semantic conversion remains in `trace/normalizer.py`.
+- Preserve the working P1 behavior in `run/core.py` while splitting Engine, Target protocol, application scheduling, and Python-function adapter responsibilities into their confirmed modules.
+- Preserve implemented Result behavior while renaming `calc_metrics.py` to `metrics.py` and `service.py` to `report.py`; do not invent a `verdict.py` module.
 
 Current review status:
 
 - Level 1: confirmed.
-- Level 2 first-pass: `case/`, `run/`, `trace/`, `evaluator/`, and `result/` completed.
+- Level 2: all target backend folders completed.
 - `optimizer/`: retained as a future feature boundary; detailed design is deferred until
   implementation.
 - `experiment/`, `lineage/`, and `queue/`: removed as top-level `refactor-1` packages for
   the reasons recorded below.
-- Targeted P1 reconciliation remains required for the mismatches listed above.
-- No implementation refactor begins until the review is consolidated and the
-  `refactor-1` branch is created.
+- P1 behavior preservation remains required during implementation for the inputs listed above.
+- The architecture is consolidated. Implementation begins on a dedicated `refactor-1`
+  branch.
 
 ## Review method
 
@@ -55,7 +54,7 @@ Current `refactor-1` target backend folders: 13.
 4. `trace/`
 5. `evaluator/`
 6. `result/`
-7. `analysis/`
+7. `skill_analysis/`
 8. `optimizer/`
 9. `integrations/`
 10. `application/`
@@ -72,8 +71,7 @@ Current Level 2 progress:
 - `trace/`: completed.
 - `evaluator/`: completed.
 - `result/`: completed.
-- `analysis/`: retained as a top-level static Agent/Skill definition-analysis capability;
-  detailed Level 2 review is pending.
+- `skill_analysis/`: Level 2 completed; static Skill evaluation remains separate from dynamic Case evaluation.
 - `optimizer/`: detailed design deferred until its implementation stage.
 - `experiment/`: removed/deferred; a specific `ab_test/` module may be introduced later.
 - `lineage/`: no top-level package in `refactor-1`; basic lineage uses indexed Run asset
@@ -85,15 +83,17 @@ Current Level 2 progress:
 - `storage/`: completed.
 - `cli/`: completed.
 - `server/`: completed.
-- `domain/`: Level 2 completed; Level 3 class and invariant review is next.
-- Current next item: `domain/base.py` Level 3 review.
+- `domain/`: Level 2 completed.
+- Level 3 is intentionally deferred to implementation review.
+- Consolidated architecture: `docs/architecture.md`.
+- Current next item: plan and implement the `refactor-1` code migration.
 
 ## Global architecture decisions
 
 - AgentGate remains one project. Do not create a separate repository for the evaluation harness.
 - AgentGate is a complete Agent Evaluation Harness, not only an Eval Engine.
 - AgentGate owns test execution, evaluation, regression, and analysis.
-- `analysis/` examines Agent/Skill definitions without executing them; `optimizer/`
+- `skill_analysis/` examines Agent/Skill definitions without executing them; `optimizer/`
   analyzes completed Runs, Results, and Traces. Do not merge these responsibilities.
 - AgentGate does not build a full enterprise Control Plane or full observability platform.
 - POC Control Plane and observability functions remain lightweight; production integrations should primarily use existing external systems.
@@ -111,6 +111,7 @@ domain/
 ├── base.py
 ├── case.py
 ├── expectation.py
+├── skill_analysis.py
 ├── target.py
 ├── evaluator.py
 ├── run.py
@@ -134,6 +135,7 @@ Required P1 reconciliation:
 - Expand `run.py` with `RunConfig`, immutable `RunManifest`, `CaseRun`, `Attempt`, statuses,
   and legal lifecycle transitions; rename current `RunSnapshot` to `RunManifest`.
 - Add `artifact.py` for shared Artifact references and metadata.
+- Add `skill_analysis.py` for persisted static Skill-analysis specifications, findings, reviews, and reports.
 - Keep `report.py` as the composite domain read contract; report calculation remains in
   `result/report.py`.
 - Do not create Agent or AgentVersion models because external customer platforms own
@@ -317,6 +319,7 @@ Final structure:
 evaluator/
 ├── evaluator_protocol.py
 ├── executor.py
+├── models.py
 ├── hybrid.py
 ├── rule/
 └── judge/
@@ -336,6 +339,12 @@ Confirmed responsibilities:
 - Receives a completed CaseRun plus normalized Trace/Artifact references and executes all Evaluators already selected by the RunManifest/application composition.
 - Builds evaluator inputs, invokes evaluators, captures evaluator execution errors/timeouts and execution metadata, and returns independent EvaluationResults.
 - Does not run the target Agent, choose evaluator policy, implement evaluator rules, aggregate Run scores, make a release-gate decision, or persist data directly.
+
+### `models.py`
+
+- Contains runtime-only, non-persisted evaluation inputs, dependency state, candidates,
+  and execution errors shared by evaluator execution.
+- Persistent Evaluator specifications and Results remain in `domain/`.
 
 ### `hybrid.py`
 
@@ -415,6 +424,64 @@ Removed/moved:
   `application/`.
 - `export/`: removed from the Result core. JSON/JUnit/Markdown/callback output adapters
   belong under `integrations/result_outputs/`. FastAPI JSON output is sufficient for the POC.
+
+## `skill_analysis/` Level 2 result
+
+Static Skill analysis is part of the Agent evaluation product, but it does not execute
+Cases and must not emit fake dynamic evaluation Results.
+
+Final structure:
+
+```text
+skill_analysis/
+├── __init__.py
+├── analyzer_protocol.py
+├── models.py
+├── description_quality.py
+├── skill_relationships.py
+├── prompt_alignment.py
+├── llm_semantic.py
+└── pipeline.py
+```
+
+Confirmed responsibilities:
+
+- `analyzer_protocol.py`: define the common contract for static analyzers.
+- `models.py`: hold non-persisted analyzer inputs, candidates, features, and errors.
+- `description_quality.py`: check whether Skill descriptions are clear, complete, and
+  routable.
+- `skill_relationships.py`: detect overlap, conflict, and confusion among Skill
+  definitions.
+- `prompt_alignment.py`: check Agent Prompt, Skill Prompt, description, Tool, and
+  capability alignment.
+- `llm_semantic.py`: perform bounded LLM-assisted semantic checks through an injected
+  model-provider boundary.
+- `pipeline.py`: run explicitly composed analyzers, merge findings, and construct the
+  static risk matrix.
+
+Ownership rules:
+
+- Persisted `SkillAnalysisSpec`, findings, reviews, and `SkillAnalysisReport` objects belong in
+  `domain/skill_analysis.py`.
+- Target resolution, invocation, persistence, and finding-review workflows belong in
+  `application/skill_analysis.py`.
+- HTTP endpoints belong in `server/routes/skill_analysis.py`.
+- The Web UI may present static and dynamic evaluation under one product navigation area.
+- A static risk matrix estimates definition risk; an observed confusion matrix requires
+  executed Cases and remains in `optimizer/`.
+- Static analysis never edits external Agent or Skill definitions automatically.
+
+Removed from the pre-refactor plan:
+
+- `base.py` becomes the explicitly named `analyzer_protocol.py`.
+- `registry.py` is removed; application composition selects supported analyzers.
+- `service.py` is removed; use-case orchestration belongs in `application/`.
+- Separate `normalization.py`, `merge.py`, and `matrix.py` are not created initially;
+  extract them only when implementation complexity justifies independent modules.
+
+Estimated implementation size is 600-900 production lines, excluding persisted domain
+contracts and tests. Detailed behavior and acceptance criteria remain in
+`docs/skill-analysis/skill-static-analysis-plan.md`.
 
 ## `optimizer/` Level 2 status
 
@@ -613,6 +680,7 @@ application/
 ├── target_catalog.py
 ├── evaluator_management.py
 ├── result_reader.py
+├── skill_analysis.py
 └── lineage_queries.py
 ```
 
@@ -669,6 +737,18 @@ application/
   explicitly maps supported evaluator types to implementations.
 - Published Evaluator versions are immutable and identify rule/Judge criteria,
   model configuration, and evaluator implementation version.
+
+### `application/skill_analysis.py`
+
+- Coordinates static Skill-evaluation use cases for Agent creation checks and evaluation
+  preparation.
+- Resolves an exact TargetDescriptor through `target_catalog.py`, invokes the
+  `skill_analysis/pipeline.py` capability, persists immutable reports, and records human
+  finding reviews separately.
+- May select an LLM model provider and opaque credential reference for semantic checks.
+- Does not execute Cases, create dynamic evaluator Results, implement analyzer algorithms,
+  edit external Skills, write SQL, or expose HTTP.
+- Static findings do not block a Run unless an explicit application policy says so.
 
 ### `application/result_reader.py`
 
@@ -846,7 +926,8 @@ server/
     ├── datasets.py
     ├── catalogs.py
     ├── results.py
-    └── telemetry.py
+    ├── telemetry.py
+    └── skill_analysis.py
 ```
 
 Confirmed responsibilities:
@@ -869,6 +950,8 @@ Confirmed responsibilities:
   dashboard summaries, and lineage query endpoints.
 - `routes/telemetry.py`: register OTLP/HTTP ingestion and delegate protocol
   handling to `integrations/observability/otlp_http_receiver.py`.
+- `routes/skill_analysis.py`: expose static Skill-analysis submission, report retrieval,
+  and finding-review endpoints through `application/skill_analysis.py`.
 - Keep small HTTP request/response schemas in the owning route module. Add a
   separate schemas package only when schemas are genuinely shared or numerous.
 - Long evaluations never run in the request process. Run submission persists a
@@ -881,8 +964,7 @@ Confirmed responsibilities:
 - Server does not query SQLite directly, execute Agents/Evaluators, construct
   manifests, calculate metrics, or contain customer scheduler logic.
 
-## Next review item
+## Review completion
 
-```text
-domain/
-```
+Level 1 and Level 2 are complete. Level 3 is intentionally deferred to implementation
+review. The authoritative target architecture is `docs/architecture.md`.

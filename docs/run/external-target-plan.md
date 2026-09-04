@@ -884,7 +884,7 @@ List targets from fake external platform
 - external Java scheduler: `docs/queue/scheduler-adapter-plan.md`;
 - OTLP merge/deduplication: `docs/trace/ingestion-plan.md`;
 - Dataset generation: `docs/dataset/generation-plan.md`;
-- static Skill analysis: `docs/analysis/skill-static-analysis-plan.md`;
+- static Skill analysis: `docs/skill-analysis/skill-static-analysis-plan.md`;
 - production platform-specific adapters;
 - process execution unless an actual integration requires it;
 - Target management UI;

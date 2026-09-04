@@ -3,13 +3,13 @@
 ## Current Authority
 
 - [Product requirements](product-requirements-zh.md) define the intended product behavior.
-- [Architecture review ledger](architecture-review-ledger.md) is the authoritative
-  `refactor-1` structure while Level 2 and Level 3 review is in progress.
+- [Refactor-1 architecture](architecture.md) is the authoritative target structure.
+- [Architecture review ledger](architecture-review-ledger.md) records detailed decisions
+  and reconciliation notes.
 - Running code and automated tests describe the inherited `goal/p1-demo` baseline; they
   do not override confirmed refactor decisions in the ledger.
 
-The consolidated `arch.md`, implementation roadmap, and capability mapping will be
-regenerated after the architecture review is complete.
+Detailed implementation plans must follow the consolidated architecture and ledger.
 
 ## Current Module Documents
 
@@ -18,7 +18,7 @@ regenerated after the architecture review is complete.
 | Domain | [domain/](domain/) | Stable business models, invariants, version identities, and immutable execution records |
 | Dataset and Case | [dataset/](dataset/) | Reusable loading, formats, versioning, sampling, and generation mechanics |
 | Evaluator | [evaluator/](evaluator/) | Rule, LLM Judge, Hybrid, and evaluator execution |
-| Static analysis | [analysis/](analysis/) | Agent/Skill definition conflict, confusion, and Prompt alignment analysis |
+| Static Skill analysis | [skill-analysis/](skill-analysis/) | Agent/Skill definition conflict, confusion, and Prompt alignment analysis |
 | Run | [run/](run/) | Run manifests, execution engine, process management, retry, and artifacts |
 | Trace | [trace/](trace/) | Canonical Trace normalization and redaction |
 | Result | [result/](result/) | Metrics, gates, reports, and Run comparison |

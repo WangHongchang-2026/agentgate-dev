@@ -12,6 +12,7 @@ domain/
 ├── base.py
 ├── case.py
 ├── expectation.py
+├── skill_analysis.py
 ├── target.py
 ├── evaluator.py
 ├── run.py
@@ -29,6 +30,7 @@ domain/
 | `base.py` | Provide immutable model primitives, JSON-safe values, canonical serialization, and content hashing. |
 | `case.py` | Define Cases, multi-turn conversations, Datasets, and Dataset versions. |
 | `expectation.py` | Describe expected outputs, states, Tool arguments, and validation conditions. |
+| `skill_analysis.py` | Define persisted `SkillAnalysisSpec`, findings, reviews, and `SkillAnalysisReport` objects. |
 | `target.py` | Represent exact external Agent/Skill identities, descriptors, and immutable execution snapshots. |
 | `evaluator.py` | Define versioned Rule, LLM Judge, and Hybrid Evaluator specifications. |
 | `run.py` | Define Run configuration, manifest, lifecycle, CaseRuns, and retry Attempts. |
@@ -49,7 +51,9 @@ and immutable evaluation-time Target snapshot.
 Case + Expectation
         |
         v
-Target + Run ----> Trace + Artifact
+TargetDescriptor ----> SkillAnalysisReport
+
+Target + Run ---------> Trace + Artifact
                         |
                         v
                     Evaluator
@@ -78,6 +82,7 @@ These ranges guide review and planning; they are not enforced limits.
 | `base.py` | 80-130 |
 | `case.py` | 130-200 |
 | `expectation.py` | 120-180 |
+| `skill_analysis.py` | 180-280 |
 | `target.py` | 160-240 |
 | `evaluator.py` | 140-220 |
 | `run.py` | 220-320 |
@@ -87,7 +92,7 @@ These ranges guide review and planning; they are not enforced limits.
 | `metric.py` | 50-100 |
 | `gate.py` | 40-80 |
 | `report.py` | 30-70 |
-| **Total** | **1,300-2,000** |
+| **Total** | **1,500-2,300** |
 
 Expected domain-test size is approximately 1,200-2,000 lines. When a domain module grows
 beyond roughly 300 lines, review whether it contains multiple independent concepts or
