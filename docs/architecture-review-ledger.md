@@ -84,7 +84,8 @@ Current Level 2 progress:
 - `application/`: completed.
 - `storage/`: completed.
 - `cli/`: completed.
-- Current next folder: `server/`.
+- `server/`: completed.
+- Current next folder: `domain/` final audit.
 - `domain/` exists in the user's implementation but its Level 2 contents have not yet been reviewed.
 
 ## Global architecture decisions
@@ -786,8 +787,64 @@ Confirmed responsibilities:
 - Add Target, Evaluator, lineage, or shared formatting modules only when those
   command groups develop real behavior.
 
-## Next review item
+## `server/` Level 2 result
+
+FastAPI remains the AgentGate HTTP server because it matches the existing Python and
+Pydantic stack, provides request validation and OpenAPI, supports REST and streaming,
+and is already working in P1.
+
+Final `refactor-1` structure:
 
 ```text
 server/
+├── __init__.py
+├── app.py
+├── dependencies.py
+├── errors.py
+└── routes/
+    ├── __init__.py
+    ├── system.py
+    ├── runs.py
+    ├── datasets.py
+    ├── catalogs.py
+    ├── results.py
+    └── telemetry.py
+```
+
+Confirmed responsibilities:
+
+- `app.py`: application factory, lifespan, middleware, CORS, exception-handler
+  registration, and router registration.
+- `dependencies.py`: FastAPI dependency providers for configured application
+  services and request-level authentication context. No external DI library is
+  required for the POC.
+- `errors.py`: map typed application errors to HTTP status and response shapes;
+  do not infer error types from message strings.
+- `routes/system.py`: health and readiness endpoints.
+- `routes/runs.py`: Run submission, list/status/cancel/progress endpoints through
+  Run management and Result reader application boundaries.
+- `routes/datasets.py`: Dataset/Case lifecycle, import/export, draft, and publish
+  endpoints through Dataset management.
+- `routes/catalogs.py`: Target discovery and Evaluator management endpoints.
+  Split later only if either API develops substantial size.
+- `routes/results.py`: reports, Case results, Badcases, Trace/Artifact detail,
+  dashboard summaries, and lineage query endpoints.
+- `routes/telemetry.py`: register OTLP/HTTP ingestion and delegate protocol
+  handling to `integrations/observability/otlp_http_receiver.py`.
+- Keep small HTTP request/response schemas in the owning route module. Add a
+  separate schemas package only when schemas are genuinely shared or numerous.
+- Long evaluations never run in the request process. Run submission persists a
+  queued Run, dispatches background work, and normally returns HTTP 202.
+- Add a separate internal-execution route module only when external customer
+  control-plane integration is implemented.
+- Remove the current broad `server/application.py` after splitting it. Remove
+  empty generic `server/routes.py` and `server/services.py`; business services
+  belong in `application/`.
+- Server does not query SQLite directly, execute Agents/Evaluators, construct
+  manifests, calculate metrics, or contain customer scheduler logic.
+
+## Next review item
+
+```text
+domain/
 ```
