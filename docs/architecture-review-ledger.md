@@ -1,6 +1,6 @@
 # AgentGate Architecture Review Ledger
 
-Last updated: 2026-08-23
+Last updated: 2026-09-04
 
 ## Review baseline and reconciliation status
 
@@ -85,8 +85,8 @@ Current Level 2 progress:
 - `storage/`: completed.
 - `cli/`: completed.
 - `server/`: completed.
-- Current next folder: `domain/` final audit.
-- `domain/` exists in the user's implementation but its Level 2 contents have not yet been reviewed.
+- `domain/`: Level 2 completed; Level 3 class and invariant review is next.
+- Current next item: `domain/base.py` Level 3 review.
 
 ## Global architecture decisions
 
@@ -101,7 +101,45 @@ Current Level 2 progress:
 - External integrations are centralized under `integrations/`.
 - Internal package name `control/` should not be confused with an enterprise Control Plane; the intended application orchestration layer is `application/`.
 
-## `domain/` cross-module Notes
+## `domain/` Level 2 result
+
+Final structure:
+
+```text
+domain/
+├── __init__.py
+├── base.py
+├── case.py
+├── expectation.py
+├── target.py
+├── evaluator.py
+├── run.py
+├── trace.py
+├── artifact.py
+├── result.py
+├── metric.py
+├── gate.py
+└── report.py
+```
+
+The package is divided by stable business concepts rather than Web pages, database
+tables, or workflow steps. Detailed responsibilities, estimated size, dependency rules,
+versioning, secret handling, and test guidance are maintained in `docs/domain/README.md`.
+
+Required P1 reconciliation:
+
+- Move `TargetSnapshot` from `run.py` into new `target.py` and adopt exact external Target
+  references, descriptors, and immutable execution snapshots.
+- Rename `evaluation.py` to `evaluator.py` to match its owned concept.
+- Expand `run.py` with `RunConfig`, immutable `RunManifest`, `CaseRun`, `Attempt`, statuses,
+  and legal lifecycle transitions; rename current `RunSnapshot` to `RunManifest`.
+- Add `artifact.py` for shared Artifact references and metadata.
+- Keep `report.py` as the composite domain read contract; report calculation remains in
+  `result/report.py`.
+- Do not create Agent or AgentVersion models because external customer platforms own
+  those objects.
+
+Confirmed rules:
 
 - Domain model field validation belongs in `domain/`.
 - Domain invariants belong in `domain/`.

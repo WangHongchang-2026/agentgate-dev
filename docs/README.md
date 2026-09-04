@@ -15,6 +15,7 @@ regenerated after the architecture review is complete.
 
 | Capability | Documentation | Responsibility |
 | --- | --- | --- |
+| Domain | [domain/](domain/) | Stable business models, invariants, version identities, and immutable execution records |
 | Dataset and Case | [dataset/](dataset/) | Reusable loading, formats, versioning, sampling, and generation mechanics |
 | Evaluator | [evaluator/](evaluator/) | Rule, LLM Judge, Hybrid, and evaluator execution |
 | Static analysis | [analysis/](analysis/) | Agent/Skill definition conflict, confusion, and Prompt alignment analysis |
