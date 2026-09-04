@@ -83,7 +83,8 @@ Current Level 2 progress:
 - `integrations/`: completed.
 - `application/`: completed.
 - `storage/`: completed.
-- Current next folder: `cli/`.
+- `cli/`: completed.
+- Current next folder: `server/`.
 - `domain/` exists in the user's implementation but its Level 2 contents have not yet been reviewed.
 
 ## Global architecture decisions
@@ -747,8 +748,46 @@ Rules:
 - Does not define lifecycle rules, construct Dataset versions, execute Agents or
   Evaluators, calculate metrics, or return Web-specific data.
 
-## Next review item
+## `cli/` Level 2 result
+
+Final `refactor-1` structure:
 
 ```text
 cli/
+├── __init__.py
+├── main.py
+├── run_commands.py
+├── dataset_commands.py
+└── result_commands.py
+```
+
+This is four functional modules and five Python files including `__init__.py`.
+
+Confirmed responsibilities:
+
+- `main.py`: assemble the Typer root application, register command groups, load
+  CLI configuration, and wire application services. It does not implement use
+  cases.
+- `run_commands.py`: expose Run start/list/status/cancel commands through
+  `application/run_management.py`.
+- `dataset_commands.py`: expose Dataset list/import/export/publish operations
+  through `application/dataset_management.py`.
+- `result_commands.py`: expose report, Badcase, and Trace reads through
+  `application/result_reader.py`, and map Gate conclusions to documented CI exit
+  codes.
+- CLI parses arguments, presents output, and maps errors/exit codes. It does not
+  execute Cases, query SQLite directly, calculate metrics, invoke external Agents,
+  or duplicate HTTP/API logic.
+- Remove the current `cli/application.py` because the name conflicts with the
+  top-level application layer and its direct repository access bypasses that
+  boundary.
+- Remove the generic empty `cli/commands.py`; command ownership is explicit in
+  the three command-group modules.
+- Add Target, Evaluator, lineage, or shared formatting modules only when those
+  command groups develop real behavior.
+
+## Next review item
+
+```text
+server/
 ```
