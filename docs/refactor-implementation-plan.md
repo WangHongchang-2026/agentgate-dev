@@ -33,6 +33,20 @@ Authority order:
 7. Preserve existing uncommitted Web work and reconcile it during the Web phase.
 8. Add dependencies and modules only for behavior that is actually implemented.
 
+### Approval Checkpoints
+
+Apply the following sequence separately to each package and file:
+
+1. Confirm folder and Python filenames without changing class or function design.
+2. Review one file's responsibility and ownership, then obtain user confirmation.
+3. Review that file's classes, functions, protocols, relationships, invariants, and
+   dependencies, then obtain user confirmation.
+4. Implement only the confirmed design, add focused tests, and show verification before
+   moving to the next file.
+
+Do not combine checkpoints. A naming review must not silently become an implementation,
+and file-level design and implementation proceed one file at a time.
+
 Actions used below:
 
 - **Keep:** retain responsibility and behavior.
