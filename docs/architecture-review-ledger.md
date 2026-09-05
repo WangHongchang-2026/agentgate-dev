@@ -93,6 +93,8 @@ Current Level 2 progress:
 - Metric, Gate, and Report implementations are aligned with the final domain contracts.
 - Repeated nonblank-string validation is centralized as `domain/base.py::require_non_blank`;
   feature models compose the function without validator inheritance.
+- Credential-key detection is centralized as `domain/base.py::find_credential_path` so
+  Target and Evaluator configuration cannot drift onto different secret denylists.
 - Current next checkpoint: review and commit the completed contract changes.
 
 ## Global architecture decisions

@@ -1,7 +1,14 @@
 """Public AgentGate domain data models."""
 
 from .artifact import Artifact, ArtifactProducer
-from .base import DomainModel, FrozenJsonObject, canonical_json, content_sha256, freeze_json
+from .base import (
+    DomainModel,
+    FrozenJsonObject,
+    canonical_json,
+    content_sha256,
+    find_credential_path,
+    freeze_json,
+)
 from .case import Case, CaseCategory, CaseDifficulty, CaseTurn
 from .dataset import Dataset, DatasetVersion, DatasetVersionStatus
 from .evaluator import (

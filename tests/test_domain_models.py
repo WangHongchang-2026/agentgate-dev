@@ -11,6 +11,7 @@ from agentgate.domain import (
     WithinRange,
     canonical_json,
     content_sha256,
+    find_credential_path,
     freeze_json,
 )
 
@@ -78,6 +79,13 @@ def test_canonical_json_and_hash_ignore_mapping_insertion_order():
 
     assert canonical_json(first) == canonical_json(second)
     assert content_sha256(first) == content_sha256(second)
+
+
+def test_find_credential_path_handles_nested_objects_and_key_spelling():
+    value = {"models": [{"auth": {"api-key": "plaintext"}}]}
+
+    assert find_credential_path(value) == "models[0].auth.api-key"
+    assert find_credential_path({"credential_ref": "vault/customer-key"}) is None
 
 
 def test_domain_model_validates_defaults_and_is_immutable():

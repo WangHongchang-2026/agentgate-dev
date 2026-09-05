@@ -5,40 +5,18 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping
 from enum import StrEnum
-from typing import Any
 
 from pydantic import Field, ValidationInfo, field_validator, model_validator
 
-from .base import DomainModel, FrozenJsonObject, content_sha256, require_non_blank
-
+from .base import (
+    DomainModel,
+    FrozenJsonObject,
+    content_sha256,
+    find_credential_path,
+    require_non_blank,
+)
 
 _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
-_SECRET_KEYS = {
-    "access_token",
-    "api_key",
-    "authorization",
-    "bearer_token",
-    "client_secret",
-    "password",
-    "secret_key",
-}
-
-
-def _secret_path(value: Any, prefix: str = "") -> str | None:
-    if isinstance(value, Mapping):
-        for key, item in value.items():
-            path = f"{prefix}.{key}" if prefix else key
-            if key.lower().replace("-", "_") in _SECRET_KEYS:
-                return path
-            found = _secret_path(item, path)
-            if found:
-                return found
-    elif isinstance(value, (list, tuple)):
-        for index, item in enumerate(value):
-            found = _secret_path(item, f"{prefix}[{index}]")
-            if found:
-                return found
-    return None
 
 
 class EvaluatorKind(StrEnum):
@@ -110,7 +88,7 @@ class EvaluatorSpec(DomainModel):
     @field_validator("config")
     @classmethod
     def reject_plaintext_credentials(cls, value: FrozenJsonObject) -> FrozenJsonObject:
-        path = _secret_path(value)
+        path = find_credential_path(value)
         if path:
             raise ValueError(f"EvaluatorSpec config contains credential-like field: {path}")
         return value

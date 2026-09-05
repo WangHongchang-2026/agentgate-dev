@@ -4,26 +4,22 @@ from __future__ import annotations
 
 import hashlib
 import re
-from collections.abc import Mapping
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
 from pydantic import Field, ValidationInfo, field_validator, model_validator
 
-from .base import DomainModel, FrozenJsonObject, content_sha256, require_non_blank
+from .base import (
+    DomainModel,
+    FrozenJsonObject,
+    content_sha256,
+    find_credential_path,
+    require_non_blank,
+)
 
 
 _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
-_SECRET_KEYS = {
-    "access_token",
-    "api_key",
-    "authorization",
-    "bearer_token",
-    "client_secret",
-    "password",
-    "secret_key",
-}
 
 
 def utcnow() -> datetime:
@@ -54,25 +50,8 @@ def _set_or_verify_prompt_hash(instance: Any) -> None:
         object.__setattr__(instance, "prompt_sha256", expected)
 
 
-def _secret_path(value: Any, prefix: str = "") -> str | None:
-    if isinstance(value, Mapping):
-        for key, item in value.items():
-            path = f"{prefix}.{key}" if prefix else key
-            if key.lower().replace("-", "_") in _SECRET_KEYS:
-                return path
-            found = _secret_path(item, path)
-            if found:
-                return found
-    elif isinstance(value, (list, tuple)):
-        for index, item in enumerate(value):
-            found = _secret_path(item, f"{prefix}[{index}]")
-            if found:
-                return found
-    return None
-
-
 def _reject_secrets(value: FrozenJsonObject, field_name: str) -> FrozenJsonObject:
-    path = _secret_path(value)
+    path = find_credential_path(value)
     if path:
         raise ValueError(f"{field_name} contains credential-like field: {path}")
     return value

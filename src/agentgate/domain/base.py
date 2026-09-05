@@ -12,12 +12,42 @@ from pydantic import BaseModel, ConfigDict
 from pydantic_core import core_schema
 
 
+_CREDENTIAL_KEYS = {
+    "access_token",
+    "api_key",
+    "authorization",
+    "bearer_token",
+    "client_secret",
+    "password",
+    "secret_key",
+}
+
+
 def require_non_blank(value: str, field_name: str) -> str:
     """Return a nonblank string or raise a field-specific validation error."""
 
     if not value.strip():
         raise ValueError(f"{field_name} must not be blank")
     return value
+
+
+def find_credential_path(value: Any, prefix: str = "") -> str | None:
+    """Return the first path whose key indicates an embedded credential."""
+
+    if isinstance(value, Mapping):
+        for key, item in value.items():
+            path = f"{prefix}.{key}" if prefix else key
+            if key.lower().replace("-", "_") in _CREDENTIAL_KEYS:
+                return path
+            found = find_credential_path(item, path)
+            if found:
+                return found
+    elif isinstance(value, (list, tuple)):
+        for index, item in enumerate(value):
+            found = find_credential_path(item, f"{prefix}[{index}]")
+            if found:
+                return found
+    return None
 
 
 class FrozenJsonObject(Mapping[str, Any]):
