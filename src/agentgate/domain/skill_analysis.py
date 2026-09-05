@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from datetime import datetime
 from enum import StrEnum
 from typing import Any
@@ -16,12 +15,10 @@ from .base import (
     content_sha256,
     normalize_utc,
     require_non_blank,
+    require_sha256,
     utcnow,
 )
 from .target import TargetRef
-
-
-_SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 
 
 class SkillAnalysisStatus(StrEnum):
@@ -112,9 +109,7 @@ class SkillAnalysisReport(DomainModel):
     @field_validator("target_descriptor_sha256", "content_sha256")
     @classmethod
     def validate_hash(cls, value: str, info: ValidationInfo) -> str:
-        if value and not _SHA256_PATTERN.fullmatch(value):
-            raise ValueError(f"{info.field_name} must be a lowercase SHA-256 digest")
-        return value
+        return require_sha256(value, info.field_name) if value else value
 
     @field_validator("created_at")
     @classmethod

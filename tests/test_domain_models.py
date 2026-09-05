@@ -16,6 +16,7 @@ from agentgate.domain import (
     find_credential_path,
     freeze_json,
     normalize_utc,
+    require_sha256,
     utcnow,
 )
 
@@ -104,6 +105,13 @@ def test_normalize_utc_converts_aware_timestamp_and_rejects_naive_timestamp():
     assert normalize_utc(value, "created_at") == datetime(2026, 9, 5, tzinfo=UTC)
     with pytest.raises(ValueError, match="created_at must be timezone-aware"):
         normalize_utc(datetime(2026, 9, 5), "created_at")
+
+
+def test_require_sha256_accepts_only_lowercase_64_character_digest():
+    assert require_sha256("a" * 64, "content_sha256") == "a" * 64
+    for invalid in ("A" * 64, "a" * 63, "not-a-hash"):
+        with pytest.raises(ValueError, match="content_sha256 must be a lowercase SHA-256"):
+            require_sha256(invalid, "content_sha256")
 
 
 def test_domain_model_validates_defaults_and_is_immutable():

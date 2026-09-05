@@ -2,17 +2,20 @@
 
 from __future__ import annotations
 
-import re
 from datetime import datetime
 from enum import StrEnum
 from uuid import uuid4
 
 from pydantic import Field, ValidationInfo, field_validator
 
-from .base import DomainModel, FrozenJsonObject, normalize_utc, require_non_blank, utcnow
-
-
-_SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+from .base import (
+    DomainModel,
+    FrozenJsonObject,
+    normalize_utc,
+    require_non_blank,
+    require_sha256,
+    utcnow,
+)
 
 
 class ArtifactProducer(StrEnum):
@@ -66,9 +69,7 @@ class Artifact(DomainModel):
     @field_validator("sha256")
     @classmethod
     def validate_sha256(cls, value: str) -> str:
-        if not _SHA256_PATTERN.fullmatch(value):
-            raise ValueError("Artifact sha256 must be a lowercase SHA-256 digest")
-        return value
+        return require_sha256(value, "Artifact sha256")
 
     @field_validator("created_at")
     @classmethod

@@ -98,6 +98,8 @@ Current Level 2 progress:
 - UTC timestamp creation is centralized as `domain/base.py::utcnow`.
 - Timezone validation and conversion are centralized as `domain/base.py::normalize_utc`;
   optional timestamp policy remains at each field boundary.
+- SHA-256 format validation is centralized as `domain/base.py::require_sha256`; models
+  retain ownership of hash presence, generation, and content-matching rules.
 - Current next checkpoint: review and commit the completed contract changes.
 
 ## Global architecture decisions

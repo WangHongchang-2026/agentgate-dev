@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
 from collections.abc import Iterator, Mapping
 from datetime import UTC, datetime
 from typing import Any, TypeAlias
@@ -22,6 +23,7 @@ _CREDENTIAL_KEYS = {
     "password",
     "secret_key",
 }
+_SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 
 
 def utcnow() -> datetime:
@@ -43,6 +45,14 @@ def require_non_blank(value: str, field_name: str) -> str:
 
     if not value.strip():
         raise ValueError(f"{field_name} must not be blank")
+    return value
+
+
+def require_sha256(value: str, field_name: str) -> str:
+    """Return a lowercase SHA-256 digest or raise a field-specific error."""
+
+    if not _SHA256_PATTERN.fullmatch(value):
+        raise ValueError(f"{field_name} must be a lowercase SHA-256 digest")
     return value
 
 

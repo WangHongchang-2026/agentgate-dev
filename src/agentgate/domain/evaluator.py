@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from collections.abc import Mapping
 from enum import StrEnum
 
@@ -14,9 +13,8 @@ from .base import (
     content_sha256,
     find_credential_path,
     require_non_blank,
+    require_sha256,
 )
-
-_SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 
 
 class EvaluatorKind(StrEnum):
@@ -96,9 +94,7 @@ class EvaluatorSpec(DomainModel):
     @field_validator("content_sha256")
     @classmethod
     def validate_content_hash(cls, value: str) -> str:
-        if value and not _SHA256_PATTERN.fullmatch(value):
-            raise ValueError("content_sha256 must be a lowercase SHA-256 digest")
-        return value
+        return require_sha256(value, "content_sha256") if value else value
 
     @model_validator(mode="after")
     def validate_composition_and_hash(self) -> "EvaluatorSpec":

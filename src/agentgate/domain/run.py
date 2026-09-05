@@ -2,22 +2,25 @@
 
 from __future__ import annotations
 
-import re
 from datetime import datetime
 from enum import StrEnum
 from uuid import uuid4
 
 from pydantic import Field, ValidationInfo, field_validator, model_validator
 
-from .base import DomainModel, content_sha256, normalize_utc, require_non_blank, utcnow
+from .base import (
+    DomainModel,
+    content_sha256,
+    normalize_utc,
+    require_non_blank,
+    require_sha256,
+    utcnow,
+)
 from .dataset import DatasetVersion, DatasetVersionStatus
 from .evaluator import EvaluatorSpec
 from .gate import ReleaseGateSpec
 from .metric import MetricPlan
 from .target import TargetSnapshot
-
-
-_SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 
 
 class RunStatus(StrEnum):
@@ -62,9 +65,7 @@ class RunManifest(DomainModel):
     @field_validator("manifest_sha256")
     @classmethod
     def validate_manifest_hash(cls, value: str) -> str:
-        if value and not _SHA256_PATTERN.fullmatch(value):
-            raise ValueError("manifest_sha256 must be a lowercase SHA-256 digest")
-        return value
+        return require_sha256(value, "manifest_sha256") if value else value
 
     @model_validator(mode="after")
     def validate_manifest(self) -> "RunManifest":

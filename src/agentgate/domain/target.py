@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import re
 from datetime import datetime
 from enum import StrEnum
 from typing import Any
@@ -17,17 +16,9 @@ from .base import (
     find_credential_path,
     normalize_utc,
     require_non_blank,
+    require_sha256,
     utcnow,
 )
-
-
-_SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
-
-
-def _verify_sha256(value: str, field_name: str) -> str:
-    if not _SHA256_PATTERN.fullmatch(value):
-        raise ValueError(f"{field_name} must be a lowercase SHA-256 digest")
-    return value
 
 
 def _set_or_verify_prompt_hash(instance: Any) -> None:
@@ -104,7 +95,7 @@ class SkillDescriptor(DomainModel):
     @field_validator("prompt_sha256")
     @classmethod
     def validate_prompt_hash(cls, value: str | None) -> str | None:
-        return _verify_sha256(value, "prompt_sha256") if value is not None else None
+        return require_sha256(value, "prompt_sha256") if value is not None else None
 
     @field_validator("metadata")
     @classmethod
@@ -144,12 +135,12 @@ class TargetDescriptor(DomainModel):
     @field_validator("prompt_sha256")
     @classmethod
     def validate_prompt_hash(cls, value: str | None) -> str | None:
-        return _verify_sha256(value, "prompt_sha256") if value is not None else None
+        return require_sha256(value, "prompt_sha256") if value is not None else None
 
     @field_validator("content_sha256")
     @classmethod
     def validate_content_hash(cls, value: str) -> str:
-        return _verify_sha256(value, "content_sha256") if value else value
+        return require_sha256(value, "content_sha256") if value else value
 
     @field_validator("metadata")
     @classmethod
@@ -209,12 +200,12 @@ class TargetSnapshot(DomainModel):
     @field_validator("descriptor_sha256")
     @classmethod
     def validate_descriptor_hash(cls, value: str) -> str:
-        return _verify_sha256(value, "descriptor_sha256")
+        return require_sha256(value, "descriptor_sha256")
 
     @field_validator("content_sha256")
     @classmethod
     def validate_content_hash(cls, value: str) -> str:
-        return _verify_sha256(value, "content_sha256") if value else value
+        return require_sha256(value, "content_sha256") if value else value
 
     @field_validator("credential_ref")
     @classmethod

@@ -9,11 +9,10 @@ from uuid import uuid4
 
 from pydantic import Field, ValidationInfo, field_serializer, field_validator, model_validator
 
-from .base import DomainModel, freeze_json, require_non_blank
+from .base import DomainModel, freeze_json, require_non_blank, require_sha256
 from .evaluator import EvaluatorKind, EvaluatorSeverity
 
 
-_SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 _TRACE_ID_PATTERN = re.compile(r"^[0-9a-f]{32}$")
 _SPAN_ID_PATTERN = re.compile(r"^[0-9a-f]{16}$")
 
@@ -79,9 +78,7 @@ class JudgeRecord(DomainModel):
     @field_validator("request_sha256")
     @classmethod
     def validate_request_hash(cls, value: str) -> str:
-        if not _SHA256_PATTERN.fullmatch(value):
-            raise ValueError("request_sha256 must be a lowercase SHA-256 digest")
-        return value
+        return require_sha256(value, "request_sha256")
 
 
 class EvaluatorErrorDetail(DomainModel):
@@ -233,9 +230,7 @@ class EvaluationResult(DomainModel):
     @field_validator("evaluator_content_sha256")
     @classmethod
     def validate_evaluator_hash(cls, value: str) -> str:
-        if not _SHA256_PATTERN.fullmatch(value):
-            raise ValueError("evaluator_content_sha256 must be a lowercase SHA-256 digest")
-        return value
+        return require_sha256(value, "evaluator_content_sha256")
 
     @model_validator(mode="after")
     def validate_result(self) -> "EvaluationResult":

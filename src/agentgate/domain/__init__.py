@@ -9,6 +9,7 @@ from .base import (
     find_credential_path,
     freeze_json,
     normalize_utc,
+    require_sha256,
     utcnow,
 )
 from .case import Case, CaseCategory, CaseDifficulty, CaseTurn

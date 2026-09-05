@@ -54,6 +54,8 @@ domain/
   optional fields handle `None` before calling it.
 - `require_non_blank()` is the shared scalar string validator. Domain modules compose it
   inside field validators instead of defining local helpers or validator base classes.
+- `require_sha256()` validates the shared lowercase 64-hex digest format. Each model
+  still owns whether a hash is required, optional, generated, or matched to content.
 - `find_credential_path()` owns the single credential-key denylist used to prevent
   plaintext secrets from entering domain configuration and metadata.
 - `FrozenJsonObject` recursively freezes JSON objects. Nested objects become
