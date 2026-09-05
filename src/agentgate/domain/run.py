@@ -10,7 +10,7 @@ from pydantic import Field, model_validator
 
 from .base import DomainModel, FrozenJsonObject, content_sha256
 from .case import DatasetVersion
-from .evaluation import EvaluatorSpec
+from .evaluator import EvaluatorSpec
 from .gate import GateSpec
 from .metric import MetricPlan
 

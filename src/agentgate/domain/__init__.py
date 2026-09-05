@@ -5,7 +5,7 @@ from .case import (
     Case, CaseCategory, CaseDifficulty, CaseTurn, Dataset, DatasetVersion,
     DatasetVersionStatus,
 )
-from .evaluation import (
+from .evaluator import (
     ChildRef, Dimension, EvaluatorSpec, HybridEvaluatorSpec, JudgeConfig, JudgeEvidence,
     Kind, LlmJudgeEvaluatorSpec, MethodRef, PromptSnapshot, RubricSnapshot,
     RuleEvaluatorSpec, Severity,

@@ -9,7 +9,7 @@ from uuid import uuid4
 from pydantic import Field, field_serializer, field_validator, model_validator
 
 from .base import DomainModel, freeze_json
-from .evaluation import Dimension, JudgeEvidence, Kind, MethodRef, Severity
+from .evaluator import Dimension, JudgeEvidence, Kind, MethodRef, Severity
 
 
 class Outcome(StrEnum):
