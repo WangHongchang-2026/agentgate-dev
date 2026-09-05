@@ -54,5 +54,5 @@ workflows belong in `application/skill_analysis.py`. HTTP endpoints later belong
 Do not label the static risk matrix as an observed confusion matrix. An observed confusion
 matrix requires executed Cases and belongs in `optimizer/`.
 
-The [detailed behavior plan](skill-static-analysis-plan.md) retains useful checks and
+The [archived behavior plan](../history/planning-v1/skill-static-analysis-plan.md) retains useful checks and
 acceptance criteria, but its pre-refactor file map is not authoritative.

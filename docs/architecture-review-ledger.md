@@ -488,7 +488,7 @@ Removed from the pre-refactor plan:
 
 Estimated implementation size is 600-900 production lines, excluding persisted domain
 contracts and tests. Detailed behavior and acceptance criteria remain in
-`docs/skill-analysis/skill-static-analysis-plan.md`.
+`docs/history/planning-v1/skill-static-analysis-plan.md`.
 
 ## `optimizer/` Level 2 status
 

@@ -13,8 +13,9 @@ storage/                        Persistence implementations
 server/ and cli/                Transport entry points
 ```
 
-The existing detailed [implementation plan](implementation-plan.md) contains useful
-behavior and acceptance criteria, but its pre-refactor file map is not authoritative.
+The pre-refactor implementation plan is archived under
+[planning history](../history/planning-v1/dataset-implementation-plan.md). It retains
+behavior and acceptance criteria but is not implementation authority.
 
 Automatic generation is a separate application use case that coordinates Target metadata,
 `dataset/generation/`, a model provider, and Dataset draft creation.

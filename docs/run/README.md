@@ -18,8 +18,8 @@ submission belongs in `integrations/job_dispatchers/`.
 
 Detailed plans:
 
-- [External target integration](external-target-plan.md)
-- [Instrumented Demo Agent](demo-agent-plan.md)
+- [External target integration](../history/planning-v1/external-target-plan.md)
+- [Instrumented Demo Agent](../history/planning-v1/demo-agent-plan.md)
 
 Both plans retain useful contracts and acceptance criteria, but their pre-refactor file
 maps are not authoritative.

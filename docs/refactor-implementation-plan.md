@@ -7,7 +7,7 @@ architecture defined by [`architecture.md`](architecture.md).
 
 ```text
 goal/p1-demo                         refactor-1
-working customer-demo behavior  ->  maintainable AgentGate structure
+working P1 demo behavior  ->  maintainable AgentGate structure
 ```
 
 `integration/p1-new` is a team member's independent implementation. It is review input

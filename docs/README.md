@@ -25,7 +25,6 @@ Detailed implementation plans must follow the consolidated architecture and ledg
 | Trace | [trace/](trace/) | Canonical Trace normalization and redaction |
 | Result | [result/](result/) | Metrics, gates, reports, and Run comparison |
 | Web architecture | [web/](web/) | Vue application structure, routing, API boundaries, and frontend rules |
-| Control-panel scope | [control-panel/](control-panel/) | User-facing evaluation workflows and UI scope |
 
 Cross-capability orchestration belongs in `application/`. External systems are connected
 through `integrations/`. Persistence implementations belong in `storage/`.

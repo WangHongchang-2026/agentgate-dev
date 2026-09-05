@@ -12,5 +12,5 @@ OTLP transport and vendor-specific trace retrieval belong in
 `integrations/observability/`. Domain Trace models and invariants belong in `domain/`;
 persistence belongs in `storage/`.
 
-The [ingestion plan](ingestion-plan.md) retains useful correlation, merge, completeness,
+The [archived ingestion plan](../history/planning-v1/trace-ingestion-plan.md) retains useful correlation, merge, completeness,
 and acceptance design, but its pre-refactor ownership and file map are not authoritative.

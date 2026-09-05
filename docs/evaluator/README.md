@@ -15,6 +15,7 @@ Evaluator definition and version lifecycle orchestration belongs in
 `application/evaluator_management.py`. External Judge model access belongs in
 `integrations/model_providers/`.
 
-The current [implementation plan](implementation-plan.md) retains useful JSON validation,
-priority, and acceptance design, but its pre-refactor file map is not authoritative.
+The pre-refactor implementation plan is archived under
+[planning history](../history/planning-v1/evaluator-implementation-plan.md). It retains
+useful JSON validation and acceptance criteria but is not implementation authority.
 Implemented P1 refactor records are under [P1 history](../history/p1-demo/).
