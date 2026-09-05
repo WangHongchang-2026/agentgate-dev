@@ -1,5 +1,7 @@
 # Dataset and Case
 
+Implementation sequence: [implementation-plan.md](implementation-plan.md).
+
 Dataset and Case ownership is split by layer:
 
 ```text

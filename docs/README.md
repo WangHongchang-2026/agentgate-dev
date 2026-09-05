@@ -8,8 +8,9 @@
   and reconciliation notes.
 - [Refactor-1 implementation plan](refactor-implementation-plan.md) maps the working
   `goal/p1-demo` behavior into the target structure and defines the execution order.
-- [Phase 2 Storage and Dataset plan](storage-dataset-implementation-plan.md) defines the
-  current file-by-file implementation sequence.
+- [Storage implementation plan](storage/implementation-plan.md) and
+  [Dataset implementation plan](dataset/implementation-plan.md) define the current
+  file-by-file Phase 2 sequence.
 - Running code and automated tests describe the inherited `goal/p1-demo` baseline; they
   do not override confirmed refactor decisions in the ledger.
 
@@ -26,6 +27,7 @@ Detailed implementation plans must follow the consolidated architecture and ledg
 | Run | [run/](run/) | Run manifests, execution engine, process management, retry, and artifacts |
 | Trace | [trace/](trace/) | Canonical Trace normalization and redaction |
 | Result | [result/](result/) | Metrics, gates, reports, and Run comparison |
+| Storage | [storage/](storage/) | Persistence contracts, transactions, and SQLite implementation |
 | Web architecture | [web/](web/) | Vue application structure, routing, API boundaries, and frontend rules |
 
 Cross-capability orchestration belongs in `application/`. External systems are connected

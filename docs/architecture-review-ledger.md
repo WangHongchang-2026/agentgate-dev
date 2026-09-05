@@ -100,8 +100,8 @@ Current Level 2 progress:
   optional timestamp policy remains at each field boundary.
 - SHA-256 format validation is centralized as `domain/base.py::require_sha256`; models
   retain ownership of hash presence, generation, and content-matching rules.
-- Current next checkpoint: review and execute
-  `docs/storage-dataset-implementation-plan.md`, beginning with the Phase 2 file map.
+- Current next checkpoint: review and execute `docs/storage/implementation-plan.md`, then
+  `docs/dataset/implementation-plan.md`, beginning with their file maps.
 
 ## Global architecture decisions
 
