@@ -32,20 +32,171 @@ domain/
 | `case.py` | Define individual Cases, multi-turn conversations, category, and difficulty. |
 | `dataset.py` | Define the Dataset aggregate, Dataset versions, publication state, and collection-wide invariants. |
 | `expectation.py` | Describe expected outputs, states, Tool arguments, and validation conditions. |
-| `skill_analysis.py` | Define persisted `SkillAnalysisSpec`, findings, reviews, and `SkillAnalysisReport` objects. |
+| `skill_analysis.py` | Define immutable static-analysis findings, reports, and separate human reviews. |
 | `target.py` | Represent exact external Agent/Skill identities, descriptors, and immutable execution snapshots. |
-| `evaluator.py` | Define versioned Rule, LLM Judge, and Hybrid Evaluator specifications. |
-| `run.py` | Define Run configuration, manifest, lifecycle, CaseRuns, and retry Attempts. |
+| `evaluator.py` | Define one versioned Evaluator specification and exact references for composition. |
+| `run.py` | Define immutable Run manifests, Evaluation Run lifecycle, and legal transitions. |
 | `trace.py` | Define the normalized, vendor-neutral execution Trace and Spans. |
-| `artifact.py` | Define references and metadata for files produced during execution. |
-| `result.py` | Define evaluator outcomes, scores, failure attribution, and evidence. |
+| `artifact.py` | Define immutable ownership, content identity, and storage metadata for execution-produced files. |
+| `result.py` | Define Evaluation results, per-check provenance, failure attribution, Judge records, and evaluator errors. |
 | `metric.py` | Define metric aggregation configuration and calculated summaries. |
 | `gate.py` | Define release-gate rules and pass/fail decisions. |
 | `report.py` | Define the composite Run report returned to application readers. |
 
+## Base Primitives
+
+`base.py` establishes behavior shared by every domain module:
+
+- `DomainModel` makes Pydantic domain values immutable, rejects undeclared fields, and
+  validates default values as well as caller-provided values.
+- `FrozenJsonObject` recursively freezes JSON objects. Nested objects become
+  `FrozenJsonObject` instances and arrays become tuples.
+- `freeze_json()` converts data entering the domain into immutable JSON values;
+  `thaw_json()` converts those values back to ordinary dictionaries and lists at an
+  integration or serialization boundary.
+- `canonical_json()` sorts object keys and uses stable JSON formatting so logically
+  equivalent values have the same serialized representation.
+- `content_sha256()` provides content identity from canonical JSON. It does not replace a
+  business version such as a Dataset or Evaluator version.
+
+Only JSON-compatible values are accepted. Object keys must be strings, numeric values
+must be finite, and arbitrary Python objects are rejected. These restrictions keep
+snapshots, manifests, hashes, and persisted representations reproducible across processes.
+
+## Case Models
+
+`CaseTurn` represents one user input and the expected outcomes for that conversation
+step. `Case` owns one or more ordered turns plus category, difficulty, tags, notes, and
+initial state. Whether a Case is multi-turn is derived from its turn count.
+
+Case-local invariants are enforced during construction: identities cannot be blank, turn
+and Expectation IDs must be unique within a Case, and tags cannot contain blank or
+duplicate values. Dataset-wide invariants remain the responsibility of
+`domain/dataset.py`.
+
+## Expectation Models
+
+An Expectation identifies where actual behavior is observed; a Condition defines how an
+observed value is compared. Skill route, Tool presence, Tool arguments, final state, final
+output, and policy compliance are separate typed Expectation subjects. Value-oriented
+subjects reuse Equals, tolerance, range, regex, one-of, missing-value, and JSON Schema
+conditions instead of creating one class for every subject/operator combination.
+
+Expectation models are immutable declarations. Trace extraction, comparison execution,
+LLM judging, scoring, and evidence generation remain evaluator responsibilities. Tool
+trajectory semantics and file or multimodal expectations are deferred until their
+contracts can be defined with the relevant domain modules.
+
+## Dataset Models
+
+`Dataset` owns stable catalog identity and editable display metadata. `DatasetVersion` is
+an immutable, ordered snapshot of Cases. Draft edits replace the draft value while keeping
+its identity; publishing creates a separately identified, numbered version.
+
+Dataset versions reject duplicate Case IDs. Published versions require at least one Case,
+a version number, and a publication timestamp. All timestamps are timezone-aware and
+normalized to UTC. The content hash includes Dataset identity, ordered Case content, and
+version notes, but excludes lifecycle fields, timestamps, ancestry, and display snapshots.
+Publishing transactions and version-number allocation remain outside the domain layer.
+
+## Skill Analysis Models
+
+`SkillAnalysisFinding` records one reviewable static-definition issue with an extensible
+check identifier and category, bounded confidence, affected Skill identities, evidence,
+and suggestions. Evidence is immutable JSON so analyzers can evolve without changing the
+domain contract.
+
+`SkillAnalysisReport` binds findings and a static risk matrix to an exact Target descriptor
+hash and analyzer version. Completed reports cannot contain analyzer errors; partial reports
+require errors; failed reports contain errors but no analysis output. Report hashes exclude
+record identity and creation time. `SkillAnalysisReview` records a later human decision
+without modifying the original finding or report.
+
+Analyzer implementations, similarity calculations, LLM calls, persistence, and workflows
+remain outside `domain/skill_analysis.py`. Static risk data must not be presented as an
+observed routing confusion matrix.
+
+## Target Models
+
+`TargetRef` identifies one exact externally owned Agent or Skill version. Tool and Skill
+descriptors normalize customer-platform metadata for dataset generation and static analysis.
+`TargetDescriptor` records the complete fetched declaration, while `TargetSnapshot` records
+the adapter and non-secret invocation configuration used by one Run.
+
+Prompt hashes are generated or verified when Prompt text is available. Skill identities and
+Tool names are unique within their owning descriptor, while duplicate Skill names remain
+valid input for ambiguity analysis. Descriptor hashes exclude fetch time; execution snapshot
+hashes exclude display name and capture time. Plaintext credential-like fields are rejected
+from metadata and invocation configuration; only opaque `credential_ref` values are stored.
+
 Agent and AgentVersion are not AgentGate-owned domain objects. The customer platform owns
 them; AgentGate records an exact external `TargetRef`, normalized descriptor where needed,
 and immutable evaluation-time Target snapshot.
+
+## Evaluator Models
+
+`EvaluatorSpec` is the single immutable definition for Rule, LLM Judge, and Hybrid
+evaluators. `EvaluatorRef` composes exact child versions without a concrete inheritance
+hierarchy. Hybrid composition explicitly uses all, any, or weighted-score semantics.
+Dimensions and implementation identifiers remain extensible strings.
+
+Rule operators, Judge model and Prompt settings, thresholds, and future method-specific
+options live in immutable versioned configuration. Plaintext credentials are rejected.
+Runtime execution belongs in `evaluator/`; scores, verdicts, Judge responses, and method
+provenance belong in `domain/result.py`.
+
+## Run Models
+
+`RunManifest` captures the exact published Dataset version, Target snapshot, Evaluator
+specifications, Metric plan, Gate specification, and effective timeout, retry, and
+parallelism settings for one evaluation. Its content hash excludes creation time.
+
+`EvaluationRun` records only the lifecycle of that complete evaluation. The pure
+`transition_run()` function returns a new immutable value for each legal transition.
+Per-Case execution records and retry-attempt objects are deferred until AgentGate has real
+asynchronous per-Case progress or retry behavior. Retry details can be recorded as Trace
+events without adding another domain class.
+
+## Trace Models
+
+`TraceSpan` keeps OTel-compatible Trace and Span identifiers, parent linkage, timing,
+status, and an extensible `operation_type` used by evaluators. Attributes and events are
+recursively immutable JSON. A missing parent Span is allowed because imported traces may
+be partial.
+
+`Trace` binds ordered Spans to one Run and Case. It enforces consistent Trace identity plus
+unique Span IDs and execution sequences. Multi-turn outputs are stored in immutable
+`turn_outcomes` keyed by Case turn ID; `for_turn()` derives the evidence visible to one turn.
+OTLP decoding and vendor semantic-attribute mapping remain outside the domain model.
+AgentGate does not redefine the OTel wire format.
+
+## Artifact Models
+
+`Artifact` identifies a file produced by an Agent, Tool, or the evaluation harness during
+one exact Run and Case. It stores only immutable metadata and a storage URI; file
+bytes remain in local or object storage. The SHA-256 digest identifies and verifies the
+actual bytes, while `artifact_type` remains extensible for future file and multimodal outputs.
+
+Artifact collection and hashing belong in `run/artifacts.py`, byte storage belongs in
+`storage/artifacts.py`, and content evaluation belongs in `evaluator/`.
+
+## Result Models
+
+`CheckResult` records one concrete Expectation check, including immutable expected and
+actual values, exact method implementation references, Trace Span references, and flattened
+failure location fields. Failed checks require a stage and execution sequence; a failure
+Span must also appear in the check evidence.
+
+`EvaluationResult` records one Evaluator conclusion for one Case and directly identifies the
+normalized Trace used. It retains Evaluator display metadata, version, and content hash so
+historical results remain independently queryable. Outcome, score, checks, earliest failure,
+Judge record, and sanitized error detail are validated as one coherent state.
+
+`JudgeRecord.request_sha256` hashes the canonical request JSON actually sent to the Judge,
+including rendered messages, rubric, and model parameters but excluding credentials. Rule
+results cannot contain Judge records. Method provenance exists only on Check results; there
+is no duplicated Result-level method or Evidence collection. File and multimodal references
+remain deferred until Artifact production and evaluation are implemented.
 
 ## Relationship
 
@@ -61,7 +212,7 @@ Target + Run ---------> Trace + Artifact
                     Evaluator
                         |
                         v
-                     Result
+                EvaluationResult
                         |
                         v
                 Metric + Gate
@@ -115,8 +266,7 @@ It must not import `application/`, `storage/`, `integrations/`, `server/`, `run/
 - Domain models are immutable and reject undeclared fields.
 - Published versions and execution manifests are immutable records.
 - Domain field validation and cross-field invariants belong in this package.
-- Dataset-wide rules, legal Run state transitions, Attempt ownership, and Result
-  consistency must not be delegated to API or persistence code.
+- Dataset-wide rules, legal Run state transitions, and Result consistency must not be delegated to API or persistence code.
 - Changes to versioned objects create a new object or version rather than mutating the
   published object.
 
@@ -129,8 +279,7 @@ report workflow.
 
 ### Naming
 
-Use concept-specific names such as `EvaluatorKind`, `EvaluationDimension`, `RunStatus`,
-`AttemptStatus`, and `TargetType`. Avoid ambiguous public names such as `Kind`, `Type`,
+Use concept-specific names such as `EvaluatorKind`, `RunStatus`, and `TargetType`. Avoid ambiguous public names such as `Kind`, `Type`,
 `Status`, `Config`, and `Data`.
 
 ### Versions and hashes
@@ -153,7 +302,7 @@ Use concept-specific names such as `EvaluatorKind`, `EvaluationDimension`, `RunS
 
 Keep configuration separate from calculated facts:
 
-- `EvaluatorSpec` defines evaluation; `Result` records its outcome.
+- `EvaluatorSpec` defines evaluation; `EvaluationResult` records its outcome.
 - `MetricPlan` defines aggregation; `MetricSummary` records calculated metrics.
 - `GateSpec` defines thresholds; `GateDecision` records the decision.
 - `TargetSnapshot` identifies what was executed; `Trace` records observed behavior.
@@ -173,7 +322,6 @@ coverage includes:
 - published versions are immutable and reproducible;
 - secrets cannot appear in snapshots;
 - content hashes survive serialization round trips;
-- retry Attempts remain attached to one CaseRun;
 - failed Results contain consistent failure evidence;
 - completed Runs contain the required completion data.
 

@@ -3,8 +3,8 @@ from datetime import UTC, datetime
 import pytest
 
 from agentgate.domain import (
-    Case, CaseTurn, DatasetVersion, DatasetVersionStatus, Dimension, MatchesJsonSchema,
-    RuleEvaluatorSpec, StateExpectation,
+    Case, CaseTurn, DatasetVersion, DatasetVersionStatus, MatchesJsonSchema,
+    EvaluatorSpec, StateExpectation,
 )
 from agentgate.evaluator import EVALUATORS, validate_evaluation_plan
 from agentgate.evaluator.models import UnsupportedOperator
@@ -16,12 +16,15 @@ def test_valid_demo_plan():
 
 
 def test_json_schema_condition_is_rejected_before_run():
+    now = datetime.now(UTC)
     dataset = DatasetVersion(
         id="schema-v1",
         dataset_id="schema",
         version=1,
         status=DatasetVersionStatus.PUBLISHED,
-        published_at=datetime.now(UTC),
+        created_at=now,
+        updated_at=now,
+        published_at=now,
         cases=(Case(
             id="case",
             name="case",
@@ -42,13 +45,13 @@ def test_json_schema_condition_is_rejected_before_run():
 def test_one_metric_cannot_map_to_multiple_dimensions():
     dataset = DatasetVersion(dataset_id="empty", cases=())
     specs = (
-        RuleEvaluatorSpec(
-            id="one", name="one", evaluator_type="final_state",
-            dimension=Dimension.STATE, metric="same",
+        EvaluatorSpec(
+            id="one", name="one", implementation_id="final_state",
+            dimension="state", metric="same",
         ),
-        RuleEvaluatorSpec(
-            id="two", name="two", evaluator_type="final_state",
-            dimension=Dimension.TOOL_USE, metric="same",
+        EvaluatorSpec(
+            id="two", name="two", implementation_id="final_state",
+            dimension="tool_use", metric="same",
         ),
     )
     with pytest.raises(ValueError, match="cannot belong"):

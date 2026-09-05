@@ -1,44 +1,43 @@
 import pytest
 
 from agentgate.domain import (
-    CheckResult, Dimension, FailureObservation, FailureStage, Kind, MetricPlan,
-    Outcome, Result, Severity,
+    CheckResult, EvaluationResult, FailureStage, EvaluatorKind, MetricPlan,
+    Outcome, EvaluatorSeverity,
 )
 from agentgate.result.calc_metrics import calculate_metrics
 
 
-def result(case, evaluator, metric, dimension, score, kind=Kind.RULE):
+def result(case, evaluator, metric, dimension, score, kind=EvaluatorKind.RULE):
     outcome = Outcome.PASS if score == 1 else Outcome.FAIL
-    failure = (
-        FailureObservation(stage=FailureStage.FINAL_STATE, observed_at_sequence=0)
-        if outcome == Outcome.FAIL else None
-    )
-    return Result(
+    return EvaluationResult(
         run_id="run",
+        trace_id="0" * 32,
         case_id=case,
         evaluator_id=evaluator,
         evaluator_name=evaluator,
         evaluator_version="1",
+        evaluator_content_sha256="a" * 64,
         evaluator_kind=kind,
         dimension=dimension,
         metric=metric,
-        severity=Severity.STANDARD,
+        severity=EvaluatorSeverity.STANDARD,
         outcome=outcome,
         score=score,
         reason="test",
         checks=(CheckResult(
             name="test", outcome=outcome, score=score, reason="test",
-            failure_observation=failure,
+            failure_stage=FailureStage.FINAL_STATE if outcome == Outcome.FAIL else None,
+            failure_sequence=0 if outcome == Outcome.FAIL else None,
         ),),
-        primary_failure_step=FailureStage.FINAL_STATE if failure else None,
+        primary_failure_stage=FailureStage.FINAL_STATE if outcome == Outcome.FAIL else None,
     )
 
 
 def test_metric_dimension_kind_and_overall_paths_do_not_double_count():
     results = [
-        result("a", "one", "m1", Dimension.TOOL_USE, 1.0),
-        result("a", "two", "m2", Dimension.TOOL_USE, 0.0),
-        result("a", "three", "m3", Dimension.STATE, 1.0),
+        result("a", "one", "m1", "tool_use", 1.0),
+        result("a", "two", "m2", "tool_use", 0.0),
+        result("a", "three", "m3", "state", 1.0),
     ]
     summaries = calculate_metrics(results, ("one", "two", "three"), MetricPlan())
     by_key = {(item.level, item.key): item for item in summaries}

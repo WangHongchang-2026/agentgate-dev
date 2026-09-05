@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from collections.abc import Iterator, Mapping
-from typing import Any
+from typing import Any, TypeAlias
 
 from pydantic import BaseModel, ConfigDict
 from pydantic_core import core_schema
@@ -17,7 +18,10 @@ class FrozenJsonObject(Mapping[str, Any]):
     __slots__ = ("_data",)
 
     def __init__(self, value: Mapping[str, Any] | None = None) -> None:
-        self._data = {str(key): freeze_json(item) for key, item in (value or {}).items()}
+        source = value or {}
+        if any(not isinstance(key, str) for key in source):
+            raise TypeError("JSON object keys must be strings")
+        self._data = {key: freeze_json(item) for key, item in source.items()}
 
     def __getitem__(self, key: str) -> Any:
         return self._data[key]
@@ -41,50 +45,75 @@ class FrozenJsonObject(Mapping[str, Any]):
     def __get_pydantic_core_schema__(cls, _source: Any, _handler: Any) -> core_schema.CoreSchema:
         return core_schema.no_info_after_validator_function(
             lambda value: value if isinstance(value, cls) else cls(value),
-            core_schema.dict_schema(core_schema.str_schema(), core_schema.any_schema()),
+            core_schema.dict_schema(
+                core_schema.str_schema(strict=True), core_schema.any_schema()
+            ),
             serialization=core_schema.plain_serializer_function_ser_schema(
                 lambda value: value.to_dict(), when_used="always"
             ),
         )
 
 
-FrozenJsonValue = Any
+JsonScalar: TypeAlias = None | bool | int | float | str
+FrozenJsonValue: TypeAlias = JsonScalar | FrozenJsonObject | tuple["FrozenJsonValue", ...]
 
 
-def freeze_json(value: Any) -> Any:
+def freeze_json(value: Any) -> FrozenJsonValue:
+    """Convert a JSON-compatible value into its recursively immutable form."""
+
     if isinstance(value, FrozenJsonObject):
         return value
     if isinstance(value, Mapping):
         return FrozenJsonObject(value)
     if isinstance(value, (list, tuple)):
         return tuple(freeze_json(item) for item in value)
+    if isinstance(value, float) and not math.isfinite(value):
+        raise ValueError("JSON numbers must be finite")
     if value is None or isinstance(value, (str, bool, int, float)):
         return value
     raise TypeError(f"value is not JSON-compatible: {type(value).__name__}")
 
 
 def thaw_json(value: Any) -> Any:
+    """Convert an immutable JSON value into ordinary dictionaries and lists."""
+
     if isinstance(value, FrozenJsonObject):
         return value.to_dict()
     if isinstance(value, Mapping):
-        return {str(key): thaw_json(item) for key, item in value.items()}
+        if any(not isinstance(key, str) for key in value):
+            raise TypeError("JSON object keys must be strings")
+        return {key: thaw_json(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
         return [thaw_json(item) for item in value]
     return value
 
 
 def canonical_json(value: Any) -> str:
+    """Serialize a JSON-compatible value deterministically for comparison and hashing."""
+
     if isinstance(value, BaseModel):
         value = value.model_dump(mode="json")
     return json.dumps(
-        thaw_json(value), ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+        thaw_json(value),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
         allow_nan=False,
     )
 
 
 def content_sha256(value: Any) -> str:
+    """Return the SHA-256 digest of the canonical JSON representation of a value."""
+
     return hashlib.sha256(canonical_json(value).encode("utf-8")).hexdigest()
 
 
 class DomainModel(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid", arbitrary_types_allowed=True)
+    """Base for immutable domain values that reject undeclared fields."""
+
+    model_config = ConfigDict(
+        frozen=True,
+        extra="forbid",
+        validate_default=True,
+        arbitrary_types_allowed=True,
+    )

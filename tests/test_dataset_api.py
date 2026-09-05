@@ -2,7 +2,7 @@ from fastapi.testclient import TestClient
 
 from agentgate.domain import (
     Case, CaseCategory, CaseDifficulty, CaseTurn, Equals, OutputExpectation,
-    StateExpectation,
+    PolicyExpectation, SkillRouteExpectation, StateExpectation, ToolCallExpectation,
 )
 from agentgate.server.application import create_app
 
@@ -26,8 +26,10 @@ def test_web_dataset_workflow_persists_and_runs_selected_version(tmp_path):
                     "skill": "loan_approval", "application_id": "UI-1",
                     "risk": "high", "amount": 80000,
                 },
-                expected_skill="loan_approval",
                 expectations=(
+                    SkillRouteExpectation(
+                        id="route", condition=Equals(expected="loan_approval")
+                    ),
                     StateExpectation(
                         id="status", path="status",
                         condition=Equals(expected="pending_review"),
@@ -36,10 +38,15 @@ def test_web_dataset_workflow_persists_and_runs_selected_version(tmp_path):
                         id="output-status", path="status",
                         condition=Equals(expected="pending_review"),
                     ),
+                    ToolCallExpectation(id="credit", tool="credit_inquiry"),
+                    ToolCallExpectation(id="review", tool="request_human_review"),
+                    ToolCallExpectation(
+                        id="no-approval", tool="approve_loan", mode="forbidden"
+                    ),
+                    PolicyExpectation(
+                        id="policy", policy_id="high_risk_requires_review"
+                    ),
                 ),
-                required_tools=("credit_inquiry", "request_human_review"),
-                forbidden_tools=("approve_loan",),
-                policy_rules=("high_risk_requires_review",),
             ),),
         )
         saved = client.post(
@@ -58,8 +65,8 @@ def test_web_dataset_workflow_persists_and_runs_selected_version(tmp_path):
         })
         assert response.status_code == 201
         report = client.get(f"/api/runs/{response.json()['id']}").json()
-        assert report["run"]["snapshot"]["dataset"]["dataset_id"] == dataset_id
-        assert report["run"]["snapshot"]["dataset"]["version"] == 1
+        assert report["run"]["manifest"]["dataset"]["dataset_id"] == dataset_id
+        assert report["run"]["manifest"]["dataset"]["version"] == 1
         output = next(item for item in report["results"] if item["evaluator_id"] == "final-output")
         assert output["outcome"] == "pass"
         assert output["checks"][0]["expected"]["expected"] == "pending_review"

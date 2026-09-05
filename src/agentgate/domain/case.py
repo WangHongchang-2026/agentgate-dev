@@ -1,50 +1,63 @@
-"""Versioned evaluation Datasets, Cases, and conversation turns."""
+"""Evaluation Case and multi-turn conversation domain models."""
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from enum import StrEnum
 from uuid import uuid4
 
-from pydantic import Field, model_validator
+from pydantic import Field, ValidationInfo, field_validator, model_validator
 
-from .base import DomainModel, FrozenJsonObject, content_sha256
+from .base import DomainModel, FrozenJsonObject
 from .expectation import Expectation
 
 
-def utcnow() -> datetime:
-    return datetime.now(UTC)
+def _require_non_blank(value: str, field_name: str) -> str:
+    if not value.strip():
+        raise ValueError(f"{field_name} must not be blank")
+    return value
+
+
+def _require_unique_non_blank(values: tuple[str, ...], field_name: str) -> tuple[str, ...]:
+    if any(not value.strip() for value in values):
+        raise ValueError(f"{field_name} must not contain blank values")
+    if len(set(values)) != len(values):
+        raise ValueError(f"{field_name} must not contain duplicates")
+    return values
 
 
 class CaseCategory(StrEnum):
+    """Business scenario category assigned to an evaluation Case."""
+
     POSITIVE = "positive"
     NEGATIVE = "negative"
     BOUNDARY = "boundary"
 
 
 class CaseDifficulty(StrEnum):
+    """Human-maintained difficulty classification for an evaluation Case."""
+
     EASY = "easy"
     MEDIUM = "medium"
     HARD = "hard"
 
 
-class DatasetVersionStatus(StrEnum):
-    DRAFT = "draft"
-    PUBLISHED = "published"
-
-
 class CaseTurn(DomainModel):
+    """One user input and its expected outcomes within an evaluation Case."""
+
     id: str = Field(default_factory=lambda: str(uuid4()))
     input: FrozenJsonObject
-    expected_skill: str | None = None
     expectations: tuple[Expectation, ...] = ()
-    required_tools: tuple[str, ...] = ()
-    forbidden_tools: tuple[str, ...] = ()
-    policy_rules: tuple[str, ...] = ()
     notes: str = ""
+
+    @field_validator("id")
+    @classmethod
+    def validate_id(cls, value: str) -> str:
+        return _require_non_blank(value, "CaseTurn id")
 
 
 class Case(DomainModel):
+    """An immutable single-turn or multi-turn evaluation scenario."""
+
     id: str = Field(default_factory=lambda: str(uuid4()))
     name: str
     turns: tuple[CaseTurn, ...] = Field(min_length=1)
@@ -54,51 +67,33 @@ class Case(DomainModel):
     tags: tuple[str, ...] = ()
     notes: str = ""
 
-    @property
-    def input(self) -> FrozenJsonObject:
-        """Convenience for single-turn targets and display code."""
-        return self.turns[-1].input
+    @field_validator("id", "name")
+    @classmethod
+    def validate_identity(cls, value: str, info: ValidationInfo) -> str:
+        return _require_non_blank(value, f"Case {info.field_name}")
 
-
-class Dataset(DomainModel):
-    id: str = Field(default_factory=lambda: str(uuid4()))
-    name: str
-    description: str = ""
-    archived: bool = False
-    created_at: datetime = Field(default_factory=utcnow)
-    updated_at: datetime = Field(default_factory=utcnow)
-
-
-class DatasetVersion(DomainModel):
-    id: str = Field(default_factory=lambda: str(uuid4()))
-    dataset_id: str
-    dataset_name: str = ""
-    dataset_description: str = ""
-    version: int | None = Field(default=None, ge=1)
-    status: DatasetVersionStatus = DatasetVersionStatus.DRAFT
-    based_on_version: int | None = Field(default=None, ge=1)
-    cases: tuple[Case, ...] = ()
-    notes: str = ""
-    created_at: datetime = Field(default_factory=utcnow)
-    updated_at: datetime = Field(default_factory=utcnow)
-    published_at: datetime | None = None
-    content_sha256: str = ""
+    @field_validator("tags")
+    @classmethod
+    def validate_tags(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        return _require_unique_non_blank(value, "tags")
 
     @model_validator(mode="after")
-    def validate_version_and_hash(self) -> "DatasetVersion":
-        if self.status == DatasetVersionStatus.PUBLISHED:
-            if self.version is None or self.published_at is None:
-                raise ValueError("published DatasetVersion requires version and published_at")
-        elif self.version is not None or self.published_at is not None:
-            raise ValueError("draft DatasetVersion cannot have version or published_at")
-        payload = {
-            "dataset_id": self.dataset_id,
-            "cases": [case.model_dump(mode="json") for case in self.cases],
-            "notes": self.notes,
-        }
-        expected = content_sha256(payload)
-        if self.content_sha256 and self.content_sha256 != expected:
-            raise ValueError("DatasetVersion content hash mismatch")
-        if not self.content_sha256:
-            object.__setattr__(self, "content_sha256", expected)
+    def validate_child_ids(self) -> "Case":
+        turn_ids = tuple(turn.id for turn in self.turns)
+        if len(set(turn_ids)) != len(turn_ids):
+            raise ValueError("CaseTurn ids must be unique within a Case")
+
+        expectation_ids = tuple(
+            expectation.id
+            for turn in self.turns
+            for expectation in turn.expectations
+        )
+        if len(set(expectation_ids)) != len(expectation_ids):
+            raise ValueError("Expectation ids must be unique within a Case")
         return self
+
+    @property
+    def is_multi_turn(self) -> bool:
+        """Return whether execution requires more than one conversation turn."""
+
+        return len(self.turns) > 1

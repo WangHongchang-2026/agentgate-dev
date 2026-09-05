@@ -6,7 +6,7 @@ from collections import defaultdict
 from collections.abc import Iterable
 from statistics import mean
 
-from agentgate.domain import MetricPlan, MetricSummary, Outcome, Result
+from agentgate.domain import MetricPlan, MetricSummary, Outcome, EvaluationResult
 
 LABELS = {
     "overall": "综合得分",
@@ -29,7 +29,7 @@ LABELS = {
 }
 
 
-def _counts(results: Iterable[Result]) -> dict[str, int | bool]:
+def _counts(results: Iterable[EvaluationResult]) -> dict[str, int | bool]:
     items = list(results)
     return {
         "passed": sum(item.outcome == Outcome.PASS for item in items),
@@ -45,7 +45,7 @@ def _counts(results: Iterable[Result]) -> dict[str, int | bool]:
     }
 
 
-def _metric_score(results: list[Result]) -> float | None:
+def _metric_score(results: list[EvaluationResult]) -> float | None:
     by_case: dict[str, list[float]] = defaultdict(list)
     for result in results:
         if result.outcome in (Outcome.PASS, Outcome.FAIL, Outcome.REVIEW):
@@ -55,8 +55,8 @@ def _metric_score(results: list[Result]) -> float | None:
     return mean(case_scores) if case_scores else None
 
 
-def _metric_summaries(results: list[Result]) -> list[MetricSummary]:
-    grouped: dict[str, list[Result]] = defaultdict(list)
+def _metric_summaries(results: list[EvaluationResult]) -> list[MetricSummary]:
+    grouped: dict[str, list[EvaluationResult]] = defaultdict(list)
     for result in results:
         grouped[result.metric].append(result)
     return [
@@ -72,7 +72,7 @@ def _metric_summaries(results: list[Result]) -> list[MetricSummary]:
 
 
 def calculate_metrics(
-    results: list[Result], primary_evaluator_ids: tuple[str, ...], plan: MetricPlan
+    results: list[EvaluationResult], primary_evaluator_ids: tuple[str, ...], plan: MetricPlan
 ) -> tuple[MetricSummary, ...]:
     if plan.primary_only:
         primary = [item for item in results if item.evaluator_id in primary_evaluator_ids]
@@ -80,7 +80,7 @@ def calculate_metrics(
         primary = list(results)
 
     metric_summaries = _metric_summaries(primary)
-    metric_dimension = {item.metric: item.dimension.value for item in primary}
+    metric_dimension = {item.metric: item.dimension for item in primary}
 
     dimensions: list[MetricSummary] = []
     for dimension in dict.fromkeys(metric_dimension.values()):
@@ -89,7 +89,7 @@ def calculate_metrics(
             if metric_dimension.get(item.key) == dimension
         ]
         scores = [item.score for item in children if item.score is not None]
-        related = [item for item in primary if item.dimension.value == dimension]
+        related = [item for item in primary if item.dimension == dimension]
         dimensions.append(MetricSummary(
             key=dimension,
             label=LABELS.get(dimension, dimension),

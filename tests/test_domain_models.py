@@ -2,8 +2,16 @@ import pytest
 from pydantic import TypeAdapter, ValidationError
 
 from agentgate.domain import (
-    Case, CaseTurn, Equals, EvaluatorSpec, RuleEvaluatorSpec, StateExpectation,
+    Case,
+    CaseTurn,
+    DomainModel,
+    EvaluatorSpec,
+    FrozenJsonObject,
+    StateExpectation,
     WithinRange,
+    canonical_json,
+    content_sha256,
+    freeze_json,
 )
 
 
@@ -11,29 +19,77 @@ def test_expectation_and_evaluator_discriminated_unions():
     case = Case(
         id="case",
         name="case",
-        turns=(CaseTurn(
-            id="turn",
-            input={"message": "hello"},
-            expectations=({"kind": "state", "path": "status",
-                           "condition": {"kind": "equals", "expected": "ok"}},),
-        ),),
+        turns=(
+            CaseTurn(
+                id="turn",
+                input={"message": "hello"},
+                expectations=(
+                    {
+                        "kind": "state",
+                        "path": "status",
+                        "condition": {"kind": "equals", "expected": "ok"},
+                    },
+                ),
+            ),
+        ),
     )
     assert isinstance(case.turns[0].expectations[0], StateExpectation)
-    spec = TypeAdapter(EvaluatorSpec).validate_python({
-        "kind": "rule", "id": "state", "name": "state", "version": "1",
-        "dimension": "state", "metric": "state_match",
-        "evaluator_type": "final_state",
-    })
-    assert isinstance(spec, RuleEvaluatorSpec)
+    spec = TypeAdapter(EvaluatorSpec).validate_python(
+        {
+            "kind": "rule",
+            "id": "state",
+            "name": "state",
+            "version": "1",
+            "dimension": "state",
+            "metric": "state_match",
+            "implementation_id": "final_state",
+        }
+    )
+    assert isinstance(spec, EvaluatorSpec)
 
 
-def test_range_and_operator_pair_validation():
+def test_range_validation():
     with pytest.raises(ValidationError):
         WithinRange()
     with pytest.raises(ValidationError):
         WithinRange(minimum=2, maximum=1)
+
+
+def test_frozen_json_rejects_non_string_keys_and_non_finite_numbers():
+    with pytest.raises(TypeError, match="keys must be strings"):
+        FrozenJsonObject({1: "integer key"})
+    with pytest.raises(TypeError, match="keys must be strings"):
+        canonical_json({1: "integer key"})
+
+    class JsonModel(DomainModel):
+        value: FrozenJsonObject
+
     with pytest.raises(ValidationError):
-        RuleEvaluatorSpec(
-            id="x", name="x", dimension="state", metric="x",
-            evaluator_type="final_state", operator="equals",
-        )
+        JsonModel(value={1: "integer key"})
+
+    for value in (float("nan"), float("inf"), float("-inf")):
+        with pytest.raises(ValueError, match="must be finite"):
+            freeze_json(value)
+
+
+def test_canonical_json_and_hash_ignore_mapping_insertion_order():
+    first = {"name": "loan", "config": {"model": "demo", "seed": 42}}
+    second = {"config": {"seed": 42, "model": "demo"}, "name": "loan"}
+
+    assert canonical_json(first) == canonical_json(second)
+    assert content_sha256(first) == content_sha256(second)
+
+
+def test_domain_model_validates_defaults_and_is_immutable():
+    class InvalidDefault(DomainModel):
+        count: int = "invalid"
+
+    with pytest.raises(ValidationError):
+        InvalidDefault()
+
+    class ValidModel(DomainModel):
+        count: int = 1
+
+    model = ValidModel()
+    with pytest.raises(ValidationError):
+        model.count = 2

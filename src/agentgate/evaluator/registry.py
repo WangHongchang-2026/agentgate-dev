@@ -1,4 +1,4 @@
-"""Registries for evaluator implementations and reusable operators."""
+"""Temporary P1 registries for evaluator implementations and operators."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ _OPERATORS: dict[str, tuple[str, Operator]] = {}
 
 
 def register_evaluator(cls: E) -> E:
-    _EVALUATORS[cls.evaluator_type] = cls
+    _EVALUATORS[cls.implementation_id] = cls
     return cls
 
 
@@ -30,12 +30,12 @@ def register_operator(name: str, version: str = "1"):
 
 
 def resolve_evaluator(spec: EvaluatorSpec) -> Evaluator:
-    implementation = _EVALUATORS.get(spec.evaluator_type)
+    implementation = _EVALUATORS.get(spec.implementation_id)
     if implementation is None:
-        raise UnknownEvaluator(f"unknown evaluator_type: {spec.evaluator_type}")
+        raise UnknownEvaluator(f"unknown implementation_id: {spec.implementation_id}")
     if implementation.kind != spec.kind:
         raise EvaluatorKindMismatch(
-            f"{spec.evaluator_type} implements {implementation.kind}, not {spec.kind}"
+            f"{spec.implementation_id} implements {implementation.kind}, not {spec.kind}"
         )
     return implementation()
 

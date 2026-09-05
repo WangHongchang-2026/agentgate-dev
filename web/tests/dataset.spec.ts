@@ -16,6 +16,11 @@ async function addSelectValues(page: Page, testId: string, values: string[]) {
   }
 }
 
+async function openNavigation(page: Page) {
+  const menu = page.getByTestId('mobile-menu')
+  if (await menu.isVisible()) await menu.click()
+}
+
 test('creates, publishes, runs, and versions a Dataset through the real UI', async ({ page }) => {
   const name = `高风险审批集-${Date.now()}`
   await page.goto('/datasets')
@@ -56,6 +61,7 @@ test('creates, publishes, runs, and versions a Dataset through the real UI', asy
   await expect(page.getByText(new RegExp(`${name} v1`))).toBeVisible()
   await expect(page.getByText(/期望.*pending_review.*实际.*approved/).first()).toBeVisible()
 
+  await openNavigation(page)
   await page.getByTestId('nav-datasets').click()
   await page.locator('.dataset-list-item').filter({ hasText: name }).click()
   await page.getByTestId('create-draft').click()
@@ -65,6 +71,7 @@ test('creates, publishes, runs, and versions a Dataset through the real UI', asy
   await expect(page.getByTestId('version-published-1')).toBeVisible()
   await expect(page.getByTestId('version-published-2')).toBeVisible()
 
+  await openNavigation(page)
   await page.getByTestId('nav-evaluate').click()
   await expect(page.getByText(new RegExp(`${name} v1`))).toBeVisible()
   await expect(page.getByText(/高风险申请必须人工复核 · 最终状态/).first()).toBeVisible()

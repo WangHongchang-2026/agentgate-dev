@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from typing import Protocol
 
 from agentgate.domain import (
-    Case, DatasetVersion, DatasetVersionStatus, GateSpec, MetricPlan, Run, RunSnapshot,
-    RunStatus, TargetSnapshot, Trace,
+    Case, DatasetVersion, DatasetVersionStatus, GateSpec, MetricPlan, EvaluationRun, RunManifest,
+    RunStatus, TargetRef, TargetSnapshot, TargetType, Trace, content_sha256, transition_run,
 )
 from agentgate.evaluator import EVALUATORS, evaluate_case, validate_evaluation_plan
 from agentgate.result.service import build_report
@@ -44,46 +43,51 @@ class RunEngine:
     def run(
         self, dataset: DatasetVersion, target: Target, target_version: str,
         provider: str = "deterministic", evaluators=EVALUATORS,
-    ) -> Run:
+    ) -> EvaluationRun:
         if dataset.status != DatasetVersionStatus.PUBLISHED:
             raise ValueError("only published Dataset versions can be evaluated")
         selected = tuple(evaluators)
         validate_evaluation_plan(dataset, selected)
-        snapshot = RunSnapshot(
+        manifest = RunManifest(
             dataset=dataset,
             target=TargetSnapshot(
-                name="loan-agent", version=target_version, provider=provider
+                ref=TargetRef(
+                    source_id="agentgate-demo",
+                    target_type=TargetType.AGENT,
+                    external_target_id="loan-agent",
+                    external_version_id=target_version,
+                ),
+                display_name="loan-agent",
+                adapter_type="python_function",
+                adapter_version="1",
+                descriptor_sha256=content_sha256({
+                    "name": "loan-agent",
+                    "version": target_version,
+                    "provider": provider,
+                }),
+                invocation_config={"provider": provider},
             ),
             evaluator_specs=selected,
             primary_evaluator_ids=tuple(item.id for item in selected),
             metric_plan=MetricPlan(),
             gate_spec=GateSpec(),
         )
-        run = Run(
-            snapshot=snapshot,
-            status=RunStatus.RUNNING,
-            started_at=datetime.now(UTC),
-        )
+        run = transition_run(EvaluationRun(manifest=manifest), RunStatus.RUNNING)
         self.repository.save_run(run)
         results = []
         try:
             for case in dataset.cases:
                 trace = self.scheduler.execute(target, run.id, case, target_version)
                 self.repository.save_trace(trace)
-                results.extend(evaluate_case(case, trace, snapshot.evaluator_specs))
+                results.extend(evaluate_case(case, trace, manifest.evaluator_specs))
             self.repository.save_results(results)
-            completed = run.model_copy(update={
-                "status": RunStatus.COMPLETED,
-                "completed_at": datetime.now(UTC),
-            })
+            completed = transition_run(run, RunStatus.COMPLETED)
             self.repository.save_run(completed)
             return completed
         except Exception as exc:
-            failed = run.model_copy(update={
-                "status": RunStatus.FAILED,
-                "completed_at": datetime.now(UTC),
-                "error": str(exc),
-            })
+            failed = transition_run(
+                run, RunStatus.FAILED, error=str(exc) or type(exc).__name__
+            )
             self.repository.save_run(failed)
             raise
 

@@ -31,17 +31,17 @@ def value_at(data: Any, path: str | None) -> Any:
 
 def observe(trace: Trace, expectation: Any) -> Observation:
     if isinstance(expectation, StateExpectation):
-        span = next((item for item in reversed(trace.spans) if item.kind == "state"), None)
+        span = next((item for item in reversed(trace.spans) if item.operation_type == "state"), None)
         return Observation(
             values=(value_at(trace.final_state, expectation.path),),
-            span_ids=(span.id if span else None,),
+            span_ids=(span.span_id if span else None,),
         )
     if isinstance(expectation, OutputExpectation):
         return Observation(values=(value_at(trace.final_output, expectation.path),), span_ids=(None,))
     if isinstance(expectation, ToolArgumentExpectation):
         spans = [
             item for item in trace.spans
-            if item.kind == "tool" and item.name == expectation.tool
+            if item.operation_type == "tool" and item.name == expectation.tool
         ]
         if not spans:
             return Observation(values=(), span_ids=())
@@ -51,7 +51,7 @@ def observe(trace: Trace, expectation: Any) -> Observation:
             spans = spans[-1:]
         return Observation(
             values=tuple(value_at(span.attributes, expectation.path) for span in spans),
-            span_ids=tuple(span.id for span in spans),
+            span_ids=tuple(span.span_id for span in spans),
         )
     raise TypeError(f"unsupported expectation: {type(expectation).__name__}")
 

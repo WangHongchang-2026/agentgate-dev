@@ -6,8 +6,9 @@ from uuid import uuid4
 
 from agentgate.domain import (
     Case, CaseCategory, CaseDifficulty, CaseTurn, Dataset, DatasetVersion,
-    DatasetVersionStatus, Equals, SpanKind, StateExpectation, ToolArgumentExpectation,
-    Trace, TraceSpan, TraceTurn,
+    DatasetVersionStatus, Equals, PolicyExpectation, SkillRouteExpectation,
+    StateExpectation, ToolArgumentExpectation, ToolCallExpectation,
+    Trace, TraceSpan
 )
 from agentgate.demo.provider import AgentProvider, DeterministicProvider
 from agentgate.storage.base import AgentGateRepository
@@ -28,8 +29,11 @@ HIGH_RISK_CASE = Case(
                 "skill": "loan_approval", "application_id": "A-100",
                 "risk": "high", "amount": 80000,
             },
-            expected_skill="loan_approval",
             expectations=(
+                SkillRouteExpectation(
+                    id="expect-loan-route",
+                    condition=Equals(expected="loan_approval"),
+                ),
                 ToolArgumentExpectation(
                     id="expect-human-review-argument",
                     tool="request_human_review", path="human_review",
@@ -47,10 +51,20 @@ HIGH_RISK_CASE = Case(
                     id="expect-human-review-state", path="human_review",
                     condition=Equals(expected=True),
                 ),
+                ToolCallExpectation(
+                    id="expect-credit-inquiry", tool="credit_inquiry"
+                ),
+                ToolCallExpectation(
+                    id="expect-human-review-call", tool="request_human_review"
+                ),
+                ToolCallExpectation(
+                    id="expect-no-approval", tool="approve_loan", mode="forbidden"
+                ),
+                PolicyExpectation(
+                    id="expect-high-risk-policy",
+                    policy_id="high_risk_requires_review",
+                ),
             ),
-            required_tools=("credit_inquiry", "request_human_review"),
-            forbidden_tools=("approve_loan",),
-            policy_rules=("high_risk_requires_review",),
             notes="高风险申请必须查询征信并进入人工复核。",
         ),
     ),
@@ -91,13 +105,15 @@ class LoanAgent:
     @staticmethod
     def _span(
         trace_id: str, sequence: int, turn_id: str, name: str,
-        kind: SpanKind, **attributes: Any,
+        operation_type: str, **attributes: Any,
     ) -> TraceSpan:
         return TraceSpan(
             trace_id=trace_id,
+            span_id=uuid4().hex[:16],
             sequence=sequence,
             name=name,
-            kind=kind,
+            operation_type=operation_type,
+            status="ok",
             attributes={"turn_id": turn_id, **attributes},
         )
 
@@ -107,7 +123,7 @@ class LoanAgent:
 
         trace_id = uuid4().hex
         spans: list[TraceSpan] = []
-        records: list[TraceTurn] = []
+        turn_outcomes: dict[str, dict[str, Any]] = {}
         state = case.initial_state.to_dict()
         session_input: dict[str, Any] = {}
         final_output: dict[str, Any] = {}
@@ -118,13 +134,13 @@ class LoanAgent:
             skill = raw_input.get("skill") or session_input.get("skill")
             supported = skill in {"loan_approval", "repayment_plan", "complaint", "credit_inquiry"}
             spans.append(self._span(
-                trace_id, len(spans), turn.id, "skill-routing", SpanKind.ROUTING,
+                trace_id, len(spans), turn.id, "skill-routing", "routing",
                 intent=raw_input.get("skill"),
                 selected_skill=skill if supported else None,
                 fallback=not supported,
             ))
             spans.append(self._span(
-                trace_id, len(spans), turn.id, "loan_agent", SpanKind.AGENT,
+                trace_id, len(spans), turn.id, "loan_agent", "agent",
                 version=version, skill=skill,
             ))
 
@@ -140,7 +156,7 @@ class LoanAgent:
                     }
                 else:
                     spans.append(self._span(
-                        trace_id, len(spans), turn.id, "credit_inquiry", SpanKind.TOOL,
+                        trace_id, len(spans), turn.id, "credit_inquiry", "tool",
                         application_id=session_input["application_id"],
                         risk=session_input["risk"],
                     ))
@@ -150,7 +166,7 @@ class LoanAgent:
                         **action["arguments"],
                     }
                     spans.append(self._span(
-                        trace_id, len(spans), turn.id, action["tool"], SpanKind.TOOL, **args
+                        trace_id, len(spans), turn.id, action["tool"], "tool", **args
                     ))
                     state = {
                         **state,
@@ -165,7 +181,7 @@ class LoanAgent:
                         "status": state["status"],
                     }
                     spans.append(self._span(
-                        trace_id, len(spans), turn.id, "business_state", SpanKind.STATE, **state
+                        trace_id, len(spans), turn.id, "business_state", "state", **state
                     ))
             elif skill == "repayment_plan":
                 required = ("application_id", "amount", "months")
@@ -180,7 +196,7 @@ class LoanAgent:
                         "months": months,
                     }
                     spans.append(self._span(
-                        trace_id, len(spans), turn.id, "repayment_plan", SpanKind.TOOL, **args
+                        trace_id, len(spans), turn.id, "repayment_plan", "tool", **args
                     ))
                     state = {
                         **state,
@@ -189,7 +205,7 @@ class LoanAgent:
                     }
                     final_output = {"message": "还款计划已生成", **state}
                     spans.append(self._span(
-                        trace_id, len(spans), turn.id, "business_state", SpanKind.STATE, **state
+                        trace_id, len(spans), turn.id, "business_state", "state", **state
                     ))
             elif skill == "complaint":
                 required = ("application_id", "message")
@@ -202,12 +218,12 @@ class LoanAgent:
                         "message": session_input["message"],
                     }
                     spans.append(self._span(
-                        trace_id, len(spans), turn.id, "complaint", SpanKind.TOOL, **args
+                        trace_id, len(spans), turn.id, "complaint", "tool", **args
                     ))
                     state = {**state, "status": "open", "message": session_input["message"]}
                     final_output = {"message": "投诉已受理", "status": "open"}
                     spans.append(self._span(
-                        trace_id, len(spans), turn.id, "business_state", SpanKind.STATE, **state
+                        trace_id, len(spans), turn.id, "business_state", "state", **state
                     ))
             else:
                 if "application_id" not in session_input:
@@ -215,28 +231,28 @@ class LoanAgent:
                 else:
                     args = {"application_id": session_input["application_id"]}
                     spans.append(self._span(
-                        trace_id, len(spans), turn.id, "credit_inquiry", SpanKind.TOOL, **args
+                        trace_id, len(spans), turn.id, "credit_inquiry", "tool", **args
                     ))
                     state = {**state, "risk": session_input.get("risk", "low")}
                     final_output = {"message": "征信查询完成", "risk": state["risk"]}
                     spans.append(self._span(
-                        trace_id, len(spans), turn.id, "business_state", SpanKind.STATE, **state
+                        trace_id, len(spans), turn.id, "business_state", "state", **state
                     ))
 
-            records.append(TraceTurn(
-                turn_id=turn.id,
-                input=turn.input,
-                output=final_output,
-                state=state,
-            ))
+            turn_outcomes[turn.id] = {
+                "input": turn.input,
+                "output": final_output,
+                "state": state,
+            }
 
         business_key = str(session_input.get("application_id", case.id))
         self.repository.put_business_state("loan", business_key, state)
         return Trace(
+            trace_id=trace_id,
             run_id=run_id,
             case_id=case.id,
             spans=tuple(spans),
-            turns=tuple(records),
+            turn_outcomes=turn_outcomes,
             final_output=final_output,
             final_state=state,
         )

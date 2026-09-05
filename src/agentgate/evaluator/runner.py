@@ -6,7 +6,7 @@ import logging
 import re
 from typing import Any
 
-from agentgate.domain import Case, EvaluationErrorEvidence, EvaluatorSpec, Outcome, Result, Trace
+from agentgate.domain import Case, EvaluationResult, EvaluatorErrorDetail, EvaluatorSpec, Outcome, Trace
 
 from .calc_score import calculate_result
 from .models import (
@@ -19,7 +19,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 def _safe_message(exc: Exception) -> str:
-    message = str(exc)[:500]
+    message = str(exc).strip()[:500] or type(exc).__name__
     return re.sub(
         r"(?i)(api[_-]?key|token|secret|password)\s*[=:]\s*\S+",
         r"\1=[redacted]",
@@ -27,17 +27,19 @@ def _safe_message(exc: Exception) -> str:
     )
 
 
-def _error_result(spec: EvaluatorSpec, case: Case, trace: Trace, exc: Exception) -> Result:
+def _error_result(spec: EvaluatorSpec, case: Case, trace: Trace, exc: Exception) -> EvaluationResult:
     category = "timeout" if isinstance(exc, TimeoutError) else (
         "invalid_output" if isinstance(exc, (TypeError, ValueError)) else "crash"
     )
     LOGGER.exception("evaluator %s failed for case %s", spec.id, case.id)
-    return Result(
+    return EvaluationResult(
         run_id=trace.run_id,
+        trace_id=trace.trace_id,
         case_id=case.id,
         evaluator_id=spec.id,
         evaluator_name=spec.name,
         evaluator_version=spec.version,
+        evaluator_content_sha256=spec.content_sha256,
         evaluator_kind=spec.kind,
         dimension=spec.dimension,
         metric=spec.metric,
@@ -45,7 +47,7 @@ def _error_result(spec: EvaluatorSpec, case: Case, trace: Trace, exc: Exception)
         outcome=Outcome.ERROR,
         score=None,
         reason="评估器无法完成检查",
-        error_evidence=EvaluationErrorEvidence(
+        error_detail=EvaluatorErrorDetail(
             category=category,
             exception_type=type(exc).__name__,
             message=_safe_message(exc),
@@ -56,15 +58,15 @@ def _error_result(spec: EvaluatorSpec, case: Case, trace: Trace, exc: Exception)
 
 def evaluate_case(
     case: Case, trace: Trace, evaluators: tuple[EvaluatorSpec, ...]
-) -> list[Result]:
+) -> list[EvaluationResult]:
     by_id = {item.id: item for item in evaluators}
     if len(by_id) != len(evaluators):
         raise DuplicateEvaluatorId("evaluator IDs must be unique")
 
-    cache: dict[str, Result] = {}
+    cache: dict[str, EvaluationResult] = {}
     resolving: set[str] = set()
 
-    def resolve(spec_id: str) -> Result:
+    def resolve(spec_id: str) -> EvaluationResult:
         if spec_id in cache:
             return cache[spec_id]
         if spec_id not in by_id:
@@ -76,7 +78,7 @@ def evaluate_case(
         try:
             implementation = resolve_evaluator(spec)
             checks = []
-            judge_evidence = None
+            judge_record = None
             for turn in case.turns:
                 turn_trace = trace.for_turn(turn.id)
                 if not implementation.applies_to(spec, turn):
@@ -90,8 +92,8 @@ def evaluate_case(
                     check if check.turn_id else check.model_copy(update={"turn_id": turn.id})
                     for check in turn_evaluation.checks
                 )
-                judge_evidence = turn_evaluation.judge_evidence or judge_evidence
-            evaluation = Evaluation(checks=tuple(checks), judge_evidence=judge_evidence)
+                judge_record = turn_evaluation.judge_record or judge_record
+            evaluation = Evaluation(checks=tuple(checks), judge_record=judge_record)
             result = calculate_result(spec, trace.run_id, case.id, trace, evaluation)
         except Exception as exc:
             result = _error_result(spec, case, trace, exc)

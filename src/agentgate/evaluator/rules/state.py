@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from agentgate.domain import FailureStage, Kind, MethodRef, Outcome, StateExpectation
+from agentgate.domain import FailureStage, EvaluatorKind, MethodRef, Outcome, StateExpectation
 
 from ..base import Evaluator
 from ..models import CheckDraft, Evaluation, FailureCandidate
@@ -12,8 +12,8 @@ from ..registry import register_evaluator, resolve_operator
 
 @register_evaluator
 class FinalStateEvaluator(Evaluator):
-    kind = Kind.RULE
-    evaluator_type = "final_state"
+    kind = EvaluatorKind.RULE
+    implementation_id = "final_state"
 
     def applies_to(self, spec, turn) -> bool:
         return any(isinstance(item, StateExpectation) for item in turn.expectations)
@@ -27,9 +27,8 @@ class FinalStateEvaluator(Evaluator):
             actual = observation.values[0]
             operator_name = condition_operator(expectation.condition)
             method = MethodRef(
-                operator=operator_name,
-                operator_version="1",
-                condition_kind=expectation.condition.kind,
+                implementation_id=operator_name,
+                implementation_version="1",
             )
             outcome = resolve_operator(operator_name, "1")(actual, expectation.condition)
             span_id = observation.span_ids[0] if observation.span_ids else None

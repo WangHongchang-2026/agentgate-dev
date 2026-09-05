@@ -1,28 +1,34 @@
 """Public AgentGate domain data models."""
 
+from .artifact import Artifact, ArtifactProducer
 from .base import DomainModel, FrozenJsonObject, canonical_json, content_sha256, freeze_json
-from .case import (
-    Case, CaseCategory, CaseDifficulty, CaseTurn, Dataset, DatasetVersion,
-    DatasetVersionStatus,
-)
+from .case import Case, CaseCategory, CaseDifficulty, CaseTurn
+from .dataset import Dataset, DatasetVersion, DatasetVersionStatus
 from .evaluator import (
-    ChildRef, Dimension, EvaluatorSpec, HybridEvaluatorSpec, JudgeConfig, JudgeEvidence,
-    Kind, LlmJudgeEvaluatorSpec, MethodRef, PromptSnapshot, RubricSnapshot,
-    RuleEvaluatorSpec, Severity,
+    CombinationPolicy, EvaluatorKind, EvaluatorRef, EvaluatorSeverity, EvaluatorSpec,
 )
 from .expectation import (
     Condition, Equals, Expectation, MatchesJsonSchema, MatchesPattern, MustBeMissing,
-    OneOf, OutputExpectation, StateExpectation, ToolArgumentExpectation, WithinRange,
+    OneOf, OutputExpectation, PolicyExpectation, SkillRouteExpectation,
+    StateExpectation, ToolArgumentExpectation, ToolCallExpectation, WithinRange,
     WithinTolerance,
 )
 from .gate import GateDecision, GateSpec
 from .metric import MetricPlan, MetricSummary
 from .report import RunReport
 from .result import (
-    CheckResult, EvaluationErrorEvidence, Evidence, FailureObservation, FailureStage,
-    Outcome, Result,
+    CheckResult, EvaluationResult, EvaluatorErrorDetail, FailureStage,
+    JudgeRecord, MethodRef, Outcome,
 )
-from .run import Run, RunSnapshot, RunStatus, TargetSnapshot
-from .trace import SpanKind, Trace, TraceSpan, TraceTurn
+from .run import EvaluationRun, RunManifest, RunStatus, transition_run
+from .skill_analysis import (
+    FindingSeverity, ReviewDecision, SkillAnalysisFinding, SkillAnalysisReport,
+    SkillAnalysisReview, SkillAnalysisStatus,
+)
+from .target import (
+    SkillDescriptor, TargetDescriptor, TargetRef, TargetSnapshot, TargetType,
+    ToolDescriptor,
+)
+from .trace import SpanStatus, Trace, TraceSpan
 
 __all__ = [name for name in globals() if not name.startswith("_")]

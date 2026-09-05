@@ -25,13 +25,22 @@ Authority order:
 ## 2. Refactor Rules
 
 1. Refactor structure before adding product features.
-2. Preserve externally visible P1 behavior unless a confirmed decision replaces it.
+2. Preserve P1 business behavior, but do not preserve old Python, JSON, API, or persisted schemas.
 3. Move tests with behavior and leave the suite passing after each phase.
 4. Do not maintain old and new domain models in parallel.
 5. Do not move empty scaffold modules into the new structure.
 6. Do not mix `integration/p1-new` work into refactor commits.
 7. Preserve existing uncommitted Web work and reconcile it during the Web phase.
 8. Add dependencies and modules only for behavior that is actually implemented.
+
+### Engineering Philosophy
+
+Use Unix-style components with one responsibility, explicit inputs and outputs, and
+composition as the default reuse mechanism. Domain models are immutable data with local
+invariants; execution behavior is assembled from small functions and boundary protocols.
+Avoid concrete inheritance hierarchies and speculative factories, registries, plugin
+systems, event buses, or service wrappers. A new abstraction must represent a real shared
+contract, invariant, lifecycle, or at least two exercised implementations.
 
 ### Approval Checkpoints
 
@@ -59,7 +68,7 @@ Actions used below:
 ## 3. Baseline Behavior To Preserve
 
 - Dataset draft, edit, copy, reorder, publish, archive, import, and export workflows.
-- Immutable Dataset versions and reproducible Run snapshots.
+- Immutable Dataset versions and reproducible Run manifests.
 - Published-Dataset and evaluator preflight validation.
 - Deterministic loan demo with a failing risky version and passing fixed version.
 - Per-turn evaluator execution, dependencies, memoization, and error Results.

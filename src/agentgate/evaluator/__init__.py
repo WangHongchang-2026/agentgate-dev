@@ -1,44 +1,65 @@
 """Public evaluator API."""
 
-from agentgate.domain import Dimension, RuleEvaluatorSpec, Severity
+from agentgate.domain import EvaluatorSeverity, EvaluatorSpec
 
 from . import operators as _operators
 from . import rules as _rules
 from .runner import evaluate_case
 from .validation import validate_evaluation_plan
 
+
+def _rule(
+    evaluator_id: str,
+    name: str,
+    implementation_id: str,
+    dimension: str,
+    metric: str,
+    *,
+    operator: str | None = None,
+    severity: EvaluatorSeverity = EvaluatorSeverity.STANDARD,
+) -> EvaluatorSpec:
+    config = (
+        {"operator": operator, "operator_version": "1"} if operator else {}
+    )
+    return EvaluatorSpec(
+        id=evaluator_id,
+        name=name,
+        implementation_id=implementation_id,
+        dimension=dimension,
+        metric=metric,
+        severity=severity,
+        config=config,
+    )
+
+
 EVALUATORS = (
-    RuleEvaluatorSpec(
-        id="skill-routing", name="技能路由", evaluator_type="skill_routing",
-        operator="equals", operator_version="1", dimension=Dimension.ROUTING,
-        metric="skill_routing_accuracy",
+    _rule(
+        "skill-routing", "技能路由", "skill_routing", "routing",
+        "skill_routing_accuracy", operator="equals",
     ),
-    RuleEvaluatorSpec(
-        id="required-tool", name="必需工具", evaluator_type="required_tool",
-        operator="contains_all", operator_version="1", dimension=Dimension.TOOL_USE,
-        metric="tool_coverage",
+    _rule(
+        "required-tool", "必需工具", "required_tool", "tool_use",
+        "tool_coverage", operator="contains_all",
     ),
-    RuleEvaluatorSpec(
-        id="forbidden-tool", name="禁用工具", evaluator_type="forbidden_tool",
-        operator="contains_none", operator_version="1", dimension=Dimension.TOOL_USE,
-        metric="forbidden_tool_compliance", severity=Severity.BLOCKING,
+    _rule(
+        "forbidden-tool", "禁用工具", "forbidden_tool", "tool_use",
+        "forbidden_tool_compliance", operator="contains_none",
+        severity=EvaluatorSeverity.BLOCKING,
     ),
-    RuleEvaluatorSpec(
-        id="tool-arguments", name="工具参数", evaluator_type="tool_arguments",
-        dimension=Dimension.TOOL_USE, metric="tool_argument_accuracy",
+    _rule(
+        "tool-arguments", "工具参数", "tool_arguments", "tool_use",
+        "tool_argument_accuracy",
     ),
-    RuleEvaluatorSpec(
-        id="final-state", name="最终状态", evaluator_type="final_state",
-        dimension=Dimension.STATE, metric="final_state_match",
+    _rule(
+        "final-state", "最终状态", "final_state", "state", "final_state_match",
     ),
-    RuleEvaluatorSpec(
-        id="final-output", name="最终输出", evaluator_type="final_output",
-        dimension=Dimension.ANSWER, metric="final_output_match",
+    _rule(
+        "final-output", "最终输出", "final_output", "answer",
+        "final_output_match",
     ),
-    RuleEvaluatorSpec(
-        id="policy-compliance", name="策略合规", evaluator_type="policy_compliance",
-        dimension=Dimension.SAFETY, metric="policy_compliance",
-        severity=Severity.BLOCKING,
+    _rule(
+        "policy-compliance", "策略合规", "policy_compliance", "safety",
+        "policy_compliance", severity=EvaluatorSeverity.BLOCKING,
     ),
 )
 

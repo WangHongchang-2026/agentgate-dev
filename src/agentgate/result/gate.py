@@ -5,11 +5,11 @@ from __future__ import annotations
 from collections import defaultdict
 from statistics import mean
 
-from agentgate.domain import GateDecision, GateSpec, Outcome, Result, Severity
+from agentgate.domain import GateDecision, GateSpec, Outcome, EvaluationResult, EvaluatorSeverity
 
 
 def decide_gate(
-    results: list[Result], primary_evaluator_ids: tuple[str, ...], spec: GateSpec
+    results: list[EvaluationResult], primary_evaluator_ids: tuple[str, ...], spec: GateSpec
 ) -> GateDecision:
     primary = [item for item in results if item.evaluator_id in primary_evaluator_ids]
     counts = {
@@ -32,7 +32,7 @@ def decide_gate(
     if counts["errors"]:
         outcome, reason = Outcome.FAIL, "评估器执行错误，发布门禁按失败关闭"
     elif any(
-        item.severity == Severity.BLOCKING and item.outcome == Outcome.FAIL
+        item.severity == EvaluatorSeverity.BLOCKING and item.outcome == Outcome.FAIL
         for item in primary
     ):
         outcome, reason = Outcome.FAIL, "阻断级检查失败"

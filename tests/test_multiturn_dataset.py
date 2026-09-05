@@ -1,7 +1,8 @@
 from agentgate.case import DatasetService
 from agentgate.control_plane import EvaluationService
 from agentgate.domain import (
-    Case, CaseTurn, Equals, MatchesPattern, OutputExpectation, StateExpectation,
+    Case, CaseTurn, Equals, MatchesPattern, OutputExpectation, PolicyExpectation,
+    SkillRouteExpectation, StateExpectation, ToolCallExpectation,
 )
 from agentgate.storage.sqlite import SQLiteRepository
 
@@ -18,25 +19,38 @@ def test_multi_turn_session_produces_turn_aware_trace_and_checks(tmp_path):
             CaseTurn(
                 id="collect",
                 input={"skill": "loan_approval"},
-                expected_skill="loan_approval",
-                expectations=(OutputExpectation(
-                    id="ask-fields",
-                    path="message",
-                    condition=MatchesPattern(pattern="请补充"),
-                ),),
+                expectations=(
+                    SkillRouteExpectation(
+                        id="collect-route", condition=Equals(expected="loan_approval")
+                    ),
+                    OutputExpectation(
+                        id="ask-fields",
+                        path="message",
+                        condition=MatchesPattern(pattern="请补充"),
+                    ),
+                ),
             ),
             CaseTurn(
                 id="decide",
                 input={"application_id": "M-1", "risk": "high", "amount": 50000},
-                expected_skill="loan_approval",
-                expectations=(StateExpectation(
-                    id="review-state",
-                    path="status",
-                    condition=Equals(expected="pending_review"),
-                ),),
-                required_tools=("credit_inquiry", "request_human_review"),
-                forbidden_tools=("approve_loan",),
-                policy_rules=("high_risk_requires_review",),
+                expectations=(
+                    SkillRouteExpectation(
+                        id="decide-route", condition=Equals(expected="loan_approval")
+                    ),
+                    StateExpectation(
+                        id="review-state",
+                        path="status",
+                        condition=Equals(expected="pending_review"),
+                    ),
+                    ToolCallExpectation(id="credit", tool="credit_inquiry"),
+                    ToolCallExpectation(id="review", tool="request_human_review"),
+                    ToolCallExpectation(
+                        id="no-approval", tool="approve_loan", mode="forbidden"
+                    ),
+                    PolicyExpectation(
+                        id="policy", policy_id="high_risk_requires_review"
+                    ),
+                ),
             ),
         ),
     ))
@@ -47,7 +61,7 @@ def test_multi_turn_session_produces_turn_aware_trace_and_checks(tmp_path):
         "loan-agent-v2-fixed", dataset.id, version.version
     )
     trace = repository.get_trace(run.id, "multi-case")
-    assert [item.turn_id for item in trace.turns] == ["collect", "decide"]
+    assert list(trace.turn_outcomes) == ["collect", "decide"]
     assert {span.attributes["turn_id"] for span in trace.spans} == {"collect", "decide"}
     report = service.run_detail(run.id)
     output = next(item for item in report.results if item.evaluator_id == "final-output")

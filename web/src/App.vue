@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { api, type DatasetOption, type EvaluatorOption, type Overview, type Report, type Run, type Trace, type Version } from './api/client'
+import AppSidebar from './components/AppSidebar.vue'
 import DatasetWorkspace from './pages/DatasetWorkspace.vue'
 
 const overview = ref<Overview>({ total_runs: 0, completed_runs: 0, case_count: 0, latest: null })
@@ -16,10 +17,12 @@ const report = ref<Report|null>(null)
 const trace = ref<Trace|null>(null)
 const loading = ref(false)
 const traceOpen = ref(false)
+const navigationOpen = ref(false)
 const page = ref<'evaluate'|'datasets'>(location.pathname.startsWith('/datasets') ? 'datasets' : 'evaluate')
 
-const caseNames = computed(() => Object.fromEntries((report.value?.run.snapshot.dataset.cases ?? []).map(c => [c.id, c.name])))
+const caseNames = computed(() => Object.fromEntries((report.value?.run.manifest.dataset.cases ?? []).map(c => [c.id, c.name])))
 const failed = computed(() => report.value?.results.filter(item => item.outcome === 'fail') ?? [])
+const traceTurns = computed(() => Object.entries(trace.value?.turn_outcomes ?? {}).map(([turnId, outcome]) => ({ turnId, ...outcome })))
 const selectedAgent = computed(() => versions.value.find(item => item.id === selectedVersion.value))
 const selectedDatasetInfo = computed(() => datasets.value.find(item => item.id === selectedDataset.value))
 
@@ -55,10 +58,17 @@ async function openRun(id: string) { report.value = await api.report(id); trace.
 async function openTrace(caseId: string) { if (!report.value) return; trace.value = await api.trace(report.value.run.id, caseId); traceOpen.value = true }
 function navigate(next: 'evaluate'|'datasets') {
   page.value = next
+  navigationOpen.value = false
   const path = next === 'datasets' ? '/datasets' : '/'
   if (location.pathname !== path) history.pushState({}, '', path)
 }
-function onPopState() { page.value = location.pathname.startsWith('/datasets') ? 'datasets' : 'evaluate' }
+function onPopState() {
+  page.value = location.pathname.startsWith('/datasets') ? 'datasets' : 'evaluate'
+  navigationOpen.value = false
+}
+function onKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') navigationOpen.value = false
+}
 async function showCreatedRun(run: Run) {
   await openRun(run.id)
   await refresh()
@@ -71,25 +81,52 @@ const outcomeType = (outcome: string) => outcome === 'pass' ? 'success' : outcom
 
 onMounted(() => {
   window.addEventListener('popstate', onPopState)
+  window.addEventListener('keydown', onKeydown)
   refresh().catch(error => ElMessage.error(`无法连接后端：${error.message}`))
 })
-onUnmounted(() => window.removeEventListener('popstate', onPopState))
+onUnmounted(() => {
+  window.removeEventListener('popstate', onPopState)
+  window.removeEventListener('keydown', onKeydown)
+})
 </script>
 
 <template>
   <div class="shell">
-    <header>
-      <div><p class="eyebrow">AGENT QUALITY GATE</p><h1>AgentGate 评估台</h1><p>配置评估对象，运行用例，并用可追溯指标判断是否达到发布门槛。</p></div>
-      <div class="header-actions">
-        <el-tag effect="dark" type="success">P1 演示</el-tag>
-        <nav aria-label="主导航">
-          <button :class="{ active: page === 'evaluate' }" data-testid="nav-evaluate" @click="navigate('evaluate')">评估运行</button>
-          <button :class="{ active: page === 'datasets' }" data-testid="nav-datasets" @click="navigate('datasets')">测评集管理</button>
-        </nav>
-      </div>
-    </header>
+    <AppSidebar
+      :page="page"
+      :open="navigationOpen"
+      @navigate="navigate"
+      @close="navigationOpen = false"
+    />
+    <button
+      v-if="navigationOpen"
+      class="sidebar-backdrop"
+      type="button"
+      aria-label="关闭导航"
+      @click="navigationOpen = false"
+    ></button>
 
-    <main v-if="page === 'evaluate'">
+    <div class="app-content">
+      <header class="page-header">
+        <button
+          class="mobile-menu"
+          type="button"
+          aria-label="打开导航"
+          aria-controls="app-navigation"
+          :aria-expanded="navigationOpen"
+          data-testid="mobile-menu"
+          @click="navigationOpen = true"
+        >
+          <span></span><span></span><span></span>
+        </button>
+        <div>
+          <p class="eyebrow">{{ page === 'evaluate' ? 'EVALUATION WORKSPACE' : 'DATASET WORKSPACE' }}</p>
+          <h1>{{ page === 'evaluate' ? 'AgentGate 评估台' : '测评集管理' }}</h1>
+          <p>{{ page === 'evaluate' ? '配置评估对象，运行用例，并用可追溯指标判断是否达到发布门槛。' : '维护测评集、不可变版本与可复用测试用例。' }}</p>
+        </div>
+      </header>
+
+      <main v-if="page === 'evaluate'">
       <section class="region config-region" aria-labelledby="config-title">
         <div class="region-heading"><div><span class="step">01 · EVALUATION SETUP</span><h2 id="config-title">评估配置</h2><p>选择 Agent、数据集与评估器，然后启动一次真实评估。</p></div><div class="run-count">已完成 {{ overview.completed_runs }} 次运行</div></div>
 
@@ -133,7 +170,7 @@ onUnmounted(() => window.removeEventListener('popstate', onPopState))
 
       <section id="result-report" class="region report-region" aria-labelledby="report-title">
         <div class="region-heading report-heading">
-          <div><span class="step">02 · RESULT REPORT</span><h2 id="report-title">结果报告</h2><p v-if="report">{{ report.run.snapshot.target.version }} · {{ report.run.snapshot.dataset.dataset_name }} v{{ report.run.snapshot.dataset.version }}</p><p v-else>运行评估后在此查看指标、失败证据和轨迹。</p></div>
+          <div><span class="step">02 · RESULT REPORT</span><h2 id="report-title">结果报告</h2><p v-if="report">{{ report.run.manifest.target.ref.external_version_id }} · {{ report.run.manifest.dataset.dataset_name }} v{{ report.run.manifest.dataset.version }}</p><p v-else>运行评估后在此查看指标、失败证据和轨迹。</p></div>
           <el-tag v-if="report" :type="report.gate.outcome === 'pass' ? 'success' : 'danger'" effect="dark" size="large">{{ report.gate.outcome === 'pass' ? '发布门槛通过' : '发布门槛未通过' }}</el-tag>
         </div>
 
@@ -171,7 +208,7 @@ onUnmounted(() => window.removeEventListener('popstate', onPopState))
             <article class="report-panel">
               <div class="panel-title"><h3>最近运行</h3><span>{{ runs.length }} 条</span></div>
               <el-table :data="runs" empty-text="暂无运行" size="small">
-                <el-table-column label="Agent" min-width="190"><template #default="scope">{{ scope.row.snapshot.target.version }}</template></el-table-column>
+                <el-table-column label="Agent" min-width="190"><template #default="scope">{{ scope.row.manifest.target.ref.external_version_id }}</template></el-table-column>
                 <el-table-column prop="status" label="状态" width="95" />
                 <el-table-column label="操作" width="70"><template #default="scope"><el-button link type="primary" @click="openRun(scope.row.id)">查看</el-button></template></el-table-column>
               </el-table>
@@ -180,23 +217,24 @@ onUnmounted(() => window.removeEventListener('popstate', onPopState))
         </template>
         <el-empty v-else description="尚无结果，请先在上方运行评估" />
       </section>
-    </main>
-    <main v-else class="dataset-main"><DatasetWorkspace @run-created="showCreatedRun" /></main>
+      </main>
+      <main v-else class="dataset-main"><DatasetWorkspace @run-created="showCreatedRun" /></main>
+    </div>
 
     <el-drawer v-model="traceOpen" title="失败用例轨迹" size="min(520px, 92vw)">
       <template v-if="trace">
         <p class="trace-case">{{ caseNames[trace.case_id] }}</p>
-        <div v-if="trace.turns.length" class="trace-turns">
+        <div v-if="traceTurns.length" class="trace-turns">
           <h3>各轮输入与输出</h3>
-          <el-card v-for="(turn, index) in trace.turns" :key="turn.turn_id" shadow="never">
-            <b>第 {{ index + 1 }} 轮 · {{ turn.turn_id }}</b>
+          <el-card v-for="(turn, index) in traceTurns" :key="turn.turnId" shadow="never">
+            <b>第 {{ index + 1 }} 轮 · {{ turn.turnId }}</b>
             <small>输入</small><pre>{{ JSON.stringify(turn.input, null, 2) }}</pre>
             <small>输出</small><pre>{{ JSON.stringify(turn.output, null, 2) }}</pre>
             <small>轮次结束状态</small><pre>{{ JSON.stringify(turn.state, null, 2) }}</pre>
           </el-card>
         </div>
         <h3>执行轨迹</h3>
-        <el-timeline><el-timeline-item v-for="span in trace.spans" :key="span.id" :timestamp="`步骤 ${span.sequence}`" placement="top"><el-card shadow="never"><b>{{ span.name }}</b><el-tag size="small">{{ span.kind }}</el-tag><small v-if="span.attributes.turn_id">轮次 {{ span.attributes.turn_id }}</small><pre>{{ JSON.stringify(span.attributes, null, 2) }}</pre></el-card></el-timeline-item></el-timeline>
+        <el-timeline><el-timeline-item v-for="span in trace.spans" :key="span.span_id" :timestamp="`步骤 ${span.sequence}`" placement="top"><el-card shadow="never"><b>{{ span.name }}</b><el-tag size="small">{{ span.operation_type }}</el-tag><small v-if="span.attributes.turn_id">轮次 {{ span.attributes.turn_id }}</small><pre>{{ JSON.stringify(span.attributes, null, 2) }}</pre></el-card></el-timeline-item></el-timeline>
         <h3>最终状态</h3><pre>{{ JSON.stringify(trace.final_state, null, 2) }}</pre>
         <h3>最终输出</h3><pre>{{ JSON.stringify(trace.final_output, null, 2) }}</pre>
       </template>

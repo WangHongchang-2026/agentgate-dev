@@ -33,7 +33,7 @@ def evaluate(version: str = typer.Option("loan-agent-v2-fixed", help="目标代�
 @app.command("runs")
 def list_runs(database: Path | None = typer.Option(None, help="SQLite 数据库路径")) -> None:
     for run in _service(database).repository.list_runs():
-        typer.echo(f"{run.id}\t{run.snapshot.target.version}\t{run.status}")
+        typer.echo(f"{run.id}\t{run.manifest.target.ref.external_version_id}\t{run.status}")
 
 
 @app.command()

@@ -10,6 +10,7 @@ def test_python_function_target_runs_through_local_scheduler():
 
     def function(run_id, received_case, version):
         return Trace(
+            trace_id="0" * 32,
             run_id=run_id,
             case_id=received_case.id,
             spans=(),

@@ -1,5 +1,5 @@
 import type {
-  DatasetSummary, DatasetVersion, EvaluationCase, JsonObject,
+  DatasetSummary, DatasetVersion, EvaluationCase
 } from '../types/dataset'
 
 export interface Version { id: string; label: string }
@@ -12,19 +12,19 @@ export interface EvaluatorOption {
   dimension: string
   metric: string
   severity: 'standard'|'blocking'
-  evaluator_type: string
-  operator: string|null
+  implementation_id: string
+  implementation_version: string
+  config: Record<string, unknown>
 }
 export interface Run {
   id: string
   status: string
-  snapshot: {
-    target: { version: string }
+  manifest: {
+    target: { ref: { external_version_id: string } }
     dataset: DatasetVersion
     evaluator_specs: EvaluatorOption[]
   }
 }
-export interface Evidence { trace_id: string; span_ids: string[]; description: string }
 export type Outcome = 'pass'|'fail'|'review'|'not_applicable'|'error'
 export interface CheckResult {
   id: string
@@ -37,9 +37,13 @@ export interface CheckResult {
   expected: unknown
   actual: unknown
   actual_missing: boolean
-  evidence: Evidence[]
+  span_ids: string[]
+  failure_stage: string|null
+  failure_sequence: number|null
+  failure_span_id: string|null
 }
-export interface Result {
+export interface EvaluationResult {
+  trace_id: string
   case_id: string
   evaluator_id: string
   evaluator_name: string
@@ -50,8 +54,7 @@ export interface Result {
   outcome: Outcome
   score: number|null
   reason: string
-  primary_failure_step?: string
-  evidence: Evidence[]
+  primary_failure_stage?: string
   checks: CheckResult[]
 }
 export interface Gate {
@@ -79,23 +82,23 @@ export interface Metric {
   total: number
   incomplete: boolean
 }
-export interface Report { run: Run; results: Result[]; gate: Gate; metrics: Metric[] }
-export interface TraceTurn {
-  turn_id: string
-  input: JsonObject
-  output: JsonObject
-  state: JsonObject
+export interface Report { run: Run; results: EvaluationResult[]; gate: Gate; metrics: Metric[] }
+export interface TraceOutcome {
+  input: Record<string, unknown>
+  output: Record<string, unknown>
+  state: Record<string, unknown>
 }
 export interface Trace {
+  trace_id: string
   case_id: string
   spans: {
-    id: string
+    span_id: string
     name: string
-    kind: string
+    operation_type: string
     sequence: number
     attributes: Record<string, unknown>
   }[]
-  turns: TraceTurn[]
+  turn_outcomes: Record<string, TraceOutcome>
   final_state: Record<string, unknown>
   final_output: Record<string, unknown>
 }

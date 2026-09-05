@@ -94,8 +94,9 @@ class EvaluationService:
                 "dimension": item.dimension,
                 "metric": item.metric,
                 "severity": item.severity,
-                "evaluator_type": item.evaluator_type,
-                "operator": getattr(item, "operator", None),
+                "implementation_id": item.implementation_id,
+                "implementation_version": item.implementation_version,
+                "config": item.config,
             }
             for item in EVALUATORS
         ]

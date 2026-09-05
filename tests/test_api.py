@@ -32,8 +32,8 @@ def test_otlp_http_uses_post_and_health_is_separate(tmp_path):
     payload = {"resourceSpans": [{"resource": {"attributes": [
         {"key": "agentgate.run_id", "value": {"stringValue": "external-run"}},
         {"key": "agentgate.case_id", "value": {"stringValue": "external-case"}},
-    ]}, "scopeSpans": [{"spans": [{"traceId": "abc", "spanId": "def", "name": "tool.call",
-                                      "attributes": [{"key": "agentgate.kind", "value": {"stringValue": "tool"}}]}]}]}]}
+    ]}, "scopeSpans": [{"spans": [{"traceId": "a" * 32, "spanId": "d" * 16, "name": "tool.call",
+                                      "attributes": [{"key": "agentgate.operation_type", "value": {"stringValue": "tool"}}]}]}]}]}
     with TestClient(create_app(tmp_path / "otlp.db")) as client:
         assert client.get("/health").json() == {"status": "ok"}
         assert client.get("/v1/traces").status_code == 405

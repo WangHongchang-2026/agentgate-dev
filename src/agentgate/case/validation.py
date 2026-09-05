@@ -51,12 +51,6 @@ def validate_dataset_version(version: DatasetVersion) -> None:
                 issues.append(ValidationIssue(
                     path=f"{turn_base}.input", message="每一轮必须包含输入"
                 ))
-            overlap = set(turn.required_tools) & set(turn.forbidden_tools)
-            if overlap:
-                issues.append(ValidationIssue(
-                    path=turn_base,
-                    message=f"工具不能同时设为必需和禁用：{', '.join(sorted(overlap))}",
-                ))
             for expectation_index, expectation in enumerate(turn.expectations):
                 exp_base = f"{turn_base}.expectations[{expectation_index}]"
                 if expectation.id in expectation_ids:
@@ -73,7 +67,8 @@ def validate_dataset_version(version: DatasetVersion) -> None:
                     issues.append(ValidationIssue(
                         path=exp_base, message="最终状态期望需要字段路径"
                     ))
-                if isinstance(expectation.condition, MatchesJsonSchema):
+                condition = getattr(expectation, "condition", None)
+                if isinstance(condition, MatchesJsonSchema):
                     issues.append(ValidationIssue(
                         path=f"{exp_base}.condition",
                         message="JSON Schema 检查尚未实现，不能发布该用例",

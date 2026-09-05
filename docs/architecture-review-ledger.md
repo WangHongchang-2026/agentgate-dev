@@ -89,8 +89,8 @@ Current Level 2 progress:
 - `domain/`: Level 2 completed.
 - Level 3 is intentionally deferred to implementation review.
 - Consolidated architecture: `docs/architecture.md`.
-- Current next item: execute Phase 1 from `docs/refactor-implementation-plan.md` on
-  the `refactor-1` branch.
+- Domain implementation completed through `result.py` on `refactor-1`.
+- Current next domain item: `domain/metric.py`.
 
 ## Global architecture decisions
 
@@ -139,8 +139,8 @@ Required P1 reconciliation:
 - Move `TargetSnapshot` from `run.py` into new `target.py` and adopt exact external Target
   references, descriptors, and immutable execution snapshots.
 - Rename `evaluation.py` to `evaluator.py` to match its owned concept.
-- Expand `run.py` with `RunConfig`, immutable `RunManifest`, `CaseRun`, `Attempt`, statuses,
-  and legal lifecycle transitions; rename current `RunSnapshot` to `RunManifest`.
+- Replace the inherited Run objects with immutable `RunManifest`, `EvaluationRun`,
+  `RunStatus`, and legal lifecycle transitions.
 - Add `artifact.py` for shared Artifact references and metadata.
 - Add `skill_analysis.py` for persisted static Skill-analysis specifications, findings, reviews, and reports.
 - Keep `report.py` as the composite domain read contract; report calculation remains in
@@ -155,9 +155,12 @@ Confirmed rules:
 - Dataset-level rules such as duplicate Case IDs belong in the Dataset domain model.
 - Run status and legal state transitions belong in the Run domain model.
 - Run configuration contains timeout, retry, target, and parallel execution settings.
-- Attempt/CaseRun models carry IDs, execution status, and `trace_id` references.
+- Per-Case status and retry-record models are deferred until real asynchronous progress or
+  retry behavior requires them; retry details use Trace events.
 - `RunManifest` is an immutable record of the versions and effective configuration used by one Run.
 - Future execution-capacity concepts may include `TargetExecutionProfile`, but the exact domain structure remains to be reviewed.
+- Domain Trace uses exact OTel Trace/Span IDs, extensible operation types, immutable JSON evidence, and no separate TraceTurn class.
+- `EvaluationResult` directly owns `trace_id`; Check results own Span references and flattened failure location. Legacy Evidence and FailureObservation wrappers are removed.
 
 ## `dataset/` Level 2 result
 
@@ -219,8 +222,8 @@ Confirmed responsibilities:
 ### `process_manager.py`
 
 - Renamed from `process_pool.py` because the implementation is not a traditional pool of persistent reusable workers.
-- P1 execution model: one local Agent process per Session and per Case Attempt.
-- Starts Agent processes, limits maximum parallel processes, records Attempt-to-PID/Workspace mapping, monitors processes and child processes, captures CPU/memory/runtime, handles normal/abnormal exits, terminates on timeout/cancel, collects exit status, and releases resources.
+- P1 execution model: one local Agent process per Session and per Case execution.
+- Starts Agent processes, limits maximum parallel processes, records execution-to-PID/Workspace mapping, monitors processes and child processes, captures CPU/memory/runtime, handles normal/abnormal exits, terminates on timeout/cancel, collects exit status, and releases resources.
 - When a process slot becomes available, it can start the next Case.
 - Agent-specific commands and arguments come from the Target Adapter.
 
@@ -228,8 +231,8 @@ Confirmed responsibilities:
 
 - Applies a Run `RetryPolicy` to infrastructure failures such as network errors, rate limits, temporary Agent API failures, and process crashes.
 - Does not retry wrong answers, policy failures, or normal evaluation failures.
-- One CaseRun may contain multiple Attempts.
-- Coding Agent retry requires a fresh Workspace so the first Attempt cannot contaminate the second.
+- Retry remains an execution function, not a domain class; each retry emits a Trace event.
+- Coding Agent retries require a fresh Workspace so an earlier execution cannot contaminate the next.
 
 ### `manifest.py`
 
@@ -264,7 +267,7 @@ Removed:
 - `process_pool.py`: renamed to `process_manager.py`.
 - `lifecycle.py`: legal Run status transitions belong in `domain/`.
 - `timeout.py`: timeout configuration belongs in domain RunConfig; Engine waits; ProcessManager or Target Adapter performs cancellation/termination.
-- `context.py` / `execution_context.py` / `run_env.py`: proposed object mixed RunConfig, RunSnapshot, domain IDs, and runtime handles. P1 keeps PID/Workspace/runtime handles inside ProcessManager.
+- `context.py` / `execution_context.py` / `run_env.py`: proposed object mixed manifest configuration, domain IDs, and runtime handles. P1 keeps PID/Workspace/runtime handles inside ProcessManager.
 - `events.py`: proposed events duplicated domain state changes. P1 does not introduce an Event Bus for ordinary status changes.
 
 ### Local Agent parallel execution decision
@@ -312,7 +315,7 @@ Removed/deferred:
 
 - `graph.py`: P1 uses OTel parent-child Span relationships. Add `execution_graph.py` later only when complex multi-Agent, causal, state-transition, or trajectory analysis requires it.
 - `collector.py`: AgentGate should consume traces produced by the Agent or existing observability platform, not build another full collector. A lightweight POC OTLP receiver, if required, belongs in `integrations/observability/otlp_http_receiver.py`.
-- `correlation.py`: Attempt stores `trace_id`; Target Adapter obtains or returns it; observability integration fetches the trace. Add a separate correlator only for future complex cross-trace merging.
+- `correlation.py`: Target Adapter obtains or returns `trace_id`; observability integration fetches the trace. Add a separate correlator only for future complex cross-trace merging.
 - `evidence.py`: each Evaluator knows what evidence it needs and returns evidence span references in its EvaluationResult. Trace should not guess evaluator-specific evidence.
 - `repository.py`: do not define a Trace-specific repository. The shared persistence
   contract belongs in `storage/repository.py`; external traces can remain referenced
@@ -338,12 +341,12 @@ Confirmed responsibilities:
 
 - Renamed from `base.py`.
 - Defines the unified Evaluator contract.
-- All evaluator implementations consume a common evaluation input and return a common result containing Score, Verdict, Reason, and Evidence references.
+- All evaluator implementations consume a common evaluation input and return a common result containing score, outcome, reason, and Trace Span references.
 
 ### `executor.py`
 
 - Renamed from `engine.py` to avoid confusion with `run/engine.py`.
-- Receives a completed CaseRun plus normalized Trace/Artifact references and executes all Evaluators already selected by the RunManifest/application composition.
+- Receives a completed Case plus normalized Trace/Artifact references and executes all Evaluators already selected by the RunManifest/application composition.
 - Builds evaluator inputs, invokes evaluators, captures evaluator execution errors/timeouts and execution metadata, and returns independent EvaluationResults.
 - Does not run the target Agent, choose evaluator policy, implement evaluator rules, aggregate Run scores, make a release-gate decision, or persist data directly.
 
@@ -860,7 +863,7 @@ Rules:
   indexes.
 - Uses selected relational columns for identity, filtering, ordering, and indexes,
   while retaining complete immutable domain objects as canonical JSON payloads.
-- Likely persisted areas include Datasets and versions, Runs, CaseRuns/Attempts,
+- Likely persisted areas include Datasets and versions, Runs,
   Traces, Results, Evaluator versions, Run asset references, and Artifact metadata;
   the exact schema is finalized during the domain audit.
 - Application/domain code decides whether an operation such as Dataset publishing

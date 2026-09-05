@@ -6,7 +6,7 @@ from agentgate.evaluator.operators.comparison import equals, must_be_missing
 
 
 def test_null_and_missing_are_distinct():
-    trace = Trace(run_id="run", case_id="case", spans=(), final_state={"value": None})
+    trace = Trace(trace_id="0" * 32, run_id="run", case_id="case", spans=(), final_state={"value": None})
     present = observe(trace, StateExpectation(path="value", condition=Equals(expected=None)))
     missing = observe(trace, StateExpectation(path="other", condition=MustBeMissing()))
     assert present.values == (None,)

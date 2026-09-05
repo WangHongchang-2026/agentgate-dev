@@ -8,7 +8,7 @@ from typing import Any
 from pydantic import Field, field_serializer, field_validator, model_validator
 
 from agentgate.domain import (
-    DomainModel, FailureStage, JudgeEvidence, MethodRef, Outcome, Result, freeze_json,
+    DomainModel, FailureStage, JudgeRecord, MethodRef, Outcome, EvaluationResult, freeze_json,
 )
 
 
@@ -53,7 +53,7 @@ class CheckDraft(DomainModel):
 
 class Evaluation(DomainModel):
     checks: tuple[CheckDraft, ...]
-    judge_evidence: JudgeEvidence | None = None
+    judge_record: JudgeRecord | None = None
 
 
 class Observation(DomainModel):
@@ -66,7 +66,7 @@ class OperatorOutcome(DomainModel):
     reason: str
 
 
-ResultResolver = Callable[[str], Result]
+ResultResolver = Callable[[str], EvaluationResult]
 
 
 class EvaluatorError(Exception):
