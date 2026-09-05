@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import re
-from datetime import UTC, datetime
+from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
@@ -15,17 +15,13 @@ from .base import (
     FrozenJsonObject,
     content_sha256,
     find_credential_path,
+    normalize_utc,
     require_non_blank,
     utcnow,
 )
 
 
 _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
-
-def _normalize_utc(value: datetime, field_name: str) -> datetime:
-    if value.tzinfo is None or value.utcoffset() is None:
-        raise ValueError(f"{field_name} must be timezone-aware")
-    return value.astimezone(UTC)
 
 
 def _verify_sha256(value: str, field_name: str) -> str:
@@ -163,7 +159,7 @@ class TargetDescriptor(DomainModel):
     @field_validator("fetched_at")
     @classmethod
     def normalize_fetched_at(cls, value: datetime) -> datetime:
-        return _normalize_utc(value, "fetched_at")
+        return normalize_utc(value, "fetched_at")
 
     @model_validator(mode="after")
     def validate_descriptor(self) -> "TargetDescriptor":
@@ -237,7 +233,7 @@ class TargetSnapshot(DomainModel):
     @field_validator("captured_at")
     @classmethod
     def normalize_captured_at(cls, value: datetime) -> datetime:
-        return _normalize_utc(value, "captured_at")
+        return normalize_utc(value, "captured_at")
 
     @model_validator(mode="after")
     def set_or_verify_hash(self) -> "TargetSnapshot":

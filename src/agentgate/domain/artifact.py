@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import re
-from datetime import UTC, datetime
+from datetime import datetime
 from enum import StrEnum
 from uuid import uuid4
 
 from pydantic import Field, ValidationInfo, field_validator
 
-from .base import DomainModel, FrozenJsonObject, require_non_blank, utcnow
+from .base import DomainModel, FrozenJsonObject, normalize_utc, require_non_blank, utcnow
 
 
 _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
@@ -73,6 +73,4 @@ class Artifact(DomainModel):
     @field_validator("created_at")
     @classmethod
     def normalize_created_at(cls, value: datetime) -> datetime:
-        if value.tzinfo is None or value.utcoffset() is None:
-            raise ValueError("Artifact created_at must be timezone-aware")
-        return value.astimezone(UTC)
+        return normalize_utc(value, "Artifact created_at")

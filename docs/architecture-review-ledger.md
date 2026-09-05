@@ -96,6 +96,8 @@ Current Level 2 progress:
 - Credential-key detection is centralized as `domain/base.py::find_credential_path` so
   Target and Evaluator configuration cannot drift onto different secret denylists.
 - UTC timestamp creation is centralized as `domain/base.py::utcnow`.
+- Timezone validation and conversion are centralized as `domain/base.py::normalize_utc`;
+  optional timestamp policy remains at each field boundary.
 - Current next checkpoint: review and commit the completed contract changes.
 
 ## Global architecture decisions

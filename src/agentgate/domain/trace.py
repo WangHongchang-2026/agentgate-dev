@@ -3,21 +3,16 @@
 from __future__ import annotations
 
 import re
-from datetime import UTC, datetime
+from datetime import datetime
 from enum import StrEnum
 
 from pydantic import Field, ValidationInfo, field_validator, model_validator
 
-from .base import DomainModel, FrozenJsonObject, require_non_blank, utcnow
+from .base import DomainModel, FrozenJsonObject, normalize_utc, require_non_blank, utcnow
 
 
 _TRACE_ID_PATTERN = re.compile(r"^[0-9a-f]{32}$")
 _SPAN_ID_PATTERN = re.compile(r"^[0-9a-f]{16}$")
-
-def _normalize_utc(value: datetime, field_name: str) -> datetime:
-    if value.tzinfo is None or value.utcoffset() is None:
-        raise ValueError(f"{field_name} must be timezone-aware")
-    return value.astimezone(UTC)
 
 
 class SpanStatus(StrEnum):
@@ -65,7 +60,7 @@ class TraceSpan(DomainModel):
     @field_validator("started_at", "ended_at")
     @classmethod
     def normalize_timestamp(cls, value: datetime, info: ValidationInfo) -> datetime:
-        return _normalize_utc(value, f"TraceSpan {info.field_name}")
+        return normalize_utc(value, f"TraceSpan {info.field_name}")
 
     @model_validator(mode="after")
     def validate_timing(self) -> "TraceSpan":

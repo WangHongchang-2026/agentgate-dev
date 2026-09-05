@@ -30,6 +30,14 @@ def utcnow() -> datetime:
     return datetime.now(UTC)
 
 
+def normalize_utc(value: datetime, field_name: str) -> datetime:
+    """Return a timezone-aware datetime normalized to UTC."""
+
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError(f"{field_name} must be timezone-aware")
+    return value.astimezone(UTC)
+
+
 def require_non_blank(value: str, field_name: str) -> str:
     """Return a nonblank string or raise a field-specific validation error."""
 

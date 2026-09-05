@@ -2,22 +2,14 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
 from enum import StrEnum
 from uuid import uuid4
 
 from pydantic import Field, ValidationInfo, field_validator, model_validator
 
-from .base import DomainModel, content_sha256, require_non_blank, utcnow
+from .base import DomainModel, content_sha256, normalize_utc, require_non_blank, utcnow
 from .case import Case
-
-
-def _normalize_utc(value: datetime | None, field_name: str) -> datetime | None:
-    if value is None:
-        return None
-    if value.tzinfo is None or value.utcoffset() is None:
-        raise ValueError(f"{field_name} must be timezone-aware")
-    return value.astimezone(UTC)
 
 
 class DatasetVersionStatus(StrEnum):
@@ -45,9 +37,7 @@ class Dataset(DomainModel):
     @field_validator("created_at", "updated_at")
     @classmethod
     def normalize_timestamps(cls, value: datetime, info: ValidationInfo) -> datetime:
-        normalized = _normalize_utc(value, info.field_name)
-        assert normalized is not None
-        return normalized
+        return normalize_utc(value, info.field_name)
 
     @model_validator(mode="after")
     def validate_timestamps(self) -> "Dataset":
@@ -83,7 +73,7 @@ class DatasetVersion(DomainModel):
     def normalize_timestamps(
         cls, value: datetime | None, info: ValidationInfo
     ) -> datetime | None:
-        return _normalize_utc(value, info.field_name)
+        return normalize_utc(value, info.field_name) if value is not None else None
 
     @model_validator(mode="after")
     def validate_version(self) -> "DatasetVersion":

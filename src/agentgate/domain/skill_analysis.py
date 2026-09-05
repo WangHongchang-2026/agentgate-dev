@@ -3,23 +3,25 @@
 from __future__ import annotations
 
 import re
-from datetime import UTC, datetime
+from datetime import datetime
 from enum import StrEnum
 from typing import Any
 from uuid import uuid4
 
 from pydantic import Field, ValidationInfo, field_validator, model_validator
 
-from .base import DomainModel, FrozenJsonObject, content_sha256, require_non_blank, utcnow
+from .base import (
+    DomainModel,
+    FrozenJsonObject,
+    content_sha256,
+    normalize_utc,
+    require_non_blank,
+    utcnow,
+)
 from .target import TargetRef
 
 
 _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
-
-def _normalize_utc(value: datetime, field_name: str) -> datetime:
-    if value.tzinfo is None or value.utcoffset() is None:
-        raise ValueError(f"{field_name} must be timezone-aware")
-    return value.astimezone(UTC)
 
 
 class SkillAnalysisStatus(StrEnum):
@@ -117,7 +119,7 @@ class SkillAnalysisReport(DomainModel):
     @field_validator("created_at")
     @classmethod
     def normalize_created_at(cls, value: datetime) -> datetime:
-        return _normalize_utc(value, "created_at")
+        return normalize_utc(value, "created_at")
 
     @model_validator(mode="after")
     def validate_report(self) -> "SkillAnalysisReport":
@@ -173,4 +175,4 @@ class SkillAnalysisReview(DomainModel):
     @field_validator("reviewed_at")
     @classmethod
     def normalize_reviewed_at(cls, value: datetime) -> datetime:
-        return _normalize_utc(value, "reviewed_at")
+        return normalize_utc(value, "reviewed_at")

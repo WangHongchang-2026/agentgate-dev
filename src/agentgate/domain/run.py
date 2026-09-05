@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import re
-from datetime import UTC, datetime
+from datetime import datetime
 from enum import StrEnum
 from uuid import uuid4
 
 from pydantic import Field, ValidationInfo, field_validator, model_validator
 
-from .base import DomainModel, content_sha256, require_non_blank, utcnow
+from .base import DomainModel, content_sha256, normalize_utc, require_non_blank, utcnow
 from .dataset import DatasetVersion, DatasetVersionStatus
 from .evaluator import EvaluatorSpec
 from .gate import ReleaseGateSpec
@@ -18,13 +18,6 @@ from .target import TargetSnapshot
 
 
 _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
-
-def _normalize_utc(value: datetime | None, field_name: str) -> datetime | None:
-    if value is None:
-        return None
-    if value.tzinfo is None or value.utcoffset() is None:
-        raise ValueError(f"{field_name} must be timezone-aware")
-    return value.astimezone(UTC)
 
 
 class RunStatus(StrEnum):
@@ -64,9 +57,7 @@ class RunManifest(DomainModel):
     @field_validator("created_at")
     @classmethod
     def normalize_created_at(cls, value: datetime) -> datetime:
-        normalized = _normalize_utc(value, "RunManifest created_at")
-        assert normalized is not None
-        return normalized
+        return normalize_utc(value, "RunManifest created_at")
 
     @field_validator("manifest_sha256")
     @classmethod
@@ -144,7 +135,11 @@ class EvaluationRun(DomainModel):
     def normalize_timestamps(
         cls, value: datetime | None, info: ValidationInfo
     ) -> datetime | None:
-        return _normalize_utc(value, f"EvaluationRun {info.field_name}")
+        return (
+            normalize_utc(value, f"EvaluationRun {info.field_name}")
+            if value is not None
+            else None
+        )
 
     @field_validator("error")
     @classmethod
@@ -198,8 +193,7 @@ def transition_run(
 
     if new_status not in _ALLOWED_TRANSITIONS.get(run.status, set()):
         raise ValueError(f"illegal Run transition: {run.status} -> {new_status}")
-    timestamp = _normalize_utc(occurred_at or utcnow(), "transition occurred_at")
-    assert timestamp is not None
+    timestamp = normalize_utc(occurred_at or utcnow(), "transition occurred_at")
     if timestamp < (run.started_at or run.created_at):
         raise ValueError("transition occurred_at must not precede Run activity")
 

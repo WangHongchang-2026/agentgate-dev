@@ -1,4 +1,4 @@
-from datetime import UTC
+from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 from pydantic import TypeAdapter, ValidationError
@@ -15,6 +15,7 @@ from agentgate.domain import (
     content_sha256,
     find_credential_path,
     freeze_json,
+    normalize_utc,
     utcnow,
 )
 
@@ -95,6 +96,14 @@ def test_utcnow_returns_timezone_aware_utc_timestamp():
     value = utcnow()
 
     assert value.tzinfo is UTC
+
+
+def test_normalize_utc_converts_aware_timestamp_and_rejects_naive_timestamp():
+    value = datetime(2026, 9, 5, 8, tzinfo=timezone(timedelta(hours=8)))
+
+    assert normalize_utc(value, "created_at") == datetime(2026, 9, 5, tzinfo=UTC)
+    with pytest.raises(ValueError, match="created_at must be timezone-aware"):
+        normalize_utc(datetime(2026, 9, 5), "created_at")
 
 
 def test_domain_model_validates_defaults_and_is_immutable():
