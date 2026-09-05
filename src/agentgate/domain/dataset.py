@@ -8,14 +8,8 @@ from uuid import uuid4
 
 from pydantic import Field, ValidationInfo, field_validator, model_validator
 
-from .base import DomainModel, content_sha256, require_non_blank
+from .base import DomainModel, content_sha256, require_non_blank, utcnow
 from .case import Case
-
-
-def utcnow() -> datetime:
-    """Return the current timezone-aware UTC timestamp."""
-
-    return datetime.now(UTC)
 
 
 def _normalize_utc(value: datetime | None, field_name: str) -> datetime | None:

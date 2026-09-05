@@ -49,6 +49,7 @@ domain/
 
 - `DomainModel` makes Pydantic domain values immutable, rejects undeclared fields, and
   validates default values as well as caller-provided values.
+- `utcnow()` is the shared factory for timezone-aware UTC timestamps.
 - `require_non_blank()` is the shared scalar string validator. Domain modules compose it
   inside field validators instead of defining local helpers or validator base classes.
 - `find_credential_path()` owns the single credential-key denylist used to prevent

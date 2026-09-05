@@ -16,17 +16,11 @@ from .base import (
     content_sha256,
     find_credential_path,
     require_non_blank,
+    utcnow,
 )
 
 
 _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
-
-
-def utcnow() -> datetime:
-    """Return the current timezone-aware UTC timestamp."""
-
-    return datetime.now(UTC)
-
 
 def _normalize_utc(value: datetime, field_name: str) -> datetime:
     if value.tzinfo is None or value.utcoffset() is None:

@@ -9,7 +9,7 @@ from uuid import uuid4
 
 from pydantic import Field, ValidationInfo, field_validator, model_validator
 
-from .base import DomainModel, content_sha256, require_non_blank
+from .base import DomainModel, content_sha256, require_non_blank, utcnow
 from .dataset import DatasetVersion, DatasetVersionStatus
 from .evaluator import EvaluatorSpec
 from .gate import ReleaseGateSpec
@@ -18,13 +18,6 @@ from .target import TargetSnapshot
 
 
 _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
-
-
-def utcnow() -> datetime:
-    """Return the current timezone-aware UTC timestamp."""
-
-    return datetime.now(UTC)
-
 
 def _normalize_utc(value: datetime | None, field_name: str) -> datetime | None:
     if value is None:

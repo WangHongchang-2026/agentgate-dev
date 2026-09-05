@@ -1,3 +1,5 @@
+from datetime import UTC
+
 import pytest
 from pydantic import TypeAdapter, ValidationError
 
@@ -13,6 +15,7 @@ from agentgate.domain import (
     content_sha256,
     find_credential_path,
     freeze_json,
+    utcnow,
 )
 
 
@@ -86,6 +89,12 @@ def test_find_credential_path_handles_nested_objects_and_key_spelling():
 
     assert find_credential_path(value) == "models[0].auth.api-key"
     assert find_credential_path({"credential_ref": "vault/customer-key"}) is None
+
+
+def test_utcnow_returns_timezone_aware_utc_timestamp():
+    value = utcnow()
+
+    assert value.tzinfo is UTC
 
 
 def test_domain_model_validates_defaults_and_is_immutable():

@@ -8,16 +8,11 @@ from enum import StrEnum
 
 from pydantic import Field, ValidationInfo, field_validator, model_validator
 
-from .base import DomainModel, FrozenJsonObject, require_non_blank
+from .base import DomainModel, FrozenJsonObject, require_non_blank, utcnow
 
 
 _TRACE_ID_PATTERN = re.compile(r"^[0-9a-f]{32}$")
 _SPAN_ID_PATTERN = re.compile(r"^[0-9a-f]{16}$")
-
-
-def utcnow() -> datetime:
-    return datetime.now(UTC)
-
 
 def _normalize_utc(value: datetime, field_name: str) -> datetime:
     if value.tzinfo is None or value.utcoffset() is None:

@@ -6,6 +6,7 @@ import hashlib
 import json
 import math
 from collections.abc import Iterator, Mapping
+from datetime import UTC, datetime
 from typing import Any, TypeAlias
 
 from pydantic import BaseModel, ConfigDict
@@ -21,6 +22,12 @@ _CREDENTIAL_KEYS = {
     "password",
     "secret_key",
 }
+
+
+def utcnow() -> datetime:
+    """Return the current timezone-aware UTC timestamp."""
+
+    return datetime.now(UTC)
 
 
 def require_non_blank(value: str, field_name: str) -> str:

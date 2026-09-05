@@ -9,16 +9,10 @@ from uuid import uuid4
 
 from pydantic import Field, ValidationInfo, field_validator
 
-from .base import DomainModel, FrozenJsonObject, require_non_blank
+from .base import DomainModel, FrozenJsonObject, require_non_blank, utcnow
 
 
 _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
-
-
-def utcnow() -> datetime:
-    """Return the current timezone-aware UTC timestamp."""
-
-    return datetime.now(UTC)
 
 
 class ArtifactProducer(StrEnum):

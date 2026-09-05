@@ -95,6 +95,7 @@ Current Level 2 progress:
   feature models compose the function without validator inheritance.
 - Credential-key detection is centralized as `domain/base.py::find_credential_path` so
   Target and Evaluator configuration cannot drift onto different secret denylists.
+- UTC timestamp creation is centralized as `domain/base.py::utcnow`.
 - Current next checkpoint: review and commit the completed contract changes.
 
 ## Global architecture decisions
