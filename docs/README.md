@@ -8,6 +8,8 @@
   and reconciliation notes.
 - [Refactor-1 implementation plan](refactor-implementation-plan.md) maps the working
   `goal/p1-demo` behavior into the target structure and defines the execution order.
+- [Phase 2 Storage and Dataset plan](storage-dataset-implementation-plan.md) defines the
+  current file-by-file implementation sequence.
 - Running code and automated tests describe the inherited `goal/p1-demo` baseline; they
   do not override confirmed refactor decisions in the ledger.
 

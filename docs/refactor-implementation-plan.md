@@ -226,6 +226,8 @@ Gate: domain has no feature/infrastructure imports; immutability and hash round 
 
 - Align repository/SQLite boundaries.
 - Separate Dataset mechanics, formats, and application workflows.
+- Follow `docs/storage-dataset-implementation-plan.md` for the approved file-level order
+  and completion gate.
 
 Gate: Dataset and repository tests pass through the new boundaries.
 
