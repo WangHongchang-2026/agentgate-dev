@@ -23,13 +23,13 @@ P1 behavior-preservation inputs include:
 Current review status:
 
 - Level 1: confirmed.
-- Level 2: all target backend folders completed.
+- Level 2: all target backend folders and `web/` completed.
 - `optimizer/`: retained as a future feature boundary; detailed design is deferred until
   implementation.
 - `experiment/`, `lineage/`, and `queue/`: removed as top-level `refactor-1` packages for
   the reasons recorded below.
 - P1 behavior preservation remains required during implementation for the inputs listed above.
-- The architecture is consolidated. Implementation begins on a dedicated `refactor-1`
+- The backend and Web architecture is consolidated. Implementation begins on a dedicated `refactor-1`
   branch.
 
 ## Review method
@@ -63,6 +63,7 @@ Current `refactor-1` target backend folders: 13.
 13. `server/`
 
 `web/` is a separate frontend directory and is not included in the 13 backend folders.
+Its Level 2 architecture review is complete.
 
 Current Level 2 progress:
 
@@ -963,6 +964,70 @@ Confirmed responsibilities:
   belong in `application/`.
 - Server does not query SQLite directly, execute Agents/Evaluators, construct
   manifests, calculate metrics, or contain customer scheduler logic.
+
+## `web/` Level 2 result
+
+Frontend stack:
+
+- Vue 3 and TypeScript;
+- Vite;
+- Element Plus;
+- Vue Router;
+- Playwright for desktop and mobile workflows.
+
+Target structure:
+
+```text
+web/src/
+├── main.ts
+├── App.vue
+├── router/
+├── layouts/
+├── pages/
+├── components/
+├── composables/
+├── api/
+├── types/
+└── styles/
+```
+
+Active POC pages and routes:
+
+```text
+/                 OverviewPage
+/runs             RunWorkspacePage
+/results          ResultCenterPage
+/results/:runId   ResultDetailPage
+/datasets         DatasetWorkspacePage
+/evaluators       EvaluatorWorkspacePage
+/skill-analysis   SkillAnalysisPage
+/optimizer        OptimizerPage          future
+```
+
+Confirmed responsibilities:
+
+- `App.vue` mounts the application layout and router view; it owns no evaluation
+  workflow state.
+- `router/` maps URLs to pages and replaces manual `history.pushState` navigation.
+- `layouts/` owns the sidebar, header, responsive navigation, and page frame.
+- `pages/` coordinates one complete user workflow per route.
+- `components/` contains reusable controls grouped by shared, Run, Result, Dataset, and
+  Skill-analysis concerns.
+- `composables/` owns reusable stateful client workflows such as Run progress and
+  Dataset workspace state.
+- `api/` contains shared HTTP transport and capability-specific endpoint modules.
+- `types/` contains frontend API contracts without duplicating backend invariants.
+- `styles/` contains design tokens and global base styles; feature styles remain scoped
+  where practical.
+- Seven pages are active for the POC. Optimization Center is the eighth, deferred page.
+- Trace inspection remains part of Result Detail rather than a separate primary page.
+- Page-local state and composables are sufficient initially; add Pinia only for proven
+  cross-route mutable state.
+- Preserve the inherited Chinese UI, typed Dataset components, responsive sidebar, and
+  desktop/mobile Playwright behavior during refactor.
+- Existing uncommitted Web changes are user-owned baseline work and are not included in
+  architecture-documentation commits.
+- Detailed rules are maintained in `docs/web/README.md`.
 
 ## Review completion
 

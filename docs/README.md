@@ -22,7 +22,8 @@ Detailed implementation plans must follow the consolidated architecture and ledg
 | Run | [run/](run/) | Run manifests, execution engine, process management, retry, and artifacts |
 | Trace | [trace/](trace/) | Canonical Trace normalization and redaction |
 | Result | [result/](result/) | Metrics, gates, reports, and Run comparison |
-| Control panel | [control-panel/](control-panel/) | Vue Web UI and user workflows |
+| Web architecture | [web/](web/) | Vue application structure, routing, API boundaries, and frontend rules |
+| Control-panel scope | [control-panel/](control-panel/) | User-facing evaluation workflows and UI scope |
 
 Cross-capability orchestration belongs in `application/`. External systems are connected
 through `integrations/`. Persistence implementations belong in `storage/`.

@@ -295,6 +295,31 @@ FastAPI is the HTTP transport. Long evaluations are dispatched outside the reque
 process and normally return HTTP 202. Routes validate and translate HTTP data but do not
 implement business workflows or query SQLite directly.
 
+### Web
+
+```text
+web/src/
+├── main.ts
+├── App.vue
+├── router/
+├── layouts/
+├── pages/
+├── components/
+├── composables/
+├── api/
+├── types/
+└── styles/
+```
+
+The Vue 3 application uses Vue Router to map seven active POC routes to pages: Overview,
+Evaluation Tasks, Results Center, Result Detail, Dataset Management, Evaluator Management,
+and Static Skill Analysis. Optimization Center is deferred.
+
+`App.vue` only mounts the application layout and router view. Pages coordinate workflows,
+composables own reusable client state, API modules call FastAPI, and components communicate
+through typed props and events. Pinia is added only when real cross-route mutable state
+appears. Detailed frontend boundaries are documented in `docs/web/README.md`.
+
 ## Primary Workflows
 
 ### Dynamic Evaluation
