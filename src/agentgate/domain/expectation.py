@@ -8,13 +8,7 @@ from uuid import uuid4
 
 from pydantic import Field, field_validator, model_validator
 
-from .base import DomainModel, FrozenJsonObject, canonical_json, freeze_json
-
-
-def _require_non_blank(value: str, field_name: str) -> str:
-    if not value.strip():
-        raise ValueError(f"{field_name} must not be blank")
-    return value
+from .base import DomainModel, FrozenJsonObject, canonical_json, freeze_json, require_non_blank
 
 
 class Equals(DomainModel):
@@ -123,13 +117,13 @@ class _ExpectationBase(DomainModel):
     @field_validator("id")
     @classmethod
     def validate_id(cls, value: str) -> str:
-        return _require_non_blank(value, "Expectation id")
+        return require_non_blank(value, "Expectation id")
 
     @field_validator("name")
     @classmethod
     def validate_name(cls, value: str | None) -> str | None:
         if value is not None:
-            return _require_non_blank(value, "Expectation name")
+            return require_non_blank(value, "Expectation name")
         return value
 
 
@@ -150,7 +144,7 @@ class ToolCallExpectation(_ExpectationBase):
     @field_validator("tool")
     @classmethod
     def validate_tool(cls, value: str) -> str:
-        return _require_non_blank(value, "Tool name")
+        return require_non_blank(value, "Tool name")
 
 
 class ToolArgumentExpectation(_ExpectationBase):
@@ -165,7 +159,7 @@ class ToolArgumentExpectation(_ExpectationBase):
     @field_validator("tool", "path")
     @classmethod
     def validate_reference(cls, value: str) -> str:
-        return _require_non_blank(value, "Tool argument reference")
+        return require_non_blank(value, "Tool argument reference")
 
 
 class StateExpectation(_ExpectationBase):
@@ -178,7 +172,7 @@ class StateExpectation(_ExpectationBase):
     @field_validator("path")
     @classmethod
     def validate_path(cls, value: str) -> str:
-        return _require_non_blank(value, "State path")
+        return require_non_blank(value, "State path")
 
 
 class OutputExpectation(_ExpectationBase):
@@ -192,7 +186,7 @@ class OutputExpectation(_ExpectationBase):
     @classmethod
     def validate_path(cls, value: str | None) -> str | None:
         if value is not None:
-            return _require_non_blank(value, "Output path")
+            return require_non_blank(value, "Output path")
         return value
 
 
@@ -205,7 +199,7 @@ class PolicyExpectation(_ExpectationBase):
     @field_validator("policy_id")
     @classmethod
     def validate_policy_id(cls, value: str) -> str:
-        return _require_non_blank(value, "Policy id")
+        return require_non_blank(value, "Policy id")
 
 
 Expectation = Annotated[

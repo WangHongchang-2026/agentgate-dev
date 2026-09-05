@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { api, type DatasetOption, type EvaluatorOption, type Overview, type Report, type Run, type Trace, type Version } from './api/client'
+import { api, type DatasetOption, type EvaluatorOption, type Overview, type ReleaseGateReason, type Report, type Run, type Trace, type Version } from './api/client'
 import AppSidebar from './components/AppSidebar.vue'
 import DatasetWorkspace from './pages/DatasetWorkspace.vue'
+import { metricLabel } from './metricLabels'
 
 const overview = ref<Overview>({ total_runs: 0, completed_runs: 0, case_count: 0, latest: null })
 const versions = ref<Version[]>([])
@@ -77,6 +78,15 @@ async function showCreatedRun(run: Run) {
 }
 const asPercent = (score: number|null) => score === null ? 'N/A' : `${Math.round(score * 100)}%`
 const outcomeText = { pass: '通过', fail: '失败', review: '待复核', not_applicable: '不适用', error: '评估错误' }
+const gateReason: Record<ReleaseGateReason, string> = {
+  threshold_met: '达到发布门槛',
+  score_below_threshold: '未达到发布门槛',
+  missing_results: '缺少预期测评结果',
+  evaluator_error: '评估器执行错误',
+  blocking_failure: '阻断级检查失败',
+  review_required: '存在需要人工复核的结果',
+  no_applicable_results: '没有适用的评估结果',
+}
 const outcomeType = (outcome: string) => outcome === 'pass' ? 'success' : outcome === 'not_applicable' ? 'info' : outcome === 'review' ? 'warning' : 'danger'
 
 onMounted(() => {
@@ -171,17 +181,17 @@ onUnmounted(() => {
       <section id="result-report" class="region report-region" aria-labelledby="report-title">
         <div class="region-heading report-heading">
           <div><span class="step">02 · RESULT REPORT</span><h2 id="report-title">结果报告</h2><p v-if="report">{{ report.run.manifest.target.ref.external_version_id }} · {{ report.run.manifest.dataset.dataset_name }} v{{ report.run.manifest.dataset.version }}</p><p v-else>运行评估后在此查看指标、失败证据和轨迹。</p></div>
-          <el-tag v-if="report" :type="report.gate.outcome === 'pass' ? 'success' : 'danger'" effect="dark" size="large">{{ report.gate.outcome === 'pass' ? '发布门槛通过' : '发布门槛未通过' }}</el-tag>
+          <el-tag v-if="report" :type="report.release_gate.outcome === 'pass' ? 'success' : 'danger'" effect="dark" size="large">{{ report.release_gate.outcome === 'pass' ? '发布门槛通过' : '发布门槛未通过' }}</el-tag>
         </div>
 
         <template v-if="report">
           <div class="metric-grid" aria-label="评估指标">
             <article v-for="metric in report.metrics" :key="`${metric.level}-${metric.key}`" class="metric-card" :data-testid="`metric-${metric.level}-${metric.key}`">
-              <span>{{ metric.label }} · {{ metric.level }}</span><strong>{{ asPercent(metric.score) }}</strong>
+              <span>{{ metricLabel(metric.key) }} · {{ metric.level }}</span><strong>{{ asPercent(metric.score) }}</strong>
               <el-progress :percentage="Math.round((metric.score ?? 0) * 100)" :show-text="false" :stroke-width="7" :color="(metric.score ?? 0) >= .95 ? '#20b486' : '#e85d75'" />
               <small>{{ metric.passed }} 通过 · {{ metric.failed }} 失败 · {{ metric.not_applicable }} 不适用<span v-if="metric.errors"> · {{ metric.errors }} 错误</span></small>
             </article>
-            <article class="metric-card gate-card"><span>发布门槛</span><strong>{{ Math.round(report.gate.threshold * 100) }}%</strong><small>{{ report.gate.reason }}</small></article>
+            <article class="metric-card gate-card"><span>发布门槛</span><strong>{{ Math.round(report.release_gate.minimum_score * 100) }}%</strong><small>{{ gateReason[report.release_gate.reason_code] }}</small></article>
           </div>
 
           <div class="report-grid">

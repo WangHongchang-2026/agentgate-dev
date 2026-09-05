@@ -9,7 +9,7 @@ from typing import Any
 
 from pydantic import Field, ValidationInfo, field_validator, model_validator
 
-from .base import DomainModel, FrozenJsonObject, content_sha256
+from .base import DomainModel, FrozenJsonObject, content_sha256, require_non_blank
 
 
 _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
@@ -22,12 +22,6 @@ _SECRET_KEYS = {
     "password",
     "secret_key",
 }
-
-
-def _require_non_blank(value: str, field_name: str) -> str:
-    if not value.strip():
-        raise ValueError(f"{field_name} must not be blank")
-    return value
 
 
 def _secret_path(value: Any, prefix: str = "") -> str | None:
@@ -80,7 +74,7 @@ class EvaluatorRef(DomainModel):
     @field_validator("evaluator_id", "evaluator_version")
     @classmethod
     def validate_identity(cls, value: str, info: ValidationInfo) -> str:
-        return _require_non_blank(value, f"EvaluatorRef {info.field_name}")
+        return require_non_blank(value, f"EvaluatorRef {info.field_name}")
 
 
 class EvaluatorSpec(DomainModel):
@@ -111,7 +105,7 @@ class EvaluatorSpec(DomainModel):
     )
     @classmethod
     def validate_required_text(cls, value: str, info: ValidationInfo) -> str:
-        return _require_non_blank(value, f"EvaluatorSpec {info.field_name}")
+        return require_non_blank(value, f"EvaluatorSpec {info.field_name}")
 
     @field_validator("config")
     @classmethod
@@ -136,16 +130,19 @@ class EvaluatorSpec(DomainModel):
                 raise ValueError("LLM Judge config requires a model object")
             for field_name in ("provider_id", "model_id"):
                 value = model.get(field_name)
-                if not isinstance(value, str) or not value.strip():
+                if not isinstance(value, str):
                     raise ValueError(
-                        f"LLM Judge config model.{field_name} must not be blank"
+                        f"LLM Judge config model.{field_name} must be a string"
                     )
+                require_non_blank(value, f"LLM Judge config model.{field_name}")
             credential_ref = model.get("credential_ref")
-            if credential_ref is not None and (
-                not isinstance(credential_ref, str) or not credential_ref.strip()
-            ):
-                raise ValueError(
-                    "LLM Judge config model.credential_ref must not be blank"
+            if credential_ref is not None:
+                if not isinstance(credential_ref, str):
+                    raise ValueError(
+                        "LLM Judge config model.credential_ref must be a string"
+                    )
+                require_non_blank(
+                    credential_ref, "LLM Judge config model.credential_ref"
                 )
 
         child_keys = tuple(

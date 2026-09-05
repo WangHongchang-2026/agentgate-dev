@@ -4,7 +4,7 @@ import sqlite3
 import pytest
 
 from agentgate.domain import (
-    Case, CaseTurn, GateSpec, MetricPlan, EvaluationRun, RunManifest, TargetRef,
+    Case, CaseTurn, ReleaseGateSpec, MetricPlan, EvaluationRun, RunManifest, TargetRef,
     TargetSnapshot, TargetType,
 )
 from agentgate.demo.loan import LOAN_DATASET_VERSION
@@ -30,7 +30,7 @@ def manifest():
         evaluator_specs=EVALUATORS,
         primary_evaluator_ids=tuple(item.id for item in EVALUATORS),
         metric_plan=MetricPlan(),
-        gate_spec=GateSpec(),
+        gate_spec=ReleaseGateSpec(),
     )
 
 

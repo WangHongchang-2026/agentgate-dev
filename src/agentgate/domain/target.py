@@ -11,7 +11,7 @@ from typing import Any
 
 from pydantic import Field, ValidationInfo, field_validator, model_validator
 
-from .base import DomainModel, FrozenJsonObject, content_sha256
+from .base import DomainModel, FrozenJsonObject, content_sha256, require_non_blank
 
 
 _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
@@ -30,12 +30,6 @@ def utcnow() -> datetime:
     """Return the current timezone-aware UTC timestamp."""
 
     return datetime.now(UTC)
-
-
-def _require_non_blank(value: str, field_name: str) -> str:
-    if not value.strip():
-        raise ValueError(f"{field_name} must not be blank")
-    return value
 
 
 def _normalize_utc(value: datetime, field_name: str) -> datetime:
@@ -102,7 +96,7 @@ class TargetRef(DomainModel):
     @field_validator("source_id", "external_target_id", "external_version_id")
     @classmethod
     def validate_identity(cls, value: str, info: ValidationInfo) -> str:
-        return _require_non_blank(value, f"TargetRef {info.field_name}")
+        return require_non_blank(value, f"TargetRef {info.field_name}")
 
 
 class ToolDescriptor(DomainModel):
@@ -116,7 +110,7 @@ class ToolDescriptor(DomainModel):
     @field_validator("name")
     @classmethod
     def validate_name(cls, value: str) -> str:
-        return _require_non_blank(value, "Tool name")
+        return require_non_blank(value, "Tool name")
 
 
 class SkillDescriptor(DomainModel):
@@ -136,7 +130,7 @@ class SkillDescriptor(DomainModel):
     @field_validator("external_skill_id", "external_version_id", "name")
     @classmethod
     def validate_identity(cls, value: str, info: ValidationInfo) -> str:
-        return _require_non_blank(value, f"Skill {info.field_name}")
+        return require_non_blank(value, f"Skill {info.field_name}")
 
     @field_validator("prompt_sha256")
     @classmethod
@@ -176,7 +170,7 @@ class TargetDescriptor(DomainModel):
     @field_validator("display_name")
     @classmethod
     def validate_display_name(cls, value: str) -> str:
-        return _require_non_blank(value, "Target display_name")
+        return require_non_blank(value, "Target display_name")
 
     @field_validator("prompt_sha256")
     @classmethod
@@ -241,7 +235,7 @@ class TargetSnapshot(DomainModel):
     @field_validator("display_name", "adapter_type", "adapter_version")
     @classmethod
     def validate_identity(cls, value: str, info: ValidationInfo) -> str:
-        return _require_non_blank(value, f"TargetSnapshot {info.field_name}")
+        return require_non_blank(value, f"TargetSnapshot {info.field_name}")
 
     @field_validator("descriptor_sha256")
     @classmethod
@@ -257,7 +251,7 @@ class TargetSnapshot(DomainModel):
     @classmethod
     def validate_credential_ref(cls, value: str | None) -> str | None:
         if value is not None:
-            return _require_non_blank(value, "credential_ref")
+            return require_non_blank(value, "credential_ref")
         return value
 
     @field_validator("invocation_config")

@@ -8,7 +8,7 @@ from enum import StrEnum
 
 from pydantic import Field, ValidationInfo, field_validator, model_validator
 
-from .base import DomainModel, FrozenJsonObject
+from .base import DomainModel, FrozenJsonObject, require_non_blank
 
 
 _TRACE_ID_PATTERN = re.compile(r"^[0-9a-f]{32}$")
@@ -64,10 +64,8 @@ class TraceSpan(DomainModel):
 
     @field_validator("name", "operation_type")
     @classmethod
-    def require_non_blank(cls, value: str) -> str:
-        if not value.strip():
-            raise ValueError("span name and operation_type must not be blank")
-        return value
+    def validate_non_blank(cls, value: str, info: ValidationInfo) -> str:
+        return require_non_blank(value, f"TraceSpan {info.field_name}")
 
     @field_validator("started_at", "ended_at")
     @classmethod
@@ -101,10 +99,8 @@ class Trace(DomainModel):
 
     @field_validator("run_id", "case_id")
     @classmethod
-    def require_non_blank(cls, value: str) -> str:
-        if not value.strip():
-            raise ValueError("run_id and case_id must not be blank")
-        return value
+    def validate_non_blank(cls, value: str, info: ValidationInfo) -> str:
+        return require_non_blank(value, f"Trace {info.field_name}")
 
     @model_validator(mode="after")
     def validate_spans(self) -> "Trace":

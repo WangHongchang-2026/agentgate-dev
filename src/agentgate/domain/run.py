@@ -9,10 +9,10 @@ from uuid import uuid4
 
 from pydantic import Field, ValidationInfo, field_validator, model_validator
 
-from .base import DomainModel, content_sha256
+from .base import DomainModel, content_sha256, require_non_blank
 from .dataset import DatasetVersion, DatasetVersionStatus
 from .evaluator import EvaluatorSpec
-from .gate import GateSpec
+from .gate import ReleaseGateSpec
 from .metric import MetricPlan
 from .target import TargetSnapshot
 
@@ -24,12 +24,6 @@ def utcnow() -> datetime:
     """Return the current timezone-aware UTC timestamp."""
 
     return datetime.now(UTC)
-
-
-def _require_non_blank(value: str, field_name: str) -> str:
-    if not value.strip():
-        raise ValueError(f"{field_name} must not be blank")
-    return value
 
 
 def _normalize_utc(value: datetime | None, field_name: str) -> datetime | None:
@@ -58,7 +52,7 @@ class RunManifest(DomainModel):
     evaluator_specs: tuple[EvaluatorSpec, ...] = Field(min_length=1)
     primary_evaluator_ids: tuple[str, ...] = Field(min_length=1)
     metric_plan: MetricPlan
-    gate_spec: GateSpec
+    gate_spec: ReleaseGateSpec
     timeout_seconds: float = Field(default=300, gt=0)
     max_retries: int = Field(default=0, ge=0)
     max_parallel_cases: int = Field(default=1, ge=1)
@@ -150,7 +144,7 @@ class EvaluationRun(DomainModel):
     @field_validator("id")
     @classmethod
     def validate_id(cls, value: str) -> str:
-        return _require_non_blank(value, "EvaluationRun id")
+        return require_non_blank(value, "EvaluationRun id")
 
     @field_validator("created_at", "started_at", "completed_at")
     @classmethod
@@ -163,7 +157,7 @@ class EvaluationRun(DomainModel):
     @classmethod
     def validate_error(cls, value: str | None) -> str | None:
         if value is not None:
-            return _require_non_blank(value, "EvaluationRun error")
+            return require_non_blank(value, "EvaluationRun error")
         return value
 
     @model_validator(mode="after")

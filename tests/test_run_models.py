@@ -4,7 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from agentgate.domain import (
-    EvaluationRun, EvaluatorSpec, GateSpec, MetricPlan, RunManifest, RunStatus,
+    EvaluationRun, EvaluatorSpec, ReleaseGateSpec, MetricPlan, RunManifest, RunStatus,
     TargetRef, TargetSnapshot, TargetType, transition_run,
 )
 from agentgate.demo.loan import LOAN_DATASET_VERSION
@@ -38,7 +38,7 @@ def manifest(**overrides: object) -> RunManifest:
         "evaluator_specs": (evaluator(),),
         "primary_evaluator_ids": ("state",),
         "metric_plan": MetricPlan(),
-        "gate_spec": GateSpec(),
+        "gate_spec": ReleaseGateSpec(),
         "created_at": datetime(2026, 9, 5, tzinfo=UTC),
     }
     values.update(overrides)

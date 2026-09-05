@@ -7,14 +7,8 @@ from uuid import uuid4
 
 from pydantic import Field, ValidationInfo, field_validator, model_validator
 
-from .base import DomainModel, FrozenJsonObject
+from .base import DomainModel, FrozenJsonObject, require_non_blank
 from .expectation import Expectation
-
-
-def _require_non_blank(value: str, field_name: str) -> str:
-    if not value.strip():
-        raise ValueError(f"{field_name} must not be blank")
-    return value
 
 
 def _require_unique_non_blank(values: tuple[str, ...], field_name: str) -> tuple[str, ...]:
@@ -52,7 +46,7 @@ class CaseTurn(DomainModel):
     @field_validator("id")
     @classmethod
     def validate_id(cls, value: str) -> str:
-        return _require_non_blank(value, "CaseTurn id")
+        return require_non_blank(value, "CaseTurn id")
 
 
 class Case(DomainModel):
@@ -70,7 +64,7 @@ class Case(DomainModel):
     @field_validator("id", "name")
     @classmethod
     def validate_identity(cls, value: str, info: ValidationInfo) -> str:
-        return _require_non_blank(value, f"Case {info.field_name}")
+        return require_non_blank(value, f"Case {info.field_name}")
 
     @field_validator("tags")
     @classmethod

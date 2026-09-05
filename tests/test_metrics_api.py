@@ -27,7 +27,8 @@ def test_config_catalogs_and_real_report_metrics(tmp_path):
         report = client.get(f"/api/runs/{response.json()['id']}").json()
         assert len(report["results"]) == 3
         metrics = {(item["level"], item["key"]): item for item in report["metrics"]}
-        assert metrics[("dimension", "tool_use")]["label"] == "工具准确率"
+        assert metrics[("dimension", "tool_use")]["key"] == "tool_use"
+        assert "label" not in metrics[("dimension", "tool_use")]
         assert metrics[("dimension", "tool_use")]["score"] == 0.25
         assert metrics[("overall", "overall")]["score"] == 0.25
 

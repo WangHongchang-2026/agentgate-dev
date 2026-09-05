@@ -9,10 +9,10 @@ def test_risky_fails_and_fixed_improves(tmp_path):
     fixed = service.launch("loan-agent-v2-fixed")
     risky_report = service.run_detail(risky.id)
     fixed_report = service.run_detail(fixed.id)
-    assert risky_report.gate.outcome == "fail"
-    assert risky_report.gate.failed >= 3
-    assert fixed_report.gate.outcome == "pass"
-    assert fixed_report.gate.score > risky_report.gate.score
+    assert risky_report.release_gate.outcome == "fail"
+    assert risky_report.metrics[0].failed >= 3
+    assert fixed_report.release_gate.outcome == "pass"
+    assert fixed_report.release_gate.score > risky_report.release_gate.score
     assert len(repository.list_traces(risky.id)) == 1
     assert len(repository.list_results(fixed.id)) == 7
     failures = [result for result in risky_report.results if result.outcome == "fail"]

@@ -13,9 +13,12 @@ from .expectation import (
     StateExpectation, ToolArgumentExpectation, ToolCallExpectation, WithinRange,
     WithinTolerance,
 )
-from .gate import GateDecision, GateSpec
-from .metric import MetricPlan, MetricSummary
-from .report import RunReport
+from .gate import (
+    ReleaseGateDecision, ReleaseGateOutcome, ReleaseGateReason, ReleaseGateSpec,
+    classify_release_gate,
+)
+from .metric import MetricLevel, MetricPlan, MetricSummary
+from .report import EvaluationReport
 from .result import (
     CheckResult, EvaluationResult, EvaluatorErrorDetail, FailureStage,
     JudgeRecord, MethodRef, Outcome,

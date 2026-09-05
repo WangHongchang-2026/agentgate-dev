@@ -12,6 +12,14 @@ from pydantic import BaseModel, ConfigDict
 from pydantic_core import core_schema
 
 
+def require_non_blank(value: str, field_name: str) -> str:
+    """Return a nonblank string or raise a field-specific validation error."""
+
+    if not value.strip():
+        raise ValueError(f"{field_name} must not be blank")
+    return value
+
+
 class FrozenJsonObject(Mapping[str, Any]):
     """Recursively immutable JSON object with Pydantic serialization support."""
 

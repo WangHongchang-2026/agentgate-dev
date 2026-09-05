@@ -1,10 +1,12 @@
 import pytest
 
+from pydantic import ValidationError
+
 from agentgate.domain import (
-    CheckResult, EvaluationResult, FailureStage, EvaluatorKind, MetricPlan,
+    CheckResult, EvaluationResult, FailureStage, EvaluatorKind, MetricPlan, MetricSummary,
     Outcome, EvaluatorSeverity,
 )
-from agentgate.result.calc_metrics import calculate_metrics
+from agentgate.result.metrics import calculate_metrics
 
 
 def result(case, evaluator, metric, dimension, score, kind=EvaluatorKind.RULE):
@@ -45,3 +47,42 @@ def test_metric_dimension_kind_and_overall_paths_do_not_double_count():
     assert by_key[("dimension", "state")].score == 1.0
     assert by_key[("kind", "rule")].score == pytest.approx(2 / 3)
     assert by_key[("overall", "overall")].score == 0.75
+
+
+def test_metric_summary_enforces_count_and_score_invariants():
+    with pytest.raises(ValidationError, match="total must equal"):
+        MetricSummary(
+            key="routing", level="metric", score=1.0, passed=1, applicable=1
+        )
+    with pytest.raises(ValidationError, match="score must exist"):
+        MetricSummary(key="routing", level="metric", total=0, score=1.0)
+    with pytest.raises(ValidationError, match="overall level and key"):
+        MetricSummary(key="overall", level="metric")
+
+
+def test_metric_contract_keeps_identity_separate_from_display_text():
+    assert MetricPlan().model_dump() == {"id": "p1-equal-mean", "version": "1"}
+    summary = MetricSummary(
+        key="customer_metric",
+        level="metric",
+        score=1.0,
+        passed=1,
+        applicable=1,
+        total=1,
+    )
+    assert summary.model_dump()["key"] == "customer_metric"
+    assert "label" not in summary.model_dump()
+
+
+def test_metric_plan_version_must_have_an_implementation():
+    with pytest.raises(ValueError, match="unsupported MetricPlan"):
+        calculate_metrics([], (), MetricPlan(version="2"))
+
+
+def test_one_metric_key_cannot_belong_to_multiple_dimensions():
+    results = [
+        result("a", "one", "shared", "routing", 1.0),
+        result("b", "two", "shared", "tool_use", 1.0),
+    ]
+    with pytest.raises(ValueError, match="belongs to multiple dimensions"):
+        calculate_metrics(results, ("one", "two"), MetricPlan())

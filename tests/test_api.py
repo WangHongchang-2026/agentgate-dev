@@ -13,7 +13,7 @@ def test_api_evaluation_and_persisted_trace(tmp_path):
         assert response.status_code == 201
         run_id = response.json()["id"]
         report = client.get(f"/api/runs/{run_id}").json()
-        assert report["gate"]["outcome"] == "fail"
+        assert report["release_gate"]["outcome"] == "fail"
         trace = client.get(f"/api/runs/{run_id}/traces/high-risk-approval")
         assert trace.status_code == 200
         assert any(span["name"] == "approve_loan" for span in trace.json()["spans"])

@@ -9,19 +9,13 @@ from uuid import uuid4
 
 from pydantic import Field, ValidationInfo, field_serializer, field_validator, model_validator
 
-from .base import DomainModel, freeze_json
+from .base import DomainModel, freeze_json, require_non_blank
 from .evaluator import EvaluatorKind, EvaluatorSeverity
 
 
 _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 _TRACE_ID_PATTERN = re.compile(r"^[0-9a-f]{32}$")
 _SPAN_ID_PATTERN = re.compile(r"^[0-9a-f]{16}$")
-
-
-def _require_non_blank(value: str, field_name: str) -> str:
-    if not value.strip():
-        raise ValueError(f"{field_name} must not be blank")
-    return value
 
 
 class Outcome(StrEnum):
@@ -54,7 +48,7 @@ class MethodRef(DomainModel):
     @field_validator("implementation_id", "implementation_version")
     @classmethod
     def validate_identity(cls, value: str, info: ValidationInfo) -> str:
-        return _require_non_blank(value, f"MethodRef {info.field_name}")
+        return require_non_blank(value, f"MethodRef {info.field_name}")
 
 
 class JudgeRecord(DomainModel):
@@ -73,14 +67,14 @@ class JudgeRecord(DomainModel):
     @field_validator("provider_id", "requested_model")
     @classmethod
     def validate_required_text(cls, value: str, info: ValidationInfo) -> str:
-        return _require_non_blank(value, f"JudgeRecord {info.field_name}")
+        return require_non_blank(value, f"JudgeRecord {info.field_name}")
 
     @field_validator("resolved_model", "request_id")
     @classmethod
     def validate_optional_text(
         cls, value: str | None, info: ValidationInfo
     ) -> str | None:
-        return _require_non_blank(value, f"JudgeRecord {info.field_name}") if value else None
+        return require_non_blank(value, f"JudgeRecord {info.field_name}") if value else None
 
     @field_validator("request_sha256")
     @classmethod
@@ -102,12 +96,12 @@ class EvaluatorErrorDetail(DomainModel):
     @field_validator("category", "exception_type", "message")
     @classmethod
     def validate_required_text(cls, value: str, info: ValidationInfo) -> str:
-        return _require_non_blank(value, f"EvaluatorErrorDetail {info.field_name}")
+        return require_non_blank(value, f"EvaluatorErrorDetail {info.field_name}")
 
     @field_validator("reference")
     @classmethod
     def validate_reference(cls, value: str | None) -> str | None:
-        return _require_non_blank(value, "EvaluatorErrorDetail reference") if value else None
+        return require_non_blank(value, "EvaluatorErrorDetail reference") if value else None
 
 
 class CheckResult(DomainModel):
@@ -132,14 +126,14 @@ class CheckResult(DomainModel):
     @field_validator("id", "name", "reason")
     @classmethod
     def validate_required_text(cls, value: str, info: ValidationInfo) -> str:
-        return _require_non_blank(value, f"CheckResult {info.field_name}")
+        return require_non_blank(value, f"CheckResult {info.field_name}")
 
     @field_validator("turn_id", "expectation_id")
     @classmethod
     def validate_optional_text(
         cls, value: str | None, info: ValidationInfo
     ) -> str | None:
-        return _require_non_blank(value, f"CheckResult {info.field_name}") if value else None
+        return require_non_blank(value, f"CheckResult {info.field_name}") if value else None
 
     @field_validator("expected", "actual", mode="before")
     @classmethod
@@ -227,7 +221,7 @@ class EvaluationResult(DomainModel):
     )
     @classmethod
     def validate_required_text(cls, value: str, info: ValidationInfo) -> str:
-        return _require_non_blank(value, f"EvaluationResult {info.field_name}")
+        return require_non_blank(value, f"EvaluationResult {info.field_name}")
 
     @field_validator("trace_id")
     @classmethod

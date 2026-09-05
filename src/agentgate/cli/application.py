@@ -26,7 +26,7 @@ def evaluate(version: str = typer.Option("loan-agent-v2-fixed", help="ç›®æ ‡ä»£ç
     typer.echo(json.dumps({
         "run_id": run.id,
         "status": run.status,
-        "gate": report.gate.model_dump(mode="json"),
+        "release_gate": report.release_gate.model_dump(mode="json"),
     }, ensure_ascii=False))
 
 
@@ -45,7 +45,7 @@ def show(run_id: str, database: Path | None = typer.Option(None, help="SQLite æ•
         "run": report.run.model_dump(mode="json"),
         "results": [item.model_dump(mode="json") for item in report.results],
         "metrics": [item.model_dump(mode="json") for item in report.metrics],
-        "gate": report.gate.model_dump(mode="json"),
+        "release_gate": report.release_gate.model_dump(mode="json"),
     }, ensure_ascii=False))
 
 

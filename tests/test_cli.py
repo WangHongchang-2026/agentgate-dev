@@ -11,4 +11,4 @@ def test_cli_runs_demo(tmp_path):
     assert result.exit_code == 0, result.output
     payload = json.loads(result.output)
     assert payload["status"] == "completed"
-    assert payload["gate"]["outcome"] == "pass"
+    assert payload["release_gate"]["outcome"] == "pass"

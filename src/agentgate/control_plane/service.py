@@ -43,7 +43,7 @@ class EvaluationService:
     def overview(self) -> dict:
         runs = self.repository.list_runs()
         completed = [run for run in runs if run.status == "completed"]
-        latest = self.engine.report(runs[0].id) if runs else None
+        latest = self.engine.report(completed[0].id) if completed else None
         case_count = sum(
             len(version.cases)
             for dataset in self.dataset_service.list_datasets()

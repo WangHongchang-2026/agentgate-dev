@@ -68,4 +68,4 @@ def test_multi_turn_session_produces_turn_aware_trace_and_checks(tmp_path):
     state = next(item for item in report.results if item.evaluator_id == "final-state")
     assert output.checks[0].turn_id == "collect"
     assert state.checks[0].turn_id == "decide"
-    assert report.gate.outcome == "pass"
+    assert report.release_gate.outcome == "pass"

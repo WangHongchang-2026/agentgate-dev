@@ -9,7 +9,7 @@ from uuid import uuid4
 
 from pydantic import Field, ValidationInfo, field_validator
 
-from .base import DomainModel, FrozenJsonObject
+from .base import DomainModel, FrozenJsonObject, require_non_blank
 
 
 _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
@@ -19,12 +19,6 @@ def utcnow() -> datetime:
     """Return the current timezone-aware UTC timestamp."""
 
     return datetime.now(UTC)
-
-
-def _require_non_blank(value: str, field_name: str) -> str:
-    if not value.strip():
-        raise ValueError(f"{field_name} must not be blank")
-    return value
 
 
 class ArtifactProducer(StrEnum):
@@ -64,7 +58,7 @@ class Artifact(DomainModel):
     )
     @classmethod
     def validate_required_text(cls, value: str, info: ValidationInfo) -> str:
-        return _require_non_blank(value, f"Artifact {info.field_name}")
+        return require_non_blank(value, f"Artifact {info.field_name}")
 
     @field_validator("trace_id", "producer_name")
     @classmethod
@@ -72,7 +66,7 @@ class Artifact(DomainModel):
         cls, value: str | None, info: ValidationInfo
     ) -> str | None:
         if value is not None:
-            return _require_non_blank(value, f"Artifact {info.field_name}")
+            return require_non_blank(value, f"Artifact {info.field_name}")
         return value
 
     @field_validator("sha256")

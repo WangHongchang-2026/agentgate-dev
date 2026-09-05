@@ -86,11 +86,14 @@ Current Level 2 progress:
 - `storage/`: completed.
 - `cli/`: completed.
 - `server/`: completed.
-- `domain/`: Level 2 completed.
-- Level 3 is intentionally deferred to implementation review.
+- `domain/`: Level 2 and file-by-file Level 3 implementation review completed.
+- Other packages receive Level 3 review when their implementation work begins.
 - Consolidated architecture: `docs/architecture.md`.
-- Domain implementation completed through `result.py` on `refactor-1`.
-- Current next domain item: `domain/metric.py`.
+- Domain implementation and the `domain/__init__.py` public-export audit are complete on `refactor-1`.
+- Metric, Gate, and Report implementations are aligned with the final domain contracts.
+- Repeated nonblank-string validation is centralized as `domain/base.py::require_non_blank`;
+  feature models compose the function without validator inheritance.
+- Current next checkpoint: review and commit the completed contract changes.
 
 ## Global architecture decisions
 
@@ -397,14 +400,19 @@ result/
 
 Confirmed responsibilities:
 
-- `metrics.py`: calculate and aggregate Result summaries by metric, quality dimension,
-  evaluator kind, and overall score. It preserves the implemented P1 behavior from
-  `calc_metrics.py`, which is renamed because module names should describe the owned
-  concept rather than one function.
-- `gate.py`: apply the snapshotted Gate specification to evaluation Results and produce a
-  Gate decision. It does not execute Evaluators or own release scheduling.
-- `report.py`: assemble one structured Run report from the Run, Results, Metrics, Gate
-  decision, and Trace/Artifact references. The implemented P1 behavior in `service.py`
+- `metrics.py`: calculate and aggregate primary Result summaries by metric, quality
+  dimension, evaluator kind, and overall score. It implements the exact `MetricPlan`
+  identified in the Run manifest and rejects unsupported plan versions or one metric key
+  assigned to multiple dimensions. Metric summaries contain machine keys; display labels
+  belong to the presentation layer. The inherited `calc_metrics.py` name is removed.
+- `gate.py`: gather primary Result facts, consume the overall Metric score, and apply the
+  snapshotted release-gate specification. Gate decisions contain a typed reason code and
+  missing-result references; Result counts remain in Metrics. Metrics do not expose a
+  separate `incomplete` flag because errors and missing Results already have distinct,
+  queryable representations.
+- `report.py`: assemble one validated report from a completed Run, Results, Metrics, and
+  release-gate decision. Trace references remain on Results; Artifact linkage is added only
+  when a real Artifact producer requires it. The implemented P1 behavior in `service.py`
   moves here because building a report is its actual responsibility.
 - `comparison.py`: compare completed Runs for regression, Agent/model/Prompt version
   differences, newly passed or failed Cases, metric differences, and Gate changes. It is a
@@ -421,7 +429,9 @@ Evaluation Results -> metrics.py -> gate.py -> report.py
 Rules:
 
 - Metrics answer how one Run performed.
-- Gate answers whether one Run met configured thresholds.
+- Gate answers whether one Run met configured thresholds and fails closed for missing,
+  errored, blocking, review-required, or wholly inapplicable results. Individual
+  not-applicable Results do not block an otherwise measurable Run.
 - Report packages one Run's conclusion.
 - Comparison answers what changed between Runs.
 - Comparison does not own experimental design, statistical significance, or winner

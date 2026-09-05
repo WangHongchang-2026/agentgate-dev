@@ -10,7 +10,7 @@ from uuid import uuid4
 
 from pydantic import Field, ValidationInfo, field_validator, model_validator
 
-from .base import DomainModel, FrozenJsonObject, content_sha256
+from .base import DomainModel, FrozenJsonObject, content_sha256, require_non_blank
 from .target import TargetRef
 
 
@@ -21,12 +21,6 @@ def utcnow() -> datetime:
     """Return the current timezone-aware UTC timestamp."""
 
     return datetime.now(UTC)
-
-
-def _require_non_blank(value: str, field_name: str) -> str:
-    if not value.strip():
-        raise ValueError(f"{field_name} must not be blank")
-    return value
 
 
 def _normalize_utc(value: datetime, field_name: str) -> datetime:
@@ -77,7 +71,7 @@ class SkillAnalysisFinding(DomainModel):
     @field_validator("id", "check_id", "category", "reason")
     @classmethod
     def validate_required_text(cls, value: str, info: ValidationInfo) -> str:
-        return _require_non_blank(value, f"SkillAnalysisFinding {info.field_name}")
+        return require_non_blank(value, f"SkillAnalysisFinding {info.field_name}")
 
     @field_validator("skill_ids", "suggestions")
     @classmethod
@@ -118,7 +112,7 @@ class SkillAnalysisReport(DomainModel):
     @field_validator("id", "analyzer_version")
     @classmethod
     def validate_required_text(cls, value: str, info: ValidationInfo) -> str:
-        return _require_non_blank(value, f"SkillAnalysisReport {info.field_name}")
+        return require_non_blank(value, f"SkillAnalysisReport {info.field_name}")
 
     @field_validator("target_descriptor_sha256", "content_sha256")
     @classmethod
@@ -172,14 +166,16 @@ class SkillAnalysisReview(DomainModel):
     @field_validator("finding_id", "reviewer_id")
     @classmethod
     def validate_identity(cls, value: str, info: ValidationInfo) -> str:
-        return _require_non_blank(value, f"SkillAnalysisReview {info.field_name}")
+        return require_non_blank(value, f"SkillAnalysisReview {info.field_name}")
 
     @field_validator("comment")
     @classmethod
     def validate_comment(cls, value: str | None) -> str | None:
-        if value is not None and not value.strip():
-            raise ValueError("SkillAnalysisReview comment must not be blank")
-        return value
+        return (
+            require_non_blank(value, "SkillAnalysisReview comment")
+            if value is not None
+            else None
+        )
 
     @field_validator("reviewed_at")
     @classmethod

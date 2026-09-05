@@ -57,20 +57,16 @@ export interface EvaluationResult {
   primary_failure_stage?: string
   checks: CheckResult[]
 }
-export interface Gate {
+export type ReleaseGateReason = 'threshold_met'|'score_below_threshold'|'missing_results'|'evaluator_error'|'blocking_failure'|'review_required'|'no_applicable_results'
+export interface ReleaseGate {
   outcome: 'pass'|'fail'
-  passed: number
-  failed: number
-  reviewed: number
-  not_applicable: number
-  errors: number
+  missing_results: [string, string][]
   score: number|null
-  threshold: number
-  reason: string
+  minimum_score: number
+  reason_code: ReleaseGateReason
 }
 export interface Metric {
   key: string
-  label: string
   level: 'overall'|'kind'|'dimension'|'metric'
   score: number|null
   passed: number
@@ -80,9 +76,8 @@ export interface Metric {
   errors: number
   applicable: number
   total: number
-  incomplete: boolean
 }
-export interface Report { run: Run; results: EvaluationResult[]; gate: Gate; metrics: Metric[] }
+export interface Report { run: Run; results: EvaluationResult[]; release_gate: ReleaseGate; metrics: Metric[] }
 export interface TraceOutcome {
   input: Record<string, unknown>
   output: Record<string, unknown>

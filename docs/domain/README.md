@@ -49,6 +49,8 @@ domain/
 
 - `DomainModel` makes Pydantic domain values immutable, rejects undeclared fields, and
   validates default values as well as caller-provided values.
+- `require_non_blank()` is the shared scalar string validator. Domain modules compose it
+  inside field validators instead of defining local helpers or validator base classes.
 - `FrozenJsonObject` recursively freezes JSON objects. Nested objects become
   `FrozenJsonObject` instances and arrays become tuples.
 - `freeze_json()` converts data entering the domain into immutable JSON values;
@@ -200,6 +202,29 @@ results for Judge provenance. Method provenance exists only on Check results; th
 is no duplicated Result-level method or Evidence collection. File and multimodal references
 remain deferred until Artifact production and evaluation are implemented.
 
+## Metric Models
+
+`MetricPlan` identifies the exact aggregation algorithm by `id` and `version`; fixed
+single-value policy fields are not repeated in every Run manifest. `MetricSummary` stores
+a machine key, typed aggregation level, score, and outcome counts. It enforces count totals,
+applicable-result totals, score presence, and the reserved `overall` key. Human-readable
+labels are resolved by the presentation layer. A metric key may be customer-defined, but
+one key cannot belong to multiple dimensions in one Run.
+
+## Gate Models
+
+`ReleaseGateSpec` versions the only configurable POC rule: `minimum_score`. Fixed
+fail-closed behavior is expressed once by `classify_release_gate`. `ReleaseGateDecision`
+contains the pass/fail outcome, typed reason code, score, threshold, and missing
+Case/Evaluator pairs. Counts remain in `MetricSummary`; display text remains in the UI.
+
+## Report Model
+
+`EvaluationReport` is the validated aggregate for one completed Run. It accepts an empty
+Result collection so missing execution output can still produce a fail-closed report. It
+checks Result identity and Evaluator provenance against `RunManifest`, verifies overall
+Metric counts, and confirms the Gate decision against the same primary Results.
+
 ## Relationship
 
 ```text
@@ -246,8 +271,8 @@ These ranges guide review and planning; they are not enforced limits.
 | `artifact.py` | 60-100 |
 | `result.py` | 160-240 |
 | `metric.py` | 50-100 |
-| `gate.py` | 40-80 |
-| `report.py` | 30-70 |
+| `gate.py` | 90-140 |
+| `report.py` | 130-190 |
 | **Total** | **1,550-2,400** |
 
 Expected domain-test size is approximately 1,200-2,000 lines. When a domain module grows
@@ -306,7 +331,7 @@ Keep configuration separate from calculated facts:
 
 - `EvaluatorSpec` defines evaluation; `EvaluationResult` records its outcome.
 - `MetricPlan` defines aggregation; `MetricSummary` records calculated metrics.
-- `GateSpec` defines thresholds; `GateDecision` records the decision.
+- `ReleaseGateSpec` defines the minimum score; `ReleaseGateDecision` records the decision.
 - `TargetSnapshot` identifies what was executed; `Trace` records observed behavior.
 
 ### Time

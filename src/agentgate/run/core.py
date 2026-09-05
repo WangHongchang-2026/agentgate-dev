@@ -3,11 +3,11 @@ from __future__ import annotations
 from typing import Protocol
 
 from agentgate.domain import (
-    Case, DatasetVersion, DatasetVersionStatus, GateSpec, MetricPlan, EvaluationRun, RunManifest,
+    Case, DatasetVersion, DatasetVersionStatus, ReleaseGateSpec, MetricPlan, EvaluationRun, RunManifest,
     RunStatus, TargetRef, TargetSnapshot, TargetType, Trace, content_sha256, transition_run,
 )
 from agentgate.evaluator import EVALUATORS, evaluate_case, validate_evaluation_plan
-from agentgate.result.service import build_report
+from agentgate.result.report import build_evaluation_report
 from agentgate.storage.base import AgentGateRepository
 
 
@@ -70,7 +70,7 @@ class RunEngine:
             evaluator_specs=selected,
             primary_evaluator_ids=tuple(item.id for item in selected),
             metric_plan=MetricPlan(),
-            gate_spec=GateSpec(),
+            gate_spec=ReleaseGateSpec(),
         )
         run = transition_run(EvaluationRun(manifest=manifest), RunStatus.RUNNING)
         self.repository.save_run(run)
@@ -93,6 +93,6 @@ class RunEngine:
 
     def report(self, run_id: str):
         run = self.repository.get_run(run_id)
-        if run is None:
+        if run is None or run.status != RunStatus.COMPLETED:
             return None
-        return build_report(run, self.repository.list_results(run_id))
+        return build_evaluation_report(run, self.repository.list_results(run_id))

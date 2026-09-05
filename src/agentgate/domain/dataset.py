@@ -8,7 +8,7 @@ from uuid import uuid4
 
 from pydantic import Field, ValidationInfo, field_validator, model_validator
 
-from .base import DomainModel, content_sha256
+from .base import DomainModel, content_sha256, require_non_blank
 from .case import Case
 
 
@@ -16,12 +16,6 @@ def utcnow() -> datetime:
     """Return the current timezone-aware UTC timestamp."""
 
     return datetime.now(UTC)
-
-
-def _require_non_blank(value: str, field_name: str) -> str:
-    if not value.strip():
-        raise ValueError(f"{field_name} must not be blank")
-    return value
 
 
 def _normalize_utc(value: datetime | None, field_name: str) -> datetime | None:
@@ -52,7 +46,7 @@ class Dataset(DomainModel):
     @field_validator("id", "name")
     @classmethod
     def validate_identity(cls, value: str, info: ValidationInfo) -> str:
-        return _require_non_blank(value, f"Dataset {info.field_name}")
+        return require_non_blank(value, f"Dataset {info.field_name}")
 
     @field_validator("created_at", "updated_at")
     @classmethod
@@ -88,7 +82,7 @@ class DatasetVersion(DomainModel):
     @field_validator("id", "dataset_id")
     @classmethod
     def validate_identity(cls, value: str, info: ValidationInfo) -> str:
-        return _require_non_blank(value, f"DatasetVersion {info.field_name}")
+        return require_non_blank(value, f"DatasetVersion {info.field_name}")
 
     @field_validator("created_at", "updated_at", "published_at")
     @classmethod
