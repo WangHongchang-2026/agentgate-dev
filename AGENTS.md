@@ -49,3 +49,26 @@ and outputs, and can be composed with other components.
   and returned values rather than hidden hooks or subclass overrides.
 - Keep stable concepts typed. Use versioned configuration or extensible identifiers only
   for details expected to evolve frequently.
+
+## Coding Style
+
+- Prefer plain functions for transformations and orchestration. Introduce a class only
+  when the data has meaningful invariants, identity, lifecycle, or stateful behavior.
+- Do not create passive wrapper classes for a few fields when those fields have no
+  independent invariant or reuse.
+- Keep dependencies explicit through parameters and return values. Avoid hidden global
+  state, implicit registration, and import-time side effects.
+- Use typed models for stable business contracts. Use dictionaries only for genuinely
+  open-ended JSON configuration, metadata, or external payloads.
+- Use enums or literals for closed values that control behavior. Use validated strings for
+  business labels and extension points expected to grow without core-code changes.
+- Domain code must not depend on API, UI, storage, scheduler, or integration code. Invalid
+  domain states should be rejected when the object is constructed.
+- Do not implement a capability until it has a real producer and consumer. Record future
+  extension points in documentation instead of adding unused fields or abstractions.
+- Prefer precise business names such as `EvaluationResult` over generic names such as
+  `Result`, `Data`, `Manager`, or `Service` when a more specific concept exists.
+- Keep comments short and use them only for non-obvious constraints or decisions. Do not
+  narrate straightforward code.
+- Tests should verify public behavior, domain invariants, serialization boundaries, and
+  failure cases. Do not couple tests to private implementation details.
