@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 from uuid import uuid4
 
 from pydantic import Field, ValidationInfo, field_serializer, field_validator, model_validator
@@ -93,7 +93,7 @@ class JudgeRecord(DomainModel):
 class EvaluatorErrorDetail(DomainModel):
     """Sanitized information about an Evaluator execution failure."""
 
-    category: str
+    category: Literal["crash", "timeout", "invalid_output"]
     exception_type: str
     message: str
     retryable: bool = False
@@ -283,8 +283,8 @@ class EvaluationResult(DomainModel):
         elif self.error_detail is not None:
             raise ValueError("only error results may carry error_detail")
 
-        if self.evaluator_kind == EvaluatorKind.RULE and self.judge_record is not None:
-            raise ValueError("Rule results cannot carry judge_record")
+        if self.evaluator_kind != EvaluatorKind.LLM_JUDGE and self.judge_record is not None:
+            raise ValueError("only LLM Judge results may carry judge_record")
         if (
             self.evaluator_kind == EvaluatorKind.LLM_JUDGE
             and self.outcome in (Outcome.PASS, Outcome.FAIL, Outcome.REVIEW)

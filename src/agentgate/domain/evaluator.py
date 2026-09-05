@@ -130,6 +130,24 @@ class EvaluatorSpec(DomainModel):
 
     @model_validator(mode="after")
     def validate_composition_and_hash(self) -> "EvaluatorSpec":
+        if self.kind == EvaluatorKind.LLM_JUDGE:
+            model = self.config.get("model")
+            if not isinstance(model, Mapping):
+                raise ValueError("LLM Judge config requires a model object")
+            for field_name in ("provider_id", "model_id"):
+                value = model.get(field_name)
+                if not isinstance(value, str) or not value.strip():
+                    raise ValueError(
+                        f"LLM Judge config model.{field_name} must not be blank"
+                    )
+            credential_ref = model.get("credential_ref")
+            if credential_ref is not None and (
+                not isinstance(credential_ref, str) or not credential_ref.strip()
+            ):
+                raise ValueError(
+                    "LLM Judge config model.credential_ref must not be blank"
+                )
+
         child_keys = tuple(
             (child.evaluator_id, child.evaluator_version) for child in self.children
         )

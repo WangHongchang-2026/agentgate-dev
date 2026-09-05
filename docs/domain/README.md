@@ -141,7 +141,9 @@ hierarchy. Hybrid composition explicitly uses all, any, or weighted-score semant
 Dimensions and implementation identifiers remain extensible strings.
 
 Rule operators, Judge model and Prompt settings, thresholds, and future method-specific
-options live in immutable versioned configuration. Plaintext credentials are rejected.
+options live in immutable versioned configuration. LLM Judge model configuration
+requires explicit `provider_id` and `model_id`; an optional `credential_ref` never contains
+the secret itself. Plaintext credentials are rejected.
 Runtime execution belongs in `evaluator/`; scores, verdicts, Judge responses, and method
 provenance belong in `domain/result.py`.
 
@@ -190,11 +192,11 @@ Span must also appear in the check evidence.
 `EvaluationResult` records one Evaluator conclusion for one Case and directly identifies the
 normalized Trace used. It retains Evaluator display metadata, version, and content hash so
 historical results remain independently queryable. Outcome, score, checks, earliest failure,
-Judge record, and sanitized error detail are validated as one coherent state.
+Judge record, and sanitized error detail are validated as one coherent state. Evaluator error categories are a controlled execution protocol: crash, timeout, or invalid output.
 
 `JudgeRecord.request_sha256` hashes the canonical request JSON actually sent to the Judge,
-including rendered messages, rubric, and model parameters but excluding credentials. Rule
-results cannot contain Judge records. Method provenance exists only on Check results; there
+including rendered messages, rubric, and model parameters but excluding credentials. Only LLM Judge results may contain Judge records; Hybrid results rely on their child
+results for Judge provenance. Method provenance exists only on Check results; there
 is no duplicated Result-level method or Evidence collection. File and multimodal references
 remain deferred until Artifact production and evaluation are implemented.
 

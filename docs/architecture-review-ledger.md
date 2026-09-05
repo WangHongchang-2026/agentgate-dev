@@ -161,6 +161,8 @@ Confirmed rules:
 - Future execution-capacity concepts may include `TargetExecutionProfile`, but the exact domain structure remains to be reviewed.
 - Domain Trace uses exact OTel Trace/Span IDs, extensible operation types, immutable JSON evidence, and no separate TraceTurn class.
 - `EvaluationResult` directly owns `trace_id`; Check results own Span references and flattened failure location. Legacy Evidence and FailureObservation wrappers are removed.
+- Evaluator error categories remain closed to crash, timeout, and invalid output; only LLM Judge results may own Judge call records.
+- LLM Judge Evaluator configuration requires explicit model `provider_id` and `model_id`; `credential_ref` remains optional and opaque.
 
 ## `dataset/` Level 2 result
 

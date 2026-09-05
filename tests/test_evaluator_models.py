@@ -100,6 +100,33 @@ def test_weighted_policy_requires_only_positive_complete_weights() -> None:
         )
 
 
+def test_llm_judge_requires_explicit_provider_and_model():
+    with pytest.raises(ValidationError, match="requires a model object"):
+        spec(kind=EvaluatorKind.LLM_JUDGE, config={})
+    with pytest.raises(ValidationError, match="model.provider_id"):
+        spec(
+            kind=EvaluatorKind.LLM_JUDGE,
+            config={"model": {"model_id": "judge-v1"}},
+        )
+    with pytest.raises(ValidationError, match="model.model_id"):
+        spec(
+            kind=EvaluatorKind.LLM_JUDGE,
+            config={"model": {"provider_id": "public-provider"}},
+        )
+
+    value = spec(
+        kind=EvaluatorKind.LLM_JUDGE,
+        config={
+            "model": {
+                "provider_id": "private-provider",
+                "model_id": "judge-v1",
+                "credential_ref": "customer-key-7",
+            }
+        },
+    )
+    assert value.config["model"]["model_id"] == "judge-v1"
+
+
 def test_config_rejects_plaintext_credentials_but_accepts_reference() -> None:
     with pytest.raises(ValidationError, match="credential-like"):
         spec(config={"model": {"api_key": "secret"}})

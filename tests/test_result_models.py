@@ -120,13 +120,30 @@ def test_result_outcome_must_match_checks_and_error_detail():
 def test_judge_record_is_required_only_for_measured_llm_judge_results():
     with pytest.raises(ValidationError, match="require judge_record"):
         result(evaluator_kind=EvaluatorKind.LLM_JUDGE)
-    with pytest.raises(ValidationError, match="Rule results cannot"):
+    with pytest.raises(ValidationError, match="only LLM Judge results"):
         result(judge_record=JudgeRecord(
             provider_id="provider",
             requested_model="model",
             request_sha256="d" * 64,
             raw_response="ok",
         ))
+
+
+def test_error_category_and_hybrid_judge_record_are_restricted():
+    with pytest.raises(ValidationError, match="Input should be"):
+        EvaluatorErrorDetail(
+            category="typo", exception_type="RuntimeError", message="failed"
+        )
+    with pytest.raises(ValidationError, match="only LLM Judge results"):
+        result(
+            evaluator_kind=EvaluatorKind.HYBRID,
+            judge_record=JudgeRecord(
+                provider_id="provider",
+                requested_model="model",
+                request_sha256="d" * 64,
+                raw_response="ok",
+            ),
+        )
 
 
 def test_result_rejects_invalid_trace_and_evaluator_hashes():
