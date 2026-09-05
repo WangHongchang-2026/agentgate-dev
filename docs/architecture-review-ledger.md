@@ -1,6 +1,6 @@
 # AgentGate Architecture Review Ledger
 
-Last updated: 2026-09-04
+Last updated: 2026-09-05
 
 ## Review baseline and reconciliation status
 
@@ -31,6 +31,8 @@ Current review status:
 - P1 behavior preservation remains required during implementation for the inputs listed above.
 - The backend and Web architecture is consolidated. Implementation begins on a dedicated `refactor-1`
   branch.
+- The behavior-preserving source-to-target map and implementation gates are recorded in
+  `docs/refactor-implementation-plan.md`.
 
 ## Review method
 
@@ -49,7 +51,7 @@ After all folders and Python files are reviewed, produce one consolidated final 
 Current `refactor-1` target backend folders: 13.
 
 1. `domain/`
-2. `case/`
+2. `dataset/`
 3. `run/`
 4. `trace/`
 5. `evaluator/`
@@ -67,7 +69,7 @@ Its Level 2 architecture review is complete.
 
 Current Level 2 progress:
 
-- `case/`: completed.
+- `dataset/`: completed; renamed from the inherited `case/` capability package.
 - `run/`: completed.
 - `trace/`: completed.
 - `evaluator/`: completed.
@@ -87,7 +89,8 @@ Current Level 2 progress:
 - `domain/`: Level 2 completed.
 - Level 3 is intentionally deferred to implementation review.
 - Consolidated architecture: `docs/architecture.md`.
-- Current next item: plan and implement the `refactor-1` code migration.
+- Current next item: execute Phase 1 from `docs/refactor-implementation-plan.md` on
+  the `refactor-1` branch.
 
 ## Global architecture decisions
 
@@ -111,6 +114,7 @@ domain/
 ├── __init__.py
 ├── base.py
 ├── case.py
+├── dataset.py
 ├── expectation.py
 ├── skill_analysis.py
 ├── target.py
@@ -130,6 +134,8 @@ versioning, secret handling, and test guidance are maintained in `docs/domain/RE
 
 Required P1 reconciliation:
 
+- Split the inherited `domain/case.py`: individual Case models remain in `case.py`, while
+  Dataset, DatasetVersion, and Dataset collection invariants move to `dataset.py`.
 - Move `TargetSnapshot` from `run.py` into new `target.py` and adopt exact external Target
   references, descriptors, and immutable execution snapshots.
 - Rename `evaluation.py` to `evaluator.py` to match its owned concept.
@@ -153,12 +159,12 @@ Confirmed rules:
 - `RunManifest` is an immutable record of the versions and effective configuration used by one Run.
 - Future execution-capacity concepts may include `TargetExecutionProfile`, but the exact domain structure remains to be reviewed.
 
-## `case/` Level 2 result
+## `dataset/` Level 2 result
 
 Final structure:
 
 ```text
-case/
+dataset/
 ├── loader.py
 ├── export.py
 ├── versioning.py
@@ -169,7 +175,7 @@ case/
 
 Confirmed responsibilities:
 
-- `loader.py`: load external test data and convert it into domain `TestCase` and `Dataset` objects.
+- `loader.py`: load external test data and convert it into domain `Case` and `Dataset` objects.
 - `export.py`: export domain Case/Dataset data to external formats. Renamed from `writer.py` because export is the actual business operation; low-level writing belongs in `formats/`.
 - `versioning.py`: manage Case and Dataset revisions, hashes, change detection, and
   reproducibility metadata. Basic Run-to-asset lookup uses indexed storage references;
@@ -690,16 +696,16 @@ application/
 - Coordinates user-facing Dataset and Case lifecycle operations: Dataset create,
   update, archive, copy, version listing, draft create/publish/discard,
   import/export, and Case add/update/delete/copy/reorder.
-- Delegates invariants to `domain/`, import/export mechanics to `case/loader.py`
-  and `case/export.py`, revisions and hashes to `case/versioning.py`, format
-  conversion to `case/formats/`, and persistence to the storage interface.
+- Delegates invariants to `domain/`, import/export mechanics to `dataset/loader.py`
+  and `dataset/export.py`, revisions and hashes to `dataset/versioning.py`, format
+  conversion to `dataset/formats/`, and persistence to the storage interface.
 - Existing `case.DatasetService` orchestration moves here; reusable Dataset
-  mechanics remain in `case/`.
+  mechanics remain in `dataset/`.
 - Does not generate synthetic Cases, execute Datasets, implement formats, define
   domain models, calculate hashes, write SQL, or expose HTTP.
 - Automatic generation is a separate future application use case in
   `application/dataset_generation.py`. It coordinates Target metadata,
-  `case/generation/`, a model provider, and creation of a Dataset draft, then
+  `dataset/generation/`, a model provider, and creation of a Dataset draft, then
   delegates persistence to Dataset management.
 
 ### `application/target_catalog.py`

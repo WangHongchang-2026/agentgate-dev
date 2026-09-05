@@ -64,7 +64,7 @@ Run management -> job dispatcher -> RunEngine
 ```text
 src/agentgate/
 ├── domain/
-├── case/
+├── dataset/
 ├── run/
 ├── trace/
 ├── evaluator/
@@ -89,6 +89,7 @@ domain/
 ├── __init__.py
 ├── base.py
 ├── case.py
+├── dataset.py
 ├── expectation.py
 ├── skill_analysis.py
 ├── target.py
@@ -105,10 +106,10 @@ domain/
 Agent and AgentVersion are externally owned. AgentGate records exact Target references,
 normalized descriptors where required, and immutable execution-time snapshots.
 
-### Dataset And Case
+### Dataset
 
 ```text
-case/
+dataset/
 ├── loader.py
 ├── export.py
 ├── versioning.py
@@ -117,8 +118,10 @@ case/
 └── formats/
 ```
 
-This capability loads, exports, versions, samples, and eventually generates Dataset and
-Case data. Domain validation remains in `domain/`; persistence remains in `storage/`.
+This capability loads, exports, versions, samples, and eventually generates Datasets.
+A Dataset is a versioned collection of Cases. `domain/case.py` defines individual Cases,
+while `domain/dataset.py` defines the Dataset aggregate and its versions. Domain
+validation remains in `domain/`; persistence remains in `storage/`.
 
 ### Run
 
@@ -368,7 +371,7 @@ server/  cli/  job dispatchers
        application/
             |
             v
-case/ run/ trace/ evaluator/ result/ skill_analysis/
+dataset/ run/ trace/ evaluator/ result/ skill_analysis/
             |
             v
           domain/

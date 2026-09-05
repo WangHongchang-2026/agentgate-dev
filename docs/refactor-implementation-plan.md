@@ -65,7 +65,7 @@ result.
 | P1 source | Action | Refactor-1 destination |
 | --- | --- | --- |
 | `domain/base.py` | Keep | `domain/base.py` |
-| `domain/case.py` | Keep/expand | `domain/case.py`; absorb Dataset invariants from `case/validation.py` |
+| `domain/case.py` | Split | `domain/case.py` for individual Cases; `domain/dataset.py` for Dataset aggregates and versions |
 | `domain/expectation.py` | Keep | `domain/expectation.py` |
 | `domain/evaluation.py` | Rename | `domain/evaluator.py` |
 | `domain/run.py` | Split/expand | `domain/run.py`, `domain/target.py`; replace `RunSnapshot` with `RunManifest` |
@@ -78,17 +78,17 @@ result.
 
 `domain/__init__.py` is updated last so it exports only the confirmed public API.
 
-### Dataset And Case
+### Dataset
 
 | P1 source | Action | Refactor-1 destination |
 | --- | --- | --- |
-| `case/import_export.py` | Split | `case/loader.py`, `case/export.py`, `case/formats/json.py` |
-| `case/service.py` | Move/split | `application/dataset_management.py`, `case/versioning.py` |
-| `case/validation.py` | Split/remove | Domain invariants in `domain/case.py`; workflow/preflight checks in application |
+| `case/import_export.py` | Split | `dataset/loader.py`, `dataset/export.py`, `dataset/formats/json.py` |
+| `case/service.py` | Move/split | `application/dataset_management.py`, `dataset/versioning.py` |
+| `case/validation.py` | Split/remove | Case invariants in `domain/case.py`; Dataset invariants in `domain/dataset.py`; workflow/preflight checks in application |
 | empty `case/customer/` | Remove | Recreate only for a real customer format |
 | empty `case/public_benchmarks/` | Remove/defer | Add benchmark adapters only when implemented |
-| none | Add when needed | `case/sampling.py` and implemented files under `case/formats/` |
-| none | Defer | `case/generation/` |
+| none | Add when needed | `dataset/sampling.py` and implemented files under `dataset/formats/` |
+| none | Defer | `dataset/generation/` |
 
 ### Evaluator
 

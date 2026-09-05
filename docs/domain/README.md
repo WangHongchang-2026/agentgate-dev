@@ -11,6 +11,7 @@ domain/
 ├── __init__.py
 ├── base.py
 ├── case.py
+├── dataset.py
 ├── expectation.py
 ├── skill_analysis.py
 ├── target.py
@@ -28,7 +29,8 @@ domain/
 | --- | --- |
 | `__init__.py` | Expose the stable public API of the domain package. |
 | `base.py` | Provide immutable model primitives, JSON-safe values, canonical serialization, and content hashing. |
-| `case.py` | Define Cases, multi-turn conversations, Datasets, and Dataset versions. |
+| `case.py` | Define individual Cases, multi-turn conversations, category, and difficulty. |
+| `dataset.py` | Define the Dataset aggregate, Dataset versions, publication state, and collection-wide invariants. |
 | `expectation.py` | Describe expected outputs, states, Tool arguments, and validation conditions. |
 | `skill_analysis.py` | Define persisted `SkillAnalysisSpec`, findings, reviews, and `SkillAnalysisReport` objects. |
 | `target.py` | Represent exact external Agent/Skill identities, descriptors, and immutable execution snapshots. |
@@ -80,7 +82,8 @@ These ranges guide review and planning; they are not enforced limits.
 | --- | ---: |
 | `__init__.py` | 30-60 |
 | `base.py` | 80-130 |
-| `case.py` | 130-200 |
+| `case.py` | 80-140 |
+| `dataset.py` | 100-170 |
 | `expectation.py` | 120-180 |
 | `skill_analysis.py` | 180-280 |
 | `target.py` | 160-240 |
@@ -92,7 +95,7 @@ These ranges guide review and planning; they are not enforced limits.
 | `metric.py` | 50-100 |
 | `gate.py` | 40-80 |
 | `report.py` | 30-70 |
-| **Total** | **1,500-2,300** |
+| **Total** | **1,550-2,400** |
 
 Expected domain-test size is approximately 1,200-2,000 lines. When a domain module grows
 beyond roughly 300 lines, review whether it contains multiple independent concepts or
