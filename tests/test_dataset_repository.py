@@ -4,7 +4,7 @@ from uuid import uuid4
 
 import pytest
 
-from agentgate.case import DatasetService
+from agentgate.application import DatasetManagement
 from agentgate.domain import Case, CaseTurn, Dataset, DatasetVersion, DatasetVersionStatus
 from agentgate.storage.sqlite import SQLiteRepository
 
@@ -48,7 +48,7 @@ def test_sqlite_initialization_enables_wal_and_schema_checks(tmp_path):
 
 def test_sqlite_persists_catalog_and_enforces_one_draft(tmp_path):
     repository = SQLiteRepository(tmp_path / "repository.db")
-    service = DatasetService(repository)
+    service = DatasetManagement(repository)
     dataset = service.create_dataset("Dataset")
     first = service.create_draft(dataset.id)
     with pytest.raises(ValueError, match="active draft"):
@@ -121,7 +121,7 @@ def test_save_dataset_with_version_rejects_mismatched_identity(tmp_path):
 
 def test_dataset_catalog_rejects_changed_creation_time_and_stale_updates(tmp_path):
     repository = SQLiteRepository(tmp_path / "dataset-updates.db")
-    service = DatasetService(repository)
+    service = DatasetManagement(repository)
     original = service.create_dataset("Original")
     current = original.model_copy(
         update={"name": "Current", "updated_at": original.updated_at + timedelta(seconds=2)}
@@ -142,7 +142,7 @@ def test_dataset_catalog_rejects_changed_creation_time_and_stale_updates(tmp_pat
 
 def test_stale_draft_identity_cannot_delete_or_replace_current_data(tmp_path):
     repository = SQLiteRepository(tmp_path / "stale-draft.db")
-    service = DatasetService(repository)
+    service = DatasetManagement(repository)
     dataset = service.create_dataset("Dataset")
     draft = service.create_draft(dataset.id)
 
@@ -162,7 +162,7 @@ def test_stale_draft_identity_cannot_delete_or_replace_current_data(tmp_path):
 
 def test_draft_save_preserves_identity_and_rejects_stale_content(tmp_path):
     repository = SQLiteRepository(tmp_path / "draft-updates.db")
-    service = DatasetService(repository)
+    service = DatasetManagement(repository)
     dataset = service.create_dataset("Dataset")
     original = service.create_draft(dataset.id)
     current = DatasetVersion.model_validate(
@@ -197,7 +197,7 @@ def test_draft_save_preserves_identity_and_rejects_stale_content(tmp_path):
 
 def test_replacement_rejects_changed_draft_without_partial_publication(tmp_path):
     repository = SQLiteRepository(tmp_path / "changed-draft.db")
-    service = DatasetService(repository)
+    service = DatasetManagement(repository)
     dataset = service.create_dataset("Dataset")
     service.create_draft(dataset.id)
     original = service.save_case(
@@ -234,7 +234,7 @@ def test_replacement_rejects_changed_draft_without_partial_publication(tmp_path)
 
 def test_dataset_version_queries_are_explicit_and_deterministic(tmp_path):
     repository = SQLiteRepository(tmp_path / "version-queries.db")
-    service = DatasetService(repository)
+    service = DatasetManagement(repository)
     dataset = service.create_dataset("Dataset")
     service.create_draft(dataset.id)
     service.save_case(
@@ -254,7 +254,7 @@ def test_dataset_version_queries_are_explicit_and_deterministic(tmp_path):
 
 def test_published_payload_cannot_be_overwritten(tmp_path):
     repository = SQLiteRepository(tmp_path / "immutable.db")
-    service = DatasetService(repository)
+    service = DatasetManagement(repository)
     dataset = service.create_dataset("Dataset")
     service.create_draft(dataset.id)
     service.save_case(dataset.id, Case(

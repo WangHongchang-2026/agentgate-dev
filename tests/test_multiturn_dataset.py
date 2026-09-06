@@ -1,4 +1,4 @@
-from agentgate.case import DatasetService
+from agentgate.application import DatasetManagement
 from agentgate.control_plane import EvaluationService
 from agentgate.domain import (
     Case, CaseTurn, Equals, MatchesPattern, OutputExpectation, PolicyExpectation,
@@ -9,7 +9,7 @@ from agentgate.storage.sqlite import SQLiteRepository
 
 def test_multi_turn_session_produces_turn_aware_trace_and_checks(tmp_path):
     repository = SQLiteRepository(tmp_path / "multi.db")
-    datasets = DatasetService(repository)
+    datasets = DatasetManagement(repository)
     dataset = datasets.create_dataset("Multi-turn")
     datasets.create_draft(dataset.id)
     datasets.save_case(dataset.id, Case(

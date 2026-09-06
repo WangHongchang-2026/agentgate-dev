@@ -12,7 +12,10 @@ baseline even when its current files are renamed, split, or removed.
 
 P1 behavior-preservation inputs include:
 
-- Preserve the publish-time whole-Dataset checks currently in `case/validation.py`; move field and Dataset invariants to `domain/` and availability/preflight checks to application Run or Dataset workflows.
+- The valid checks formerly in `case/validation.py` have been reassigned: field and
+  Dataset invariants live in `domain/`, nonempty publication lives in Dataset
+  versioning/application workflows, and evaluator availability remains a later Run
+  preflight concern.
 - Preserve evaluator/operator implementation and version resolution currently in `evaluator/registry.py`; refactor-1 uses explicit application composition instead of a dynamic registry.
 - Preserve per-turn evaluation, dependency resolution, memoization, and error Results currently in `evaluator/runner.py`; the behavior moves behind `evaluator/executor.py`.
 - `evaluator/models.py` contains runtime-only, non-persisted evaluation models; the earlier blanket assumption that all models belong in `domain/` was incorrect.
@@ -101,11 +104,10 @@ Current Level 2 progress:
 - SHA-256 format validation is centralized as `domain/base.py::require_sha256`; models
   retain ownership of hash presence, generation, and content-matching rules.
 - Storage implementation is complete.
-- Dataset implementation is in progress. Versioning and the JSON/XLSX format, loading,
-  and export paths are complete. Atomic initial Dataset/Version persistence is also
-  complete, and `application/dataset_management.py` is implemented. The current next
-  checkpoint is migrating remaining test setup and removing the old `case/` package;
-  production callers now use Dataset management directly.
+- Dataset backend implementation is complete. Versioning, JSON/XLSX exchange, loading,
+  export, atomic Dataset/Version persistence, and Dataset application workflows are
+  implemented. All callers use `DatasetManagement`, and the obsolete top-level
+  `case/` feature package has been removed without a compatibility alias.
 
 ## Global architecture decisions
 
@@ -726,8 +728,8 @@ application/
 - Delegates invariants to `domain/`, import/export mechanics to `dataset/loader.py`
   and `dataset/export.py`, revisions and hashes to `dataset/versioning.py`, format
   conversion to `dataset/formats/`, and persistence to the storage interface.
-- Existing `case.DatasetService` orchestration moves here; reusable Dataset
-  mechanics remain in `dataset/`.
+- The orchestration formerly owned by `case.DatasetService` is implemented here;
+  reusable Dataset mechanics remain in `dataset/`.
 - Does not generate synthetic Cases, execute Datasets, implement formats, define
   domain models, calculate hashes, write SQL, or expose HTTP.
 - Automatic generation is a separate future application use case in

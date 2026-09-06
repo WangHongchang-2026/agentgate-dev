@@ -210,13 +210,13 @@ classes/functions, implement it, and run focused tests before moving on.
 5. [complete] Add one-sheet `.xlsx` import/export in `dataset/formats/xlsx.py`.
 6. [complete] Integrate XLSX parsing into `dataset/loader.py` and XLSX encoding into
    `dataset/export.py`.
-7. [in progress] `application/dataset_management.py` is implemented; migrate its callers
-   before removing the old `case/` package.
+7. [complete] Implement `application/dataset_management.py` and migrate all callers.
 8. [complete] Integrate the approved atomic Dataset creation and draft-publication
    operations in `storage/repository.py`.
-9. Remove `case/`, duplicate validation, stale imports, and empty scaffolds.
-10. Update existing API/CLI imports only as required; do not redesign transports or Web.
-11. Run focused and complete regression suites.
+9. [complete] Remove `case/`, duplicate validation, stale imports, and empty scaffolds.
+10. [complete] Update existing API/CLI imports only as required; transports and Web were
+    not redesigned.
+11. [complete] Run focused and complete backend regression suites.
 
 Each checkpoint should produce a small reviewable commit when practical.
 
@@ -355,6 +355,18 @@ Status: implemented; 208 tests passing
 | `integration/p1-new` | No better behavior or implementation to reuse. |
 | Current refactor | Reuse `CaseTurn` and its existing Pydantic field-validation style. |
 | From scratch | Add one construction-time invariant and one focused domain test. |
+
+### Old `case/` package removal
+
+Status: implemented; 206 tests passing
+
+| Source | Decision |
+| --- | --- |
+| `goal/p1-demo` | Preserve only behavior already migrated from `service.py` and `import_export.py` into the approved Dataset and application modules. |
+| `goal/p1-demo` | Move nonempty Turn input to `domain/case.py`; retain nonempty publication in versioning/application workflows; reject duplicate validation and the obsolete JSON Schema restriction. |
+| `integration/p1-new` | Retain no remaining code from its old `case/` package; useful XLSX behavior was already rewritten behind current domain contracts. |
+| Current refactor | Migrate repository and multi-turn test setup from `DatasetService` to `DatasetManagement`. |
+| Removed | `tests/test_case_validation.py` and the complete `src/agentgate/case/` package; no compatibility alias. |
 
 ## 9. Test Plan
 

@@ -8,4 +8,7 @@ def test_removed_monolithic_modules_are_not_referenced():
         for path in root.rglob("*.py")
     )
     assert "agentgate.contracts" not in sources
+    assert "from agentgate.case " not in sources
+    assert "from agentgate.case." not in sources
+    assert "import agentgate.case" not in sources
     assert "agentgate.evaluator.core" not in sources
