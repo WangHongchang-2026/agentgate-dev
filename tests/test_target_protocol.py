@@ -112,11 +112,13 @@ def test_case_execution_result_rejects_mismatched_inline_trace() -> None:
 
 
 def test_target_execution_error_exposes_typed_code_and_sanitized_message() -> None:
-    error = TargetExecutionError("timeout", "Agent did not finish")
+    error = TargetExecutionError(
+        "timeout", "Agent did not finish; api_key=secret-value"
+    )
 
     assert error.code == "timeout"
-    assert error.message == "Agent did not finish"
-    assert str(error) == "timeout: Agent did not finish"
+    assert error.message == "Agent did not finish; api_key=[redacted]"
+    assert "secret-value" not in str(error)
 
 
 def test_target_execution_error_rejects_unknown_code() -> None:

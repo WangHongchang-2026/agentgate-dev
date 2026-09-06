@@ -15,6 +15,9 @@ _TRACE_ID_PATTERN = re.compile(r"^[0-9a-f]{32}$")
 _TRACEPARENT_PATTERN = re.compile(
     r"^(?!ff)[0-9a-f]{2}-([0-9a-f]{32})-([0-9a-f]{16})-[0-9a-f]{2}$"
 )
+_CREDENTIAL_VALUE_PATTERN = re.compile(
+    r"(?i)(api[_-]?key|authorization|token|secret|password)\s*[=:]\s*\S+"
+)
 
 TargetExecutionErrorCode: TypeAlias = Literal[
     "invalid_request",
@@ -25,6 +28,7 @@ TargetExecutionErrorCode: TypeAlias = Literal[
     "unavailable",
     "rejected",
     "protocol_error",
+    "cancelled",
 ]
 _TARGET_EXECUTION_ERROR_CODES = frozenset(get_args(TargetExecutionErrorCode))
 
@@ -85,7 +89,8 @@ class TargetExecutionError(RuntimeError):
         if code not in _TARGET_EXECUTION_ERROR_CODES:
             raise ValueError(f"unknown Target execution error code: {code}")
         self.code = code
-        self.message = require_non_blank(message, "Target execution error message")
+        raw_message = require_non_blank(message, "Target execution error message")
+        self.message = _CREDENTIAL_VALUE_PATTERN.sub(r"\1=[redacted]", raw_message)[:500]
         super().__init__(f"{code}: {self.message}")
 
 

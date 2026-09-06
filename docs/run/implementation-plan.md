@@ -254,7 +254,8 @@ Each file requires a source assessment and explicit approval before implementati
 1. Confirm this Run plan and current end-to-end baseline.
 2. [complete] Review and implement `run/target_protocol.py`.
 3. [complete] Reject redundant `run/manifest.py` and remove empty `run/snapshot.py`.
-4. Review and implement `run/engine.py` with one synchronous execution path.
+4. [complete] Review and implement `run/engine.py` with one synchronous execution
+   path.
 5. Review and move the demo adapter to
    `integrations/targets/python_function.py`.
 6. Migrate `application/run_management.py` or the current application caller to the
@@ -358,3 +359,16 @@ Status: rejected as redundant
 | Current refactor | Reuse `domain.RunManifest` directly; it already owns immutability, validation, exact references, execution limits, and hashing. |
 | From scratch | No code justified. A builder would only forward arguments to the Domain constructor. |
 | Removed | Empty `run/snapshot.py`; no replacement module and no compatibility alias. |
+
+### `run/engine.py`
+
+Status: implemented; 225 tests passing
+
+| Source | Decision |
+| --- | --- |
+| `goal/p1-demo` | Preserve sequential Case execution, Trace/Result persistence, and terminal Run transitions. |
+| `goal/p1-demo` | Remove manifest construction, report building, scheduler forwarding, and hardcoded demo Target details from Engine. |
+| `integration/p1-new` | Adapt execution identity, Trace context, strict Trace identity checks, and timeout cancellation. |
+| `integration/p1-new` | Reject direct polling, obsolete models, and concrete integration exceptions in Engine. |
+| Current refactor | Reuse `EvaluationRun`, `transition_run`, repository operations, and `TargetProtocol`. |
+| From scratch | Inject Case evaluation and Trace resolution, validate complete Result sets, and fail closed for unimplemented retry/parallel settings. |

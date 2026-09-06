@@ -113,8 +113,9 @@ Current Level 2 progress:
 - Run implementation planning is complete in `docs/run/implementation-plan.md`.
   `run/target_protocol.py` is implemented with the four-operation Case execution
   lifecycle. `run/manifest.py` was rejected as a forwarding layer because
-  `domain.RunManifest` owns the complete contract. The next file checkpoint is
-  `run/engine.py`.
+  `domain.RunManifest` owns the complete contract. The sequential `run/engine.py` is
+  implemented but not yet wired into the demo. The next checkpoint is
+  `integrations/targets/python_function.py`.
 
 ## Global architecture decisions
 
