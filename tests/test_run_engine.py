@@ -32,7 +32,7 @@ from agentgate.run.target_protocol import (
 from agentgate.storage.sqlite import SQLiteRepository
 
 
-class StubTarget:
+class StubTargetAdapter:
     adapter_type = "stub"
     adapter_version = "1"
 
@@ -161,15 +161,15 @@ def test_engine_executes_persisted_pending_run(tmp_path) -> None:
     repository = SQLiteRepository(tmp_path / "engine.db")
     run = pending_run()
     repository.save_run(run)
-    target = StubTarget()
+    target_adapter = StubTargetAdapter()
 
-    completed = engine(repository).execute(run, target)
+    completed = engine(repository).execute(run, target_adapter)
 
     assert completed.status == RunStatus.COMPLETED
     assert repository.get_run(run.id) == completed
     assert len(repository.list_traces(run.id)) == 1
     assert len(repository.list_results(run.id)) == 1
-    request = next(iter(target.requests.values()))
+    request = next(iter(target_adapter.requests.values()))
     assert request.run_id == run.id
     assert request.case.id == "case-1"
     assert request.target == run.manifest.target
@@ -179,7 +179,7 @@ def test_engine_requires_run_to_be_persisted(tmp_path) -> None:
     repository = SQLiteRepository(tmp_path / "missing.db")
 
     with pytest.raises(ValueError, match="persisted before execution"):
-        engine(repository).execute(pending_run(), StubTarget())
+        engine(repository).execute(pending_run(), StubTargetAdapter())
 
 
 def test_engine_fails_closed_for_unsupported_retry(tmp_path) -> None:
@@ -188,7 +188,7 @@ def test_engine_fails_closed_for_unsupported_retry(tmp_path) -> None:
     repository.save_run(run)
 
     with pytest.raises(ValueError, match="retry support"):
-        engine(repository).execute(run, StubTarget())
+        engine(repository).execute(run, StubTargetAdapter())
 
     failed = repository.get_run(run.id)
     assert failed is not None
@@ -199,13 +199,13 @@ def test_engine_rejects_adapter_version_mismatch(tmp_path) -> None:
     repository = SQLiteRepository(tmp_path / "adapter.db")
     run = pending_run()
     repository.save_run(run)
-    target = StubTarget()
-    target.adapter_version = "2"
+    target_adapter = StubTargetAdapter()
+    target_adapter.adapter_version = "2"
 
     with pytest.raises(ValueError, match="adapter_version"):
-        engine(repository).execute(run, target)
+        engine(repository).execute(run, target_adapter)
 
-    assert target.requests == {}
+    assert target_adapter.requests == {}
     assert repository.get_run(run.id).status == RunStatus.FAILED
 
 
@@ -216,7 +216,7 @@ def test_engine_rejects_incomplete_evaluator_output(tmp_path) -> None:
     incomplete = RunEngine(repository, lambda case, trace, specs: (), resolve_trace)
 
     with pytest.raises(ValueError, match="exactly one Result"):
-        incomplete.execute(run, StubTarget())
+        incomplete.execute(run, StubTargetAdapter())
 
     assert repository.list_results(run.id) == []
     assert repository.get_run(run.id).status == RunStatus.FAILED
@@ -226,28 +226,30 @@ def test_engine_cancels_active_target_and_sanitizes_failure(tmp_path) -> None:
     repository = SQLiteRepository(tmp_path / "failure.db")
     run = pending_run()
     repository.save_run(run)
-    target = StubTarget(
+    target_adapter = StubTargetAdapter(
         TargetExecutionError("timeout", "token=secret-value")
     )
 
     with pytest.raises(TargetExecutionError, match="timeout"):
-        engine(repository).execute(run, target)
+        engine(repository).execute(run, target_adapter)
 
     failed = repository.get_run(run.id)
     assert failed is not None
     assert failed.status == RunStatus.FAILED
     assert "secret-value" not in failed.error
-    assert target.cancelled == [next(iter(target.requests))]
+    assert target_adapter.cancelled == [next(iter(target_adapter.requests))]
 
 
 def test_engine_records_target_cancellation(tmp_path) -> None:
     repository = SQLiteRepository(tmp_path / "cancelled.db")
     run = pending_run()
     repository.save_run(run)
-    target = StubTarget(TargetExecutionError("cancelled", "Cancelled by user"))
+    target_adapter = StubTargetAdapter(
+        TargetExecutionError("cancelled", "Cancelled by user")
+    )
 
     with pytest.raises(TargetExecutionError, match="cancelled"):
-        engine(repository).execute(run, target)
+        engine(repository).execute(run, target_adapter)
 
     cancelled = repository.get_run(run.id)
     assert cancelled is not None

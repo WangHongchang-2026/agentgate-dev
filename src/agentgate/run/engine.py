@@ -22,7 +22,7 @@ from .target_protocol import (
     CaseExecutionResult,
     CaseExecutionStatus,
     TargetExecutionError,
-    TargetProtocol,
+    TargetAdapterProtocol,
 )
 
 
@@ -48,7 +48,7 @@ class RunEngine:
         self.resolve_trace = resolve_trace
 
     def execute(
-        self, run: EvaluationRun, target: TargetProtocol
+        self, run: EvaluationRun, target_adapter: TargetAdapterProtocol
     ) -> EvaluationRun:
         self._require_persisted_pending(run)
         running = transition_run(run, RunStatus.RUNNING)
@@ -56,17 +56,17 @@ class RunEngine:
         active_handle: str | None = None
 
         try:
-            self._validate_execution(running, target)
+            self._validate_execution(running, target_adapter)
             results: list[EvaluationResult] = []
             for case in running.manifest.dataset.cases:
                 request = self._build_request(running, case)
-                active_handle = target.start(request)
+                active_handle = target_adapter.start(request)
                 if not active_handle.strip():
                     raise TargetExecutionError(
                         "protocol_error", "Target returned a blank execution handle"
                     )
-                outcome = target.wait(active_handle, request.timeout_seconds)
-                status = target.get_status(active_handle)
+                outcome = target_adapter.wait(active_handle, request.timeout_seconds)
+                status = target_adapter.get_status(active_handle)
                 if status == CaseExecutionStatus.CANCELLED:
                     raise TargetExecutionError(
                         "cancelled", "Target execution was cancelled"
@@ -94,7 +94,7 @@ class RunEngine:
             return completed
         except Exception as exc:
             if active_handle is not None:
-                self._cancel(target, active_handle)
+                self._cancel(target_adapter, active_handle)
             terminal_status = (
                 RunStatus.CANCELLED
                 if isinstance(exc, TargetExecutionError) and exc.code == "cancelled"
@@ -115,15 +115,17 @@ class RunEngine:
             raise ValueError("persisted EvaluationRun does not match execution request")
 
     @staticmethod
-    def _validate_execution(run: EvaluationRun, target: TargetProtocol) -> None:
+    def _validate_execution(
+        run: EvaluationRun, target_adapter: TargetAdapterProtocol
+    ) -> None:
         manifest = run.manifest
         if manifest.max_retries != 0:
             raise ValueError("RunEngine retry support is not implemented")
         if manifest.max_parallel_cases != 1:
             raise ValueError("RunEngine parallel Case execution is not implemented")
-        if target.adapter_type != manifest.target.adapter_type:
+        if target_adapter.adapter_type != manifest.target.adapter_type:
             raise ValueError("Target adapter_type does not match RunManifest")
-        if target.adapter_version != manifest.target.adapter_version:
+        if target_adapter.adapter_version != manifest.target.adapter_version:
             raise ValueError("Target adapter_version does not match RunManifest")
 
     @staticmethod
@@ -188,9 +190,9 @@ class RunEngine:
                 raise ValueError("EvaluationResult does not match EvaluatorSpec")
 
     @staticmethod
-    def _cancel(target: TargetProtocol, handle: str) -> None:
+    def _cancel(target_adapter: TargetAdapterProtocol, handle: str) -> None:
         try:
-            target.cancel(handle)
+            target_adapter.cancel(handle)
         except Exception as exc:
             LOGGER.warning(
                 "Target cancellation failed with %s", type(exc).__name__

@@ -134,8 +134,9 @@ run/
 └── target_protocol.py
 ```
 
-The Run engine executes Cases using one uniform Target protocol. Local parallelism uses
-isolated Agent processes and Workspaces; retry history is recorded as Trace events.
+The Run engine executes Cases using one uniform Target Adapter Protocol. Local
+parallelism uses isolated Agent processes and Workspaces; retry history is recorded as
+Trace events.
 Retries apply only to infrastructure failures, never to wrong answers or evaluation
 failures.
 

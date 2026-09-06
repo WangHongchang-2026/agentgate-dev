@@ -20,7 +20,9 @@ P1 behavior-preservation inputs include:
 - Preserve per-turn evaluation, dependency resolution, memoization, and error Results currently in `evaluator/runner.py`; the behavior moves behind `evaluator/executor.py`.
 - `evaluator/models.py` contains runtime-only, non-persisted evaluation models; the earlier blanket assumption that all models belong in `domain/` was incorrect.
 - Preserve the lightweight OTLP ingestion behavior in `trace/receivers/otlp_http.py`; protocol handling moves to `integrations/observability/otlp_http_receiver.py` and semantic conversion remains in `trace/normalizer.py`.
-- Preserve the working P1 behavior in `run/core.py` while splitting Engine, Target protocol, application scheduling, and Python-function adapter responsibilities into their confirmed modules.
+- Preserve the working P1 behavior in `run/core.py` while splitting Engine, Target
+  Adapter Protocol, application scheduling, and Python-function adapter responsibilities
+  into their confirmed modules.
 - Preserve implemented Result behavior while renaming `calc_metrics.py` to `metrics.py` and `service.py` to `report.py`; do not invent a `verdict.py` module.
 
 Current review status:
@@ -633,7 +635,8 @@ integrations/
 
 ### `integrations/targets/`
 
-- Implements the internal Target Protocol defined by `run/target_protocol.py`.
+- Implements the internal `TargetAdapterProtocol` defined by
+  `run/target_protocol.py`.
 - Confirmed adapters are `http_agent.py`, `process_agent.py`,
   `python_function.py`, and `trace_replay.py`.
 - Do not add another `base.py`; the protocol already belongs to `run/`.
@@ -644,7 +647,7 @@ integrations/
   failures can affect the worker.
 - `trace_replay.py` evaluates an existing execution without invoking an Agent.
 - The generic remote-Agent adapter is named `integrations/targets/http_agent.py`,
-  not `http.py`. Its responsibility is to translate the Target Protocol into a
+  not `http.py`. Its responsibility is to translate the Target Adapter Protocol into a
   configurable HTTP Agent invocation, wait for the terminal HTTP/SSE response,
   and normalize it into AgentGate execution output. The name `http.py` is
   rejected because it is easily confused with a low-level HTTP transport module

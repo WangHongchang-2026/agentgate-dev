@@ -94,7 +94,7 @@ class TargetExecutionError(RuntimeError):
         super().__init__(f"{code}: {self.message}")
 
 
-class TargetProtocol(Protocol):
+class TargetAdapterProtocol(Protocol):
     """Common lifecycle implemented by local and remote Target adapters."""
 
     adapter_type: str

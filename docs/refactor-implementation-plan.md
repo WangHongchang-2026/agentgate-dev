@@ -254,7 +254,8 @@ Gate: risky/fixed Result counts, scores, attribution, and Gate conclusions match
 
 ### Phase 4: Trace, Target, And Run
 
-- Separate RunEngine, application composition, Target protocol, adapters, and OTLP handling.
+- Separate RunEngine, application composition, Target Adapter Protocol, adapters, and
+  OTLP handling.
 - Add redaction; add process/retry/artifact modules only with exercised behavior.
 
 Gate: an end-to-end Run persists its exact manifest, Traces, Results, Metrics, Gate, and Report.

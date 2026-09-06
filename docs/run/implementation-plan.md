@@ -12,7 +12,7 @@ the selected Evaluators, persists Results, and records the final EvaluationRun s
 Run request
     |
     v
-RunManifest -> RunEngine -> TargetProtocol -> Target adapter -> Agent
+RunManifest -> RunEngine -> TargetAdapterProtocol -> Target adapter -> Agent
                     |                                |
                     |                                v
                     +-> Trace -> Evaluators -> EvaluationResults
@@ -49,7 +49,8 @@ accepted.
 - **Retry**: a new execution of the same Case after an infrastructure failure.
 - **Target**: the Agent or Skill being evaluated.
 - **Target adapter**: integration-specific implementation that translates the common
-  Target protocol into a local Python call, process invocation, or remote HTTP API.
+  Target Adapter Protocol into a local Python call, process invocation, or remote HTTP
+  API.
 - **Trace**: structured behavior history used by Evaluators.
 - **Artifact**: file-like output such as stdout, a patch, test report, screenshot, or
   generated file.
@@ -60,11 +61,11 @@ There are two distinct asynchronous lifecycles:
 
 ```text
 Demo Celery or customer scheduler   schedules a complete EvaluationRun
-TargetProtocol                      controls one Case execution
+TargetAdapterProtocol               controls one Case execution
 ```
 
 The demo uses a real job dispatcher under `integrations/job_dispatchers/`. A customer
-may replace that dispatcher without changing Engine or the Target protocol.
+may replace that dispatcher without changing Engine or the Target Adapter Protocol.
 
 ## 4. Ownership Boundaries
 
@@ -115,7 +116,7 @@ Executes one RunManifest:
 
 1. create and persist a running EvaluationRun;
 2. select the Cases pinned by the manifest;
-3. execute each Case through `TargetProtocol`;
+3. execute each Case through `TargetAdapterProtocol`;
 4. obtain and normalize the correlated Trace through integration boundaries;
 5. reject a Trace that is not eligible for evaluation;
 6. invoke the evaluator executor;
@@ -223,7 +224,7 @@ Reuse directly:
 
 ### From Scratch
 
-- the minimal Target protocol compatible with current domain contracts;
+- the minimal Target Adapter Protocol compatible with current domain contracts;
 - the decomposed Engine orchestration;
 - typed runtime failures and focused contract tests;
 - optional retry, process, and Artifact modules only after a real caller is approved.
@@ -324,7 +325,7 @@ on them.
 Run refactoring is complete when:
 
 - `run/core.py` and all empty legacy Run scaffolds are gone;
-- Engine depends on one approved Target protocol;
+- Engine depends on one approved Target Adapter Protocol;
 - `domain.RunManifest` owns manifest invariants and hashing, while the application layer
   constructs it from exact resolved assets;
 - demo execution preserves P1 behavior through the new boundaries;
@@ -346,7 +347,7 @@ Status: implemented; 218 tests passing
 | `integration/p1-new` | Adapt request/result correlation, W3C Trace context, adapter identity, and typed failure categories. |
 | `integration/p1-new` | Reject obsolete Domain execution models and the credential resolver; credentials belong to concrete integrations. |
 | Current refactor | Reuse `Case`, `TargetSnapshot`, `Trace`, and shared validation helpers. |
-| From scratch | Implement `CaseExecutionStatus`, immutable request/result records, `TargetExecutionError`, and `TargetProtocol`. |
+| From scratch | Implement `CaseExecutionStatus`, immutable request/result records, `TargetExecutionError`, and `TargetAdapterProtocol`. |
 
 ### `run/manifest.py`
 
@@ -370,5 +371,5 @@ Status: implemented; 225 tests passing
 | `goal/p1-demo` | Remove manifest construction, report building, scheduler forwarding, and hardcoded demo Target details from Engine. |
 | `integration/p1-new` | Adapt execution identity, Trace context, strict Trace identity checks, and timeout cancellation. |
 | `integration/p1-new` | Reject direct polling, obsolete models, and concrete integration exceptions in Engine. |
-| Current refactor | Reuse `EvaluationRun`, `transition_run`, repository operations, and `TargetProtocol`. |
+| Current refactor | Reuse `EvaluationRun`, `transition_run`, repository operations, and `TargetAdapterProtocol`. |
 | From scratch | Inject Case evaluation and Trace resolution, validate complete Result sets, and fail closed for unimplemented retry/parallel settings. |
