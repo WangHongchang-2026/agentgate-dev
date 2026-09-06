@@ -14,6 +14,7 @@ class EvaluationService:
 
     def __init__(self, repository: AgentGateRepository) -> None:
         self.repository = repository
+        self.loan_state: dict[str, dict] = {}
         self.engine = RunEngine(repository)
         self.dataset_service = DatasetService(repository)
         self.dataset_service.seed(LOAN_DATASET, LOAN_DATASET_VERSION)
@@ -37,7 +38,10 @@ class EvaluationService:
         if unknown:
             raise ValueError(f"unknown evaluators: {', '.join(sorted(unknown))}")
         return self.engine.run(
-            dataset, LoanAgent(self.repository), version, evaluators=selected
+            dataset,
+            LoanAgent(state_store=self.loan_state),
+            version,
+            evaluators=selected,
         )
 
     def overview(self) -> dict:
@@ -47,7 +51,9 @@ class EvaluationService:
         case_count = sum(
             len(version.cases)
             for dataset in self.dataset_service.list_datasets()
-            if (version := self.repository.get_latest_dataset_version(dataset.id)) is not None
+            if (
+                version := self.repository.get_latest_published_dataset_version(dataset.id)
+            ) is not None
         )
         return {
             "total_runs": len(runs),
@@ -74,7 +80,7 @@ class EvaluationService:
     def datasets(self) -> list[dict]:
         summaries = []
         for dataset in self.dataset_service.list_datasets():
-            latest = self.repository.get_latest_dataset_version(dataset.id)
+            latest = self.repository.get_latest_published_dataset_version(dataset.id)
             draft = self.repository.get_dataset_draft(dataset.id)
             summaries.append({
                 **dataset.model_dump(mode="json"),

@@ -18,6 +18,29 @@ def test_sqlite_persists_catalog_and_enforces_one_draft(tmp_path):
     with sqlite3.connect(repository.path) as db:
         assert db.execute("SELECT COUNT(*) FROM datasets").fetchone()[0] == 1
         assert db.execute("SELECT COUNT(*) FROM dataset_versions").fetchone()[0] == 1
+        assert db.execute(
+            "SELECT COUNT(*) FROM sqlite_master WHERE name='business_state'"
+        ).fetchone()[0] == 0
+
+
+def test_stale_draft_identity_cannot_delete_or_replace_current_data(tmp_path):
+    repository = SQLiteRepository(tmp_path / "stale-draft.db")
+    service = DatasetService(repository)
+    dataset = service.create_dataset("Dataset")
+    draft = service.create_draft(dataset.id)
+
+    with pytest.raises(ValueError, match="expected Dataset draft"):
+        repository.delete_dataset_draft(dataset.id, "stale-draft-id")
+    assert repository.get_dataset_draft(dataset.id) == draft
+
+    service.save_case(
+        dataset.id,
+        Case(name="Case", turns=(CaseTurn(input={"message": "hello"}),)),
+    )
+    published = service.publish_draft(dataset.id)
+    with pytest.raises(ValueError, match="expected Dataset draft"):
+        repository.replace_dataset_draft(draft.id, published)
+    assert repository.get_published_dataset_version(dataset.id, 1) == published
 
 
 def test_published_payload_cannot_be_overwritten(tmp_path):

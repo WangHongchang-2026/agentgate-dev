@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import json
 import sqlite3
-from datetime import datetime
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
 
 from agentgate.domain import (
     Dataset, DatasetVersion, DatasetVersionStatus, EvaluationResult, EvaluationRun, Trace, canonical_json,
@@ -64,10 +62,6 @@ class SQLiteRepository:
                 CREATE TABLE IF NOT EXISTS results (
                     id TEXT PRIMARY KEY, run_id TEXT NOT NULL, case_id TEXT NOT NULL,
                     payload TEXT NOT NULL
-                );
-                CREATE TABLE IF NOT EXISTS business_state (
-                    namespace TEXT NOT NULL, key TEXT NOT NULL, payload TEXT NOT NULL,
-                    PRIMARY KEY(namespace, key)
                 );
                 CREATE INDEX IF NOT EXISTS idx_traces_run ON traces(run_id);
                 CREATE INDEX IF NOT EXISTS idx_results_run ON results(run_id);
@@ -153,7 +147,9 @@ class SQLiteRepository:
                 ),
             )
 
-    def get_dataset_version(self, dataset_id: str, version: int) -> DatasetVersion | None:
+    def get_published_dataset_version(
+        self, dataset_id: str, version: int
+    ) -> DatasetVersion | None:
         with self._connect() as db:
             row = db.execute(
                 """
@@ -164,7 +160,9 @@ class SQLiteRepository:
             ).fetchone()
         return DatasetVersion.model_validate_json(row[0]) if row else None
 
-    def get_latest_dataset_version(self, dataset_id: str) -> DatasetVersion | None:
+    def get_latest_published_dataset_version(
+        self, dataset_id: str
+    ) -> DatasetVersion | None:
         with self._connect() as db:
             row = db.execute(
                 """
@@ -198,43 +196,36 @@ class SQLiteRepository:
             rows = db.execute(query, (dataset_id,)).fetchall()
         return [DatasetVersion.model_validate_json(row[0]) for row in rows]
 
-    def delete_dataset_draft(self, dataset_id: str) -> None:
+    def delete_dataset_draft(self, dataset_id: str, expected_draft_id: str) -> None:
         with self._connect() as db:
-            db.execute(
-                "DELETE FROM dataset_versions WHERE dataset_id=? AND status='draft'",
-                (dataset_id,),
+            cursor = db.execute(
+                """
+                DELETE FROM dataset_versions
+                WHERE dataset_id=? AND id=? AND status='draft'
+                """,
+                (dataset_id, expected_draft_id),
             )
+            if cursor.rowcount != 1:
+                raise ValueError("expected Dataset draft does not exist")
 
-    def publish_dataset_draft(
-        self, dataset_id: str, published_at: datetime
-    ) -> DatasetVersion:
+    def replace_dataset_draft(
+        self, expected_draft_id: str, published: DatasetVersion
+    ) -> None:
         with self._connect() as db:
             row = db.execute(
                 """
                 SELECT payload FROM dataset_versions
-                WHERE dataset_id=? AND status='draft'
+                WHERE id=? AND status='draft'
                 """,
-                (dataset_id,),
+                (expected_draft_id,),
             ).fetchone()
             if row is None:
-                raise ValueError("dataset has no active draft")
+                raise ValueError("expected Dataset draft does not exist")
             draft = DatasetVersion.model_validate_json(row[0])
-            next_version = db.execute(
-                """
-                SELECT COALESCE(MAX(version), 0) + 1
-                FROM dataset_versions WHERE dataset_id=? AND status='published'
-                """,
-                (dataset_id,),
-            ).fetchone()[0]
-            published = DatasetVersion.model_validate({
-                **draft.model_dump(mode="json"),
-                "id": str(uuid4()),
-                "version": next_version,
-                "status": DatasetVersionStatus.PUBLISHED,
-                "published_at": published_at,
-                "updated_at": published_at,
-                "content_sha256": "",
-            })
+            if draft.dataset_id != published.dataset_id:
+                raise ValueError("published DatasetVersion does not match the draft")
+            if published.status != DatasetVersionStatus.PUBLISHED:
+                raise ValueError("replacement DatasetVersion must be published")
             db.execute(
                 """
                 INSERT INTO dataset_versions(
@@ -248,7 +239,6 @@ class SQLiteRepository:
                 ),
             )
             db.execute("DELETE FROM dataset_versions WHERE id=?", (draft.id,))
-        return published
 
     def save_run(self, run: EvaluationRun) -> None:
         with self._connect() as db:
@@ -290,7 +280,7 @@ class SQLiteRepository:
             ).fetchall()
         return [Trace.model_validate_json(row[0]) for row in rows]
 
-    def save_results(self, results: list[EvaluationResult]) -> None:
+    def save_results(self, results: Sequence[EvaluationResult]) -> None:
         with self._connect() as db:
             db.executemany(
                 "INSERT OR REPLACE INTO results(id,run_id,case_id,payload) VALUES(?,?,?,?)",
@@ -303,17 +293,3 @@ class SQLiteRepository:
                 "SELECT payload FROM results WHERE run_id=? ORDER BY case_id,id", (run_id,)
             ).fetchall()
         return [EvaluationResult.model_validate_json(row[0]) for row in rows]
-
-    def put_business_state(self, namespace: str, key: str, value: dict) -> None:
-        with self._connect() as db:
-            db.execute(
-                "INSERT OR REPLACE INTO business_state(namespace,key,payload) VALUES(?,?,?)",
-                (namespace, key, json.dumps(value, ensure_ascii=False)),
-            )
-
-    def get_business_state(self, namespace: str, key: str) -> dict | None:
-        with self._connect() as db:
-            row = db.execute(
-                "SELECT payload FROM business_state WHERE namespace=? AND key=?", (namespace, key)
-            ).fetchone()
-        return json.loads(row[0]) if row else None

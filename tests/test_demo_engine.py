@@ -17,4 +17,4 @@ def test_risky_fails_and_fixed_improves(tmp_path):
     assert len(repository.list_results(fixed.id)) == 7
     failures = [result for result in risky_report.results if result.outcome == "fail"]
     assert all(result.primary_failure_stage for result in failures)
-    assert repository.get_business_state("loan", "A-100") is not None
+    assert service.loan_state["A-100"]["status"] == "pending_review"

@@ -11,7 +11,6 @@ from agentgate.domain import (
     Trace, TraceSpan
 )
 from agentgate.demo.provider import AgentProvider, DeterministicProvider
-from agentgate.storage.repository import AgentGateRepository
 
 
 DEMO_CREATED_AT = datetime(2026, 1, 1, tzinfo=UTC)
@@ -98,9 +97,13 @@ LOAN_DATASET_VERSION = DatasetVersion(
 class LoanAgent:
     versions = ("loan-agent-v1-risky", "loan-agent-v2-fixed")
 
-    def __init__(self, repository: AgentGateRepository, provider: AgentProvider | None = None) -> None:
-        self.repository = repository
+    def __init__(
+        self,
+        provider: AgentProvider | None = None,
+        state_store: dict[str, dict[str, Any]] | None = None,
+    ) -> None:
         self.provider = provider or DeterministicProvider()
+        self.state_store = state_store if state_store is not None else {}
 
     @staticmethod
     def _span(
@@ -246,7 +249,7 @@ class LoanAgent:
             }
 
         business_key = str(session_input.get("application_id", case.id))
-        self.repository.put_business_state("loan", business_key, state)
+        self.state_store[business_key] = state
         return Trace(
             trace_id=trace_id,
             run_id=run_id,

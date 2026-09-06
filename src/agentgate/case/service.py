@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from agentgate.domain import Case, Dataset, DatasetVersion
+from agentgate.domain import Case, Dataset, DatasetVersion, DatasetVersionStatus
 from agentgate.storage.repository import AgentGateRepository
 
 from .import_export import DatasetExport, build_export, parse_export
@@ -23,7 +23,12 @@ class DatasetService:
     def seed(self, dataset: Dataset, version: DatasetVersion) -> None:
         if self.repository.get_dataset(dataset.id) is None:
             self.repository.save_dataset(dataset)
-        if self.repository.get_dataset_version(dataset.id, version.version or 0) is None:
+        if (
+            self.repository.get_published_dataset_version(
+                dataset.id, version.version or 0
+            )
+            is None
+        ):
             self.repository.save_dataset_version(version)
 
     def list_datasets(self, include_archived: bool = False) -> list[Dataset]:
@@ -69,14 +74,14 @@ class DatasetService:
 
     def get_version(self, dataset_id: str, version: int) -> DatasetVersion:
         self.get_dataset(dataset_id)
-        item = self.repository.get_dataset_version(dataset_id, version)
+        item = self.repository.get_published_dataset_version(dataset_id, version)
         if item is None:
             raise ValueError(f"unknown dataset version: {dataset_id} v{version}")
         return item
 
     def latest_published(self, dataset_id: str) -> DatasetVersion:
         self.get_dataset(dataset_id)
-        version = self.repository.get_latest_dataset_version(dataset_id)
+        version = self.repository.get_latest_published_dataset_version(dataset_id)
         if version is None:
             raise ValueError(f"dataset has no published version: {dataset_id}")
         return version
@@ -96,7 +101,7 @@ class DatasetService:
         base = (
             self.get_version(dataset_id, based_on_version)
             if based_on_version is not None
-            else self.repository.get_latest_dataset_version(dataset_id)
+            else self.repository.get_latest_published_dataset_version(dataset_id)
         )
         draft = DatasetVersion(
             dataset_id=dataset_id,
@@ -110,8 +115,8 @@ class DatasetService:
         return draft
 
     def discard_draft(self, dataset_id: str) -> None:
-        self.get_dataset(dataset_id)
-        self.repository.delete_dataset_draft(dataset_id)
+        draft = self._draft(dataset_id)
+        self.repository.delete_dataset_draft(dataset_id, draft.id)
 
     def _draft(self, dataset_id: str) -> DatasetVersion:
         draft = self.get_draft(dataset_id)
@@ -175,7 +180,19 @@ class DatasetService:
     def publish_draft(self, dataset_id: str) -> DatasetVersion:
         draft = self._draft(dataset_id)
         validate_dataset_version(draft)
-        return self.repository.publish_dataset_draft(dataset_id, utcnow())
+        latest = self.repository.get_latest_published_dataset_version(dataset_id)
+        published_at = utcnow()
+        published = DatasetVersion.model_validate({
+            **draft.model_dump(mode="json"),
+            "id": str(uuid4()),
+            "version": (latest.version if latest and latest.version else 0) + 1,
+            "status": DatasetVersionStatus.PUBLISHED,
+            "published_at": published_at,
+            "updated_at": published_at,
+            "content_sha256": "",
+        })
+        self.repository.replace_dataset_draft(draft.id, published)
+        return published
 
     def copy_dataset(
         self, source_dataset_id: str, name: str, source_version: int | None = None

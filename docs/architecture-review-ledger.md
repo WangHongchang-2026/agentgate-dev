@@ -101,7 +101,8 @@ Current Level 2 progress:
 - SHA-256 format validation is centralized as `domain/base.py::require_sha256`; models
   retain ownership of hash presence, generation, and content-matching rules.
 - Current next checkpoint: review and execute `docs/storage/implementation-plan.md`, then
-  `docs/dataset/implementation-plan.md`, beginning with their file maps.
+  `docs/dataset/implementation-plan.md`. The Storage repository contract is complete;
+  `storage/sqlite.py` is the current file-level review.
 
 ## Global architecture decisions
 

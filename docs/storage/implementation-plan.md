@@ -1,6 +1,18 @@
 # Storage Implementation Plan
 
-Status: proposed for file-by-file review
+Status: in progress
+
+Implemented checkpoint:
+
+- `storage/base.py` was renamed to `storage/repository.py` without a compatibility alias.
+- `AgentGateRepository` now exposes 18 exercised persistence operations.
+- Published-version lookup names are explicit.
+- Draft publication accepts an already-built DatasetVersion and performs atomic
+  replacement by expected draft identity.
+- Result batches accept `Sequence[EvaluationResult]`.
+- Demo Agent business state was removed from the repository contract and SQLite schema.
+- `sqlite.py` was synchronized with this contract, but its complete file review remains
+  the next checkpoint.
 
 Authority:
 
@@ -144,10 +156,10 @@ operational only and is not introduced in this phase.
 Follow the project checkpoint rule: approve one file's name and responsibility, then
 review classes/functions, implement it, and run focused tests before moving on.
 
-1. Record current repository and Dataset persistence behavior.
-2. Rename `storage/base.py` to `storage/repository.py` and update imports.
-3. Review each Protocol method; remove construction and Demo-state operations.
-4. Refactor SQLite connection setup and schema pragmas.
+1. [completed] Record current repository and Dataset persistence behavior.
+2. [completed] Rename `storage/base.py` to `storage/repository.py` and update imports.
+3. [completed] Review each Protocol method; remove construction and Demo-state operations.
+4. [next] Refactor SQLite connection setup and schema pragmas.
 5. Refactor Dataset and DatasetVersion writes and atomic draft replacement.
 6. Extract Demo business state from AgentGate storage.
 7. Reconcile Run, Trace, and Result methods without redesigning those capabilities.
@@ -180,4 +192,3 @@ Storage is complete when:
 - database constraints and atomic publication behavior are tested;
 - no empty artifact-storage scaffold is introduced;
 - backend tests pass and the worktree is clean.
-
