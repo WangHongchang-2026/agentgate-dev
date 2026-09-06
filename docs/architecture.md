@@ -130,7 +130,6 @@ run/
 ├── engine.py
 ├── process_manager.py
 ├── retry.py
-├── manifest.py
 ├── artifacts.py
 └── target_protocol.py
 ```
@@ -331,7 +330,7 @@ appears. Detailed frontend boundaries are documented in `docs/web/README.md`.
 Web/CLI/API
   -> application/run_management.py
   -> resolve exact Dataset, Target, and Evaluator versions
-  -> run/manifest.py builds immutable RunManifest
+  -> construct immutable domain.RunManifest
   -> persist queued Run
   -> synchronous call or Celery dispatch
   -> run/engine.py executes each Case

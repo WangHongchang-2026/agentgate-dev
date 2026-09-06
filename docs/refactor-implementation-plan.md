@@ -157,7 +157,7 @@ sanitized errors, and independent error Results while removing global registrati
 | `run/core.py` | Split | `run/engine.py`, `run/target_protocol.py`, `integrations/targets/python_function.py` |
 | `run/core.py:LocalScheduler` | Remove | Direct application call or real job dispatcher |
 | `run/core.py:ExternalSchedulerAdapter` | Redefine | Application/job-dispatch boundary at whole-Run level |
-| empty `run/snapshot.py` | Replace | `run/manifest.py` |
+| empty `run/snapshot.py` | Remove | `domain.RunManifest` already owns the complete contract |
 | empty `run/lifecycle.py`, `run/models.py`, `run/scheduler.py` | Remove | Responsibilities already belong to domain/application/integrations |
 | empty `run/targets/`, `run/external/` | Remove/recreate | Real adapters under `integrations/targets/` |
 | none | Add when exercised | `run/process_manager.py`, `run/retry.py`, `run/artifacts.py` |
@@ -254,7 +254,7 @@ Gate: risky/fixed Result counts, scores, attribution, and Gate conclusions match
 
 ### Phase 4: Trace, Target, And Run
 
-- Separate RunEngine, manifest construction, Target protocol, adapters, and OTLP handling.
+- Separate RunEngine, application composition, Target protocol, adapters, and OTLP handling.
 - Add redaction; add process/retry/artifact modules only with exercised behavior.
 
 Gate: an end-to-end Run persists its exact manifest, Traces, Results, Metrics, Gate, and Report.

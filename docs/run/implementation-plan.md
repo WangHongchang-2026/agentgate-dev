@@ -31,7 +31,6 @@ only deterministic execution mechanics.
 run/
 ├── __init__.py
 ├── target_protocol.py
-├── manifest.py
 ├── engine.py
 ├── retry.py
 ├── process_manager.py
@@ -71,7 +70,7 @@ may replace that dispatcher without changing Engine or the Target protocol.
 
 `run/` owns:
 
-- building an immutable manifest from already resolved inputs;
+- consuming an immutable RunManifest constructed from already resolved inputs;
 - executing selected Cases;
 - invoking a Target through one protocol;
 - coordinating Trace collection and evaluation;
@@ -109,15 +108,6 @@ Required behavior:
 
 The protocol must support both synchronous adapters and adapters backed by remote
 asynchronous Agent APIs. Concrete adapters live under `integrations/targets/`.
-
-### `manifest.py`
-
-Builds a `domain.RunManifest` from exact, already resolved assets and effective
-configuration. It validates cross-object consistency and calculates reproducibility
-metadata where required.
-
-It does not query external Agent platforms, select Evaluators, persist records, invoke
-Agents, or mutate a manifest after construction.
 
 ### `engine.py`
 
@@ -234,7 +224,6 @@ Reuse directly:
 ### From Scratch
 
 - the minimal Target protocol compatible with current domain contracts;
-- pure manifest construction;
 - the decomposed Engine orchestration;
 - typed runtime failures and focused contract tests;
 - optional retry, process, and Artifact modules only after a real caller is approved.
@@ -248,7 +237,7 @@ It does not mean copying old code.
 | --- | --- | --- |
 | `run/core.py` | Split and remove | `run/engine.py`, `run/target_protocol.py`, `integrations/targets/python_function.py` |
 | empty `run/engine.py` | Implement | `run/engine.py` |
-| empty `run/snapshot.py` | Remove | `run/manifest.py` |
+| empty `run/snapshot.py` | Remove | `domain.RunManifest` already owns the complete contract |
 | empty `run/lifecycle.py` | Remove | Domain state transitions already own this behavior |
 | empty `run/models.py` | Remove | Domain and runtime protocol types own the required models |
 | empty `run/scheduler.py` | Remove | `integrations/job_dispatchers/` and application own dispatch |
@@ -264,7 +253,7 @@ Each file requires a source assessment and explicit approval before implementati
 
 1. Confirm this Run plan and current end-to-end baseline.
 2. [complete] Review and implement `run/target_protocol.py`.
-3. Review and implement `run/manifest.py`.
+3. [complete] Reject redundant `run/manifest.py` and remove empty `run/snapshot.py`.
 4. Review and implement `run/engine.py` with one synchronous execution path.
 5. Review and move the demo adapter to
    `integrations/targets/python_function.py`.
@@ -335,7 +324,8 @@ Run refactoring is complete when:
 
 - `run/core.py` and all empty legacy Run scaffolds are gone;
 - Engine depends on one approved Target protocol;
-- RunManifest construction is separate from execution;
+- `domain.RunManifest` owns manifest invariants and hashing, while the application layer
+  constructs it from exact resolved assets;
 - demo execution preserves P1 behavior through the new boundaries;
 - Traces and Results retain exact reproducibility references;
 - application code, not Engine, owns the complete user workflow and report retrieval;
@@ -356,3 +346,15 @@ Status: implemented; 218 tests passing
 | `integration/p1-new` | Reject obsolete Domain execution models and the credential resolver; credentials belong to concrete integrations. |
 | Current refactor | Reuse `Case`, `TargetSnapshot`, `Trace`, and shared validation helpers. |
 | From scratch | Implement `CaseExecutionStatus`, immutable request/result records, `TargetExecutionError`, and `TargetProtocol`. |
+
+### `run/manifest.py`
+
+Status: rejected as redundant
+
+| Source | Decision |
+| --- | --- |
+| `goal/p1-demo` | Preserve RunManifest construction behavior, but move hardcoded demo composition out of Engine. |
+| `integration/p1-new` | Reject the obsolete RunSnapshot model; selected-Case execution may be reconsidered only with a real requirement. |
+| Current refactor | Reuse `domain.RunManifest` directly; it already owns immutability, validation, exact references, execution limits, and hashing. |
+| From scratch | No code justified. A builder would only forward arguments to the Domain constructor. |
+| Removed | Empty `run/snapshot.py`; no replacement module and no compatibility alias. |

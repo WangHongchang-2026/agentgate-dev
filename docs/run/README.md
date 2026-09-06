@@ -7,7 +7,6 @@ run/
 ├── engine.py
 ├── process_manager.py
 ├── retry.py
-├── manifest.py
 ├── artifacts.py
 └── target_protocol.py
 ```

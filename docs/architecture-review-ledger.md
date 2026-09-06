@@ -112,7 +112,9 @@ Current Level 2 progress:
   `case/` feature package has been removed without a compatibility alias.
 - Run implementation planning is complete in `docs/run/implementation-plan.md`.
   `run/target_protocol.py` is implemented with the four-operation Case execution
-  lifecycle. The next file checkpoint is `run/manifest.py`.
+  lifecycle. `run/manifest.py` was rejected as a forwarding layer because
+  `domain.RunManifest` owns the complete contract. The next file checkpoint is
+  `run/engine.py`.
 
 ## Global architecture decisions
 
@@ -228,7 +230,6 @@ run/
 ├── engine.py
 ├── process_manager.py
 ├── retry.py
-├── manifest.py
 ├── artifacts.py
 └── target_protocol.py
 ```
@@ -258,14 +259,6 @@ Confirmed responsibilities:
 - Retry remains an execution function, not a domain class; each retry emits a Trace event.
 - Coding Agent retries require a fresh Workspace so an earlier execution cannot contaminate the next.
 
-### `manifest.py`
-
-- Renamed from `snapshot.py`/`snapshot_builder.py` to avoid confusion with before/after state snapshots.
-- Resolves vague Run requests into immutable, version-specific execution manifests.
-- Locks Dataset, Case, Agent, model, Prompt, Tool/Skill, Evaluator, Target, and effective RunConfig versions/hashes.
-- Used for reproducibility, audit, and version provenance.
-- Does not execute Agents, calculate scores, collect outputs, or write directly to a database.
-
 ### `artifacts.py`
 
 - Collects and registers file-like execution outputs: code diffs, modified files, test reports, stdout/stderr, screenshots, coverage, and other generated files.
@@ -293,6 +286,11 @@ Removed:
 - `timeout.py`: timeout configuration belongs in domain RunConfig; Engine waits; ProcessManager or Target Adapter performs cancellation/termination.
 - `context.py` / `execution_context.py` / `run_env.py`: proposed object mixed manifest configuration, domain IDs, and runtime handles. P1 keeps PID/Workspace/runtime handles inside ProcessManager.
 - `events.py`: proposed events duplicated domain state changes. P1 does not introduce an Event Bus for ordinary status changes.
+- `manifest.py`: rejected because `domain.RunManifest` already owns immutable exact
+  references, execution configuration, validation, and hashing. Application Run
+  management constructs it after resolving assets; a Run-layer builder would only
+  forward arguments.
+- `snapshot.py`: empty obsolete scaffold removed with no replacement module.
 
 ### Local Agent parallel execution decision
 
@@ -831,7 +829,7 @@ application/
 - Owns the complete Run lifecycle use case: Run creation, submission,
   cancellation, and the shared worker-side execution entry point.
 - Resolves selected Dataset, Target, and Evaluator versions, delegates immutable
-  manifest construction to `run/manifest.py`, persists the Run, and selects
+  manifest construction to `domain.RunManifest`, persists the Run, and selects
   synchronous or configured background dispatch.
 - Coordinates legal domain Run status transitions and persistence around
   `run/engine.py`.
