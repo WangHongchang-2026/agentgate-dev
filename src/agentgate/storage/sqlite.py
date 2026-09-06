@@ -4,7 +4,6 @@ import sqlite3
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
 
 from agentgate.domain import (
     Dataset, DatasetVersion, DatasetVersionStatus, EvaluationResult, EvaluationRun, Trace, canonical_json,
@@ -100,10 +99,6 @@ class SQLiteRepository:
             db.execute("PRAGMA journal_mode = WAL")
             db.executescript(_SCHEMA)
 
-    @staticmethod
-    def _json(model: Any) -> str:
-        return canonical_json(model)
-
     def save_dataset(self, dataset: Dataset) -> None:
         with self._connect() as db:
             db.execute(
@@ -118,7 +113,7 @@ class SQLiteRepository:
                 """,
                 (
                     dataset.id, dataset.name, int(dataset.archived),
-                    dataset.updated_at.isoformat(), self._json(dataset),
+                    dataset.updated_at.isoformat(), canonical_json(dataset),
                 ),
             )
 
@@ -175,7 +170,8 @@ class SQLiteRepository:
                 """,
                 (
                     version.id, version.dataset_id, version.version, version.status.value,
-                    version.created_at.isoformat(), version.content_sha256, self._json(version),
+                    version.created_at.isoformat(), version.content_sha256,
+                    canonical_json(version),
                 ),
             )
 
@@ -267,7 +263,7 @@ class SQLiteRepository:
                 (
                     published.id, published.dataset_id, published.version,
                     published.status.value, published.created_at.isoformat(),
-                    published.content_sha256, self._json(published),
+                    published.content_sha256, canonical_json(published),
                 ),
             )
             db.execute("DELETE FROM dataset_versions WHERE id=?", (draft.id,))
@@ -276,7 +272,7 @@ class SQLiteRepository:
         with self._connect() as db:
             db.execute(
                 "INSERT OR REPLACE INTO runs(id,status,created_at,payload) VALUES(?,?,?,?)",
-                (run.id, run.status, run.created_at.isoformat(), self._json(run)),
+                (run.id, run.status, run.created_at.isoformat(), canonical_json(run)),
             )
 
     def get_run(self, run_id: str) -> EvaluationRun | None:
@@ -295,7 +291,7 @@ class SQLiteRepository:
         with self._connect() as db:
             db.execute(
                 "INSERT OR REPLACE INTO traces(id,run_id,case_id,payload) VALUES(?,?,?,?)",
-                (trace.trace_id, trace.run_id, trace.case_id, self._json(trace)),
+                (trace.trace_id, trace.run_id, trace.case_id, canonical_json(trace)),
             )
 
     def get_trace(self, run_id: str, case_id: str) -> Trace | None:
@@ -316,7 +312,7 @@ class SQLiteRepository:
         with self._connect() as db:
             db.executemany(
                 "INSERT OR REPLACE INTO results(id,run_id,case_id,payload) VALUES(?,?,?,?)",
-                [(r.id, r.run_id, r.case_id, self._json(r)) for r in results],
+                [(r.id, r.run_id, r.case_id, canonical_json(r)) for r in results],
             )
 
     def list_results(self, run_id: str) -> list[EvaluationResult]:
