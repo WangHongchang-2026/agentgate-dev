@@ -6,7 +6,13 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from agentgate.domain import (
-    Dataset, DatasetVersion, DatasetVersionStatus, EvaluationResult, EvaluationRun, Trace, canonical_json,
+    Dataset,
+    DatasetVersion,
+    DatasetVersionStatus,
+    EvaluationResult,
+    EvaluationRun,
+    Trace,
+    canonical_json,
 )
 
 
@@ -131,6 +137,42 @@ class SQLiteRepository:
                 (
                     dataset.id, dataset.name, int(dataset.archived),
                     dataset.updated_at.isoformat(), canonical_json(dataset),
+                ),
+            )
+
+    def save_dataset_with_version(
+        self, dataset: Dataset, version: DatasetVersion
+    ) -> None:
+        if version.dataset_id != dataset.id:
+            raise ValueError("DatasetVersion must belong to Dataset")
+        with self._connect() as db:
+            db.execute(
+                """
+                INSERT INTO datasets(id,name,archived,updated_at,payload)
+                VALUES(?,?,?,?,?)
+                """,
+                (
+                    dataset.id,
+                    dataset.name,
+                    int(dataset.archived),
+                    dataset.updated_at.isoformat(),
+                    canonical_json(dataset),
+                ),
+            )
+            db.execute(
+                """
+                INSERT INTO dataset_versions(
+                    id,dataset_id,version,status,created_at,content_sha256,payload
+                ) VALUES(?,?,?,?,?,?,?)
+                """,
+                (
+                    version.id,
+                    version.dataset_id,
+                    version.version,
+                    version.status.value,
+                    version.created_at.isoformat(),
+                    version.content_sha256,
+                    canonical_json(version),
                 ),
             )
 

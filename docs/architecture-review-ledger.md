@@ -102,8 +102,8 @@ Current Level 2 progress:
   retain ownership of hash presence, generation, and content-matching rules.
 - Storage implementation is complete.
 - Dataset implementation is in progress. Versioning and the JSON/XLSX format, loading,
-  and export paths are complete; the current next checkpoint is
-  `application/dataset_management.py`.
+  and export paths are complete. Atomic initial Dataset/Version persistence is also
+  complete; the current next checkpoint is `application/dataset_management.py`.
 
 ## Global architecture decisions
 

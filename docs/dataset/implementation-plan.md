@@ -211,7 +211,8 @@ classes/functions, implement it, and run focused tests before moving on.
 6. [complete] Integrate XLSX parsing into `dataset/loader.py` and XLSX encoding into
    `dataset/export.py`.
 7. [next] Move workflows into `application/dataset_management.py`.
-8. Integrate the approved `storage/repository.py` publication operation.
+8. [complete] Integrate the approved atomic Dataset creation and draft-publication
+   operations in `storage/repository.py`.
 9. Remove `case/`, duplicate validation, stale imports, and empty scaffolds.
 10. Update existing API/CLI imports only as required; do not redesign transports or Web.
 11. Run focused and complete regression suites.
@@ -272,6 +273,19 @@ Status: implemented; 198 tests passing
 | `integration/p1-new` | Reject repository lookup, publication checks, HTTP streaming, attachment headers, ETag, and cache handling. |
 | Current refactor | Reuse `ExportedDataset`, identity validation, safe filename normalization, and explicit dispatch structure. |
 | From scratch | Add the small XLSX encoding branch and round-trip metadata tests. |
+
+### Atomic Dataset and Version persistence
+
+Status: implemented; 202 tests passing
+
+| Source | Decision |
+| --- | --- |
+| `goal/p1-demo` | Reject separate Dataset and DatasetVersion saves for imports because they are not atomic. |
+| `integration/p1-new` | Preserve the atomic Dataset-plus-draft insertion behavior and transaction shape. |
+| `integration/p1-new` | Adapt the operation to the current schema, canonical serialization, and both draft and published versions. |
+| `integration/p1-new` | Reject draft-only policy from the storage layer. |
+| Current refactor | Reuse `_connect()` transaction handling and existing schema conventions directly. |
+| From scratch | Add identity validation plus rollback, draft, and published-version tests. |
 
 ## 9. Test Plan
 

@@ -5,10 +5,12 @@ Status: complete
 Implemented checkpoint:
 
 - `storage/base.py` was renamed to `storage/repository.py` without a compatibility alias.
-- `AgentGateRepository` now exposes 18 exercised persistence operations.
+- `AgentGateRepository` now exposes 19 exercised persistence operations.
 - Published-version lookup names are explicit.
 - Draft publication accepts an already-built DatasetVersion and performs atomic
   replacement by expected draft identity.
+- Dataset import can atomically insert a new Dataset and its initial draft or published
+  DatasetVersion.
 - Result batches accept `Sequence[EvaluationResult]`.
 - Demo Agent business state was removed from the repository contract and SQLite schema.
 - `sqlite.py` was synchronized with this contract, but its complete file review remains

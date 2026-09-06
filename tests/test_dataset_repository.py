@@ -5,7 +5,7 @@ from uuid import uuid4
 import pytest
 
 from agentgate.case import DatasetService
-from agentgate.domain import Case, CaseTurn, DatasetVersion, DatasetVersionStatus
+from agentgate.domain import Case, CaseTurn, Dataset, DatasetVersion, DatasetVersionStatus
 from agentgate.storage.sqlite import SQLiteRepository
 
 
@@ -60,6 +60,63 @@ def test_sqlite_persists_catalog_and_enforces_one_draft(tmp_path):
         assert db.execute(
             "SELECT COUNT(*) FROM sqlite_master WHERE name='business_state'"
         ).fetchone()[0] == 0
+
+
+@pytest.mark.parametrize("published", [False, True])
+def test_save_dataset_with_version_is_atomic_for_draft_and_publication(
+    tmp_path, published
+):
+    repository = SQLiteRepository(tmp_path / "atomic-create.db")
+    dataset = Dataset(id=f"dataset-{published}", name="Imported")
+    case = Case(name="Case", turns=(CaseTurn(input={"message": "hello"}),))
+    values = {
+        "id": f"version-{published}",
+        "dataset_id": dataset.id,
+        "cases": (case,),
+    }
+    if published:
+        values.update(
+            status=DatasetVersionStatus.PUBLISHED,
+            version=1,
+            published_at=dataset.created_at,
+            created_at=dataset.created_at,
+            updated_at=dataset.created_at,
+        )
+    version = DatasetVersion.model_validate(values)
+
+    repository.save_dataset_with_version(dataset, version)
+
+    assert repository.get_dataset(dataset.id) == dataset
+    if published:
+        assert repository.get_published_dataset_version(dataset.id, 1) == version
+    else:
+        assert repository.get_dataset_draft(dataset.id) == version
+
+
+def test_save_dataset_with_version_rolls_back_both_records(tmp_path):
+    repository = SQLiteRepository(tmp_path / "atomic-rollback.db")
+    existing = Dataset(id="existing", name="Existing")
+    conflicting = DatasetVersion(id="shared-version", dataset_id=existing.id)
+    repository.save_dataset(existing)
+    repository.save_dataset_version(conflicting)
+
+    new_dataset = Dataset(id="new", name="New")
+    new_version = DatasetVersion(id="shared-version", dataset_id=new_dataset.id)
+    with pytest.raises(sqlite3.IntegrityError):
+        repository.save_dataset_with_version(new_dataset, new_version)
+
+    assert repository.get_dataset(new_dataset.id) is None
+
+
+def test_save_dataset_with_version_rejects_mismatched_identity(tmp_path):
+    repository = SQLiteRepository(tmp_path / "atomic-identity.db")
+    dataset = Dataset(id="dataset", name="Dataset")
+    version = DatasetVersion(dataset_id="other")
+
+    with pytest.raises(ValueError, match="must belong"):
+        repository.save_dataset_with_version(dataset, version)
+
+    assert repository.get_dataset(dataset.id) is None
 
 
 def test_dataset_catalog_rejects_changed_creation_time_and_stale_updates(tmp_path):
