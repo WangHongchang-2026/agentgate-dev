@@ -303,6 +303,18 @@ Status: implemented; 203 tests passing
 | From scratch | Add the `DatasetManagement` application class and focused JSON/XLSX workflow tests. |
 | Removed | `seed()`; Demo bootstrap data does not belong to Dataset management. |
 
+### `demo/bootstrap.py`
+
+Status: implemented; 206 tests passing
+
+| Source | Decision |
+| --- | --- |
+| `goal/p1-demo` | Preserve idempotent startup seeding of the loan demonstration Dataset and publication. |
+| `goal/p1-demo` | Move the two existence checks out of `DatasetService.seed()`. |
+| `integration/p1-new` | No distinct behavior or better implementation to reuse. |
+| Current refactor | Reuse atomic initial persistence when storage is empty and ordinary version persistence for a partial seed. |
+| From scratch | Add one bootstrap function plus empty, repeated, and partial-storage tests. |
+
 ## 9. Test Plan
 
 ### Versioning
