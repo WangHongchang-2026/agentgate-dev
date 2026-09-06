@@ -55,6 +55,10 @@ Apply the following sequence separately to each package and file:
    - `goal/p1-demo`: identify behavior or code to reuse, adapt, or reject;
    - `integration/p1-new`: identify behavior or code to reuse, adapt, or reject;
    - from scratch: identify the code required because neither source fits.
+   "Reuse" is not permission to copy code wholesale. Separate the assessment into
+   behavior to preserve, code safe to reuse directly, code requiring adaptation or
+   rewrite, and code to reject. Check responsibility, current domain compatibility,
+   coding style, error and security behavior, dependencies, and tests before deciding.
    Stop and obtain explicit user approval after presenting this assessment.
 5. Implement only the confirmed design, add focused tests, and show verification before
    moving to the next file.
