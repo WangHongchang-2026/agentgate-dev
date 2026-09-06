@@ -55,6 +55,7 @@ Apply the following sequence separately to each package and file:
    - `goal/p1-demo`: identify behavior or code to reuse, adapt, or reject;
    - `integration/p1-new`: identify behavior or code to reuse, adapt, or reject;
    - from scratch: identify the code required because neither source fits.
+   Stop and obtain explicit user approval after presenting this assessment.
 5. Implement only the confirmed design, add focused tests, and show verification before
    moving to the next file.
 
