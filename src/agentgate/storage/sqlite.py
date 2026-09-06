@@ -349,8 +349,29 @@ class SQLiteRepository:
 
     def save_trace(self, trace: Trace) -> None:
         with self._connect() as db:
+            existing = db.execute(
+                "SELECT payload FROM traces WHERE id = ?", (trace.trace_id,)
+            ).fetchone()
+            if existing:
+                stored = Trace.model_validate_json(existing[0])
+                if (trace.run_id, trace.case_id) != (stored.run_id, stored.case_id):
+                    raise ValueError("Trace Run and Case identity are immutable")
+                if trace == stored:
+                    return
+                db.execute(
+                    "UPDATE traces SET payload = ? WHERE id = ?",
+                    (canonical_json(trace), trace.trace_id),
+                )
+                return
+
+            occupied = db.execute(
+                "SELECT id FROM traces WHERE run_id = ? AND case_id = ?",
+                (trace.run_id, trace.case_id),
+            ).fetchone()
+            if occupied:
+                raise ValueError("Run and Case already have a different Trace")
             db.execute(
-                "INSERT OR REPLACE INTO traces(id,run_id,case_id,payload) VALUES(?,?,?,?)",
+                "INSERT INTO traces(id,run_id,case_id,payload) VALUES(?,?,?,?)",
                 (trace.trace_id, trace.run_id, trace.case_id, canonical_json(trace)),
             )
 
@@ -364,7 +385,7 @@ class SQLiteRepository:
     def list_traces(self, run_id: str) -> list[Trace]:
         with self._connect() as db:
             rows = db.execute(
-                "SELECT payload FROM traces WHERE run_id=? ORDER BY case_id", (run_id,)
+                "SELECT payload FROM traces WHERE run_id=? ORDER BY case_id,id", (run_id,)
             ).fetchall()
         return [Trace.model_validate_json(row[0]) for row in rows]
 

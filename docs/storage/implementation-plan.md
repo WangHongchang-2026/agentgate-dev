@@ -26,6 +26,8 @@ Implemented checkpoint:
   atomic replacement verifies current draft content, creation time, and ancestry.
 - EvaluationRun writes preserve the exact manifest and lifecycle timestamps, make terminal
   records immutable/idempotent, and use deterministic bounded listing.
+- Trace writes allow complete-snapshot updates only for the same Trace/Run/Case identity;
+  a different Trace cannot replace the occupied Run/Case record.
 
 Authority:
 
@@ -177,7 +179,7 @@ review classes/functions, implement it, and run focused tests before moving on.
 6. [completed] Review Dataset catalog write and query semantics.
 7. [completed] Refactor DatasetVersion writes, queries, and atomic draft replacement.
 8. [completed] Extract Demo business state from AgentGate storage.
-9. [in progress] Run methods are complete; Trace methods are next, followed by Results.
+9. [in progress] Run and Trace methods are complete; Result methods are next.
 10. Run storage, Dataset, demo, API, and full backend regression tests.
 
 Each checkpoint should produce a small reviewable commit when practical.

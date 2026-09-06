@@ -104,7 +104,7 @@ Current Level 2 progress:
   `docs/dataset/implementation-plan.md`. The Storage repository contract is complete;
   `storage/sqlite.py::_connect()`, `_initialize()`, and forwarding-helper cleanup are
   complete; Dataset catalog, DatasetVersion, and Run methods are complete, and Trace
-  methods are the current review.
+  methods are complete. Result methods are the current review.
 
 ## Global architecture decisions
 
