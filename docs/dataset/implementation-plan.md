@@ -210,7 +210,25 @@ classes/functions, implement it, and run focused tests before moving on.
 
 Each checkpoint should produce a small reviewable commit when practical.
 
-## 8. Test Plan
+## 8. Implementation Decisions
+
+Record the source assessment here before implementing each file. The architecture ledger
+tracks only overall progress.
+
+### `dataset/export.py`
+
+Status: awaiting implementation approval
+
+| Source | Decision |
+| --- | --- |
+| `goal/p1-demo` | Reuse the Dataset/DatasetVersion identity check and canonical envelope fields. |
+| `goal/p1-demo` | Reject the old `DatasetExport` Pydantic wrapper and combined import/export module. |
+| `integration/p1-new` | Adapt its safe attachment filename normalization into a format-independent suggested filename. |
+| `integration/p1-new` | Reject HTTP `Content-Disposition` handling here; it belongs in `server/`. |
+| From scratch | Add the `ExportedDataset` bytes/media-type/filename output contract and explicit format dispatch. |
+| Deferred | Review the team branch's `build_excel()` implementation during `dataset/formats/xlsx.py`. |
+
+## 9. Test Plan
 
 ### Versioning
 
@@ -241,7 +259,7 @@ Each checkpoint should produce a small reviewable commit when practical.
 - Web typecheck/build run after required import changes;
 - Playwright limitations are reported honestly if host libraries remain unavailable.
 
-## 9. Dependency Rule
+## 10. Dependency Rule
 
 This phase may add `openpyxl`. It does not add an ORM, migration framework, Redis,
 Celery, PostgreSQL driver, or object-storage SDK.
@@ -252,7 +270,7 @@ domain <- dataset <- application -> storage/repository.py
 
 `domain/`, `dataset/`, and `application/` never import `storage/sqlite.py` directly.
 
-## 10. Completion Gate
+## 11. Completion Gate
 
 Dataset work is complete when:
 
