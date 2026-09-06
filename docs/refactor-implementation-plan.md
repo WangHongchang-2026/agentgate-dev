@@ -33,6 +33,9 @@ Authority order:
 6. Do not mix `integration/p1-new` work into refactor commits.
 7. Preserve existing uncommitted Web work and reconcile it during the Web phase.
 8. Add dependencies and modules only for behavior that is actually implemented.
+9. Write source code, identifiers, comments, tests, active documentation, and
+   application-owned UI text in English. External customer data and imported Dataset
+   content may retain their source language.
 
 ### Engineering Philosophy
 

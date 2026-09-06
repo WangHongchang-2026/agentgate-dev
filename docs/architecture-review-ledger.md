@@ -36,6 +36,8 @@ Current review status:
   branch.
 - The behavior-preserving source-to-target map and implementation gates are recorded in
   `docs/refactor-implementation-plan.md`.
+- Project-authored code and active documentation use English. External data may retain
+  its source language.
 
 ## Review method
 
