@@ -270,7 +270,8 @@ module wholesale.
 Each file requires a source assessment and explicit approval before implementation.
 
 1. Confirm this Trace plan and record the existing OTLP behavior baseline.
-2. Review `trace/normalizer.py` input contract, correlation, completion, and output.
+2. [complete] Review `trace/normalizer.py` input contract, correlation, completion,
+   and output.
 3. Add verified official OTel SDK dependencies.
 4. Review and implement `integrations/observability/in_memory.py`.
 5. Review and instrument the clean `LoanAgent.invoke()` contract.
@@ -348,3 +349,18 @@ Trace refactoring is complete when:
 - obsolete empty Trace scaffolds are removed;
 - the risky/fixed demo behavior and evaluator evidence remain correct;
 - focused tests, the complete backend suite, and an end-to-end demo Run pass.
+
+## 14. Implementation Decisions
+
+### `trace/normalizer.py`
+
+Status: implemented; 229 tests passing
+
+| Source | Decision |
+| --- | --- |
+| `goal/p1-demo` | Reuse AnyValue, attribute, timestamp, status, and event parsing after strengthening validation. |
+| `goal/p1-demo` | Reject fallback Run/Case ownership, random missing IDs, payload-order sequencing, and incomplete Trace output. |
+| `integration/p1-new` | Adapt strict correlation, canonical aliases, completion markers, and deterministic ordering. |
+| `integration/p1-new` | Reject obsolete TraceBatch/status models and the unexercised ingestion service. |
+| Current refactor | Reuse immutable `Trace` and `TraceSpan` Domain contracts. |
+| From scratch | Add shared `normalize_span()` and `assemble_trace()` functions used by OTLP and in-memory integrations. |

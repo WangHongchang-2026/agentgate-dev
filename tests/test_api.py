@@ -1,6 +1,53 @@
+import json
+
 from fastapi.testclient import TestClient
 
 from agentgate.server.application import create_app
+
+
+def otlp_attribute(key, value):
+    field = "boolValue" if isinstance(value, bool) else "stringValue"
+    return {"key": key, "value": {field: value}}
+
+
+def completed_otlp_payload():
+    span_attributes = [
+        otlp_attribute("agentgate.operation.type", "tool"),
+        otlp_attribute("agentgate.turn.id", "turn"),
+        otlp_attribute("agentgate.turn.complete", True),
+        otlp_attribute("agentgate.turn.input", json.dumps({"message": "hello"})),
+        otlp_attribute("agentgate.turn.output", json.dumps({"message": "done"})),
+        otlp_attribute("agentgate.turn.state", json.dumps({})),
+        otlp_attribute("agentgate.trace.complete", True),
+        otlp_attribute("agentgate.final.output", json.dumps({"message": "done"})),
+        otlp_attribute("agentgate.final.state", json.dumps({})),
+    ]
+    return {
+        "resourceSpans": [
+            {
+                "resource": {
+                    "attributes": [
+                        otlp_attribute("agentgate.run.id", "external-run"),
+                        otlp_attribute("agentgate.case.id", "external-case"),
+                    ]
+                },
+                "scopeSpans": [
+                    {
+                        "spans": [
+                            {
+                                "traceId": "a" * 32,
+                                "spanId": "d" * 16,
+                                "name": "tool.call",
+                                "startTimeUnixNano": "1000000000",
+                                "endTimeUnixNano": "2000000000",
+                                "attributes": span_attributes,
+                            }
+                        ]
+                    }
+                ],
+            }
+        ]
+    }
 
 
 def test_api_evaluation_and_persisted_trace(tmp_path):
@@ -29,11 +76,7 @@ def test_api_launch_requires_an_explicit_dataset_version(tmp_path):
 
 
 def test_otlp_http_uses_post_and_health_is_separate(tmp_path):
-    payload = {"resourceSpans": [{"resource": {"attributes": [
-        {"key": "agentgate.run_id", "value": {"stringValue": "external-run"}},
-        {"key": "agentgate.case_id", "value": {"stringValue": "external-case"}},
-    ]}, "scopeSpans": [{"spans": [{"traceId": "a" * 32, "spanId": "d" * 16, "name": "tool.call",
-                                      "attributes": [{"key": "agentgate.operation_type", "value": {"stringValue": "tool"}}]}]}]}]}
+    payload = completed_otlp_payload()
     with TestClient(create_app(tmp_path / "otlp.db")) as client:
         assert client.get("/health").json() == {"status": "ok"}
         assert client.get("/v1/traces").status_code == 405

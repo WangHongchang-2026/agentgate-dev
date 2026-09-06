@@ -118,8 +118,9 @@ Current Level 2 progress:
   `domain.RunManifest` owns the complete contract. The sequential `run/engine.py` is
   implemented but not yet wired into the demo.
 - Real OTel Trace capture for the Demo Agent is approved. Its complete implementation
-  plan is recorded in `docs/trace/implementation-plan.md`; the next Trace file
-  checkpoint is `trace/normalizer.py` before the Demo Target adapter is implemented.
+  plan is recorded in `docs/trace/implementation-plan.md`. The strict complete-Trace
+  normalizer is implemented; the next checkpoint is verifying OTel SDK dependencies
+  before reviewing `integrations/observability/in_memory.py`.
 
 ## Global architecture decisions
 
