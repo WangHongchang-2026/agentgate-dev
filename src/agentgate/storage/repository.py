@@ -1,4 +1,4 @@
-"""Persistence interfaces; adapters may be SQLite, PostgreSQL, or remote stores."""
+"""Persistence contract implemented by AgentGate storage adapters."""
 
 from __future__ import annotations
 

@@ -11,7 +11,7 @@ from agentgate.domain import (
     Trace, TraceSpan
 )
 from agentgate.demo.provider import AgentProvider, DeterministicProvider
-from agentgate.storage.base import AgentGateRepository
+from agentgate.storage.repository import AgentGateRepository
 
 
 DEMO_CREATED_AT = datetime(2026, 1, 1, tzinfo=UTC)

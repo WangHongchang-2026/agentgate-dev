@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from agentgate.domain import Case, Dataset, DatasetVersion
-from agentgate.storage.base import AgentGateRepository
+from agentgate.storage.repository import AgentGateRepository
 
 from .import_export import DatasetExport, build_export, parse_export
 from .validation import validate_dataset_version

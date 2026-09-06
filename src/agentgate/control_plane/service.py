@@ -6,7 +6,7 @@ from agentgate.case import DatasetService
 from agentgate.demo.loan import LOAN_DATASET, LOAN_DATASET_VERSION, LoanAgent
 from agentgate.evaluator import EVALUATORS
 from agentgate.run.core import RunEngine
-from agentgate.storage.base import AgentGateRepository
+from agentgate.storage.repository import AgentGateRepository
 
 
 class EvaluationService:

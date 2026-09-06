@@ -8,7 +8,7 @@ from agentgate.domain import (
 )
 from agentgate.evaluator import EVALUATORS, evaluate_case, validate_evaluation_plan
 from agentgate.result.report import build_evaluation_report
-from agentgate.storage.base import AgentGateRepository
+from agentgate.storage.repository import AgentGateRepository
 
 
 class Target(Protocol):
