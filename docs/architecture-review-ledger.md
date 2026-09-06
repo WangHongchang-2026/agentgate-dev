@@ -101,9 +101,9 @@ Current Level 2 progress:
 - SHA-256 format validation is centralized as `domain/base.py::require_sha256`; models
   retain ownership of hash presence, generation, and content-matching rules.
 - Storage implementation is complete.
-- Dataset implementation is in progress. The file map, `dataset/versioning.py`, and
-  `dataset/formats/json.py` are complete; the current next checkpoint is
-  `dataset/loader.py`.
+- Dataset implementation is in progress. The file map, `dataset/versioning.py`,
+  `dataset/formats/json.py`, and `dataset/loader.py` are complete; the current next
+  checkpoint is `dataset/export.py`.
 
 ## Global architecture decisions
 
