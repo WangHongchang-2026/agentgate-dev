@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 from typing import Any
@@ -8,7 +9,6 @@ from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from agentgate.case import DatasetExport, DatasetValidationError
 from agentgate.control_plane import EvaluationService
 from agentgate.domain import Case
 from agentgate.storage.sqlite import SQLiteRepository
@@ -47,10 +47,7 @@ class ReorderCasesRequest(BaseModel):
 
 
 def _raise_dataset_error(exc: ValueError, status_code: int = 422) -> None:
-    detail: Any = str(exc)
-    if isinstance(exc, DatasetValidationError):
-        detail = [item.model_dump(mode="json") for item in exc.issues]
-    raise HTTPException(status_code=status_code, detail=detail) from exc
+    raise HTTPException(status_code=status_code, detail=str(exc)) from exc
 
 
 def create_app(database_path: str | Path | None = None) -> FastAPI:
@@ -215,14 +212,15 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
     @api.get("/datasets/{dataset_id}/versions/{version}/export")
     def export_dataset(dataset_id: str, version: int):
         try:
-            return datasets.export_version(dataset_id, version)
+            exported = datasets.export_version(dataset_id, version, "json")
+            return json.loads(exported.content)
         except ValueError as exc:
             _raise_dataset_error(exc, 404)
 
     @api.post("/datasets/import", status_code=201)
-    def import_dataset(payload: DatasetExport):
+    def import_dataset(payload: dict[str, Any]):
         try:
-            dataset, version = datasets.import_dataset(payload.model_dump(mode="json"))
+            dataset, version = datasets.import_json(payload)
             return {"dataset": dataset, "version": version}
         except ValueError as exc:
             _raise_dataset_error(exc)

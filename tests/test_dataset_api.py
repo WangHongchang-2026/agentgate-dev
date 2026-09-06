@@ -80,3 +80,33 @@ def test_publish_returns_domain_validation_message(tmp_path):
         response = client.post(f"/api/datasets/{dataset_id}/drafts/publish")
         assert response.status_code == 422
         assert "requires at least one Case" in response.json()["detail"]
+
+
+def test_json_export_and_import_routes_round_trip(tmp_path):
+    with TestClient(create_app(tmp_path / "exchange-source.db")) as source:
+        created = source.post("/api/datasets", json={"name": "Exchange"}).json()
+        dataset_id = created["dataset"]["id"]
+        case = Case(
+            id="exchange-case",
+            name="Exchange Case",
+            turns=(CaseTurn(id="exchange-turn", input={"message": "hello"}),),
+        )
+        source.post(
+            f"/api/datasets/{dataset_id}/drafts/cases",
+            json=case.model_dump(mode="json"),
+        )
+        source.post(f"/api/datasets/{dataset_id}/drafts/publish")
+        exported = source.get(
+            f"/api/datasets/{dataset_id}/versions/1/export"
+        )
+        assert exported.status_code == 200
+        payload = exported.json()
+        assert payload["format"] == "agentgate.dataset"
+        assert payload["format_version"] == 1
+
+    with TestClient(create_app(tmp_path / "exchange-target.db")) as target:
+        response = target.post("/api/datasets/import", json=payload)
+
+        assert response.status_code == 201
+        assert response.json()["dataset"]["id"] == dataset_id
+        assert response.json()["version"]["version"] == 1

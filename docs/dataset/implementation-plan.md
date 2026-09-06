@@ -331,6 +331,19 @@ Status: implemented; 206 tests passing
 The application attribute is named `dataset_management`, not `datasets`, because
 `EvaluationService.datasets()` already owns the Dataset-summary query name.
 
+### `server/application.py` Dataset caller migration
+
+Status: implemented; 207 tests passing
+
+| Source | Decision |
+| --- | --- |
+| `goal/p1-demo` | Preserve all Dataset routes and the JSON object response used by the current Web UI. |
+| `goal/p1-demo` | Reuse route handlers directly except for JSON import/export adaptation. |
+| `goal/p1-demo` | Reject the old `DatasetExport` request model and `DatasetValidationError` transport special case. |
+| `integration/p1-new` | Reuse no code; multipart XLSX routes and unrelated server expansion remain deferred. |
+| Current refactor | Reuse `DatasetManagement.import_json()` and `export_version()` directly. |
+| From scratch | Decode canonical export bytes for the existing JSON response and add an API round-trip test. |
+
 ## 9. Test Plan
 
 ### Versioning
