@@ -1,6 +1,6 @@
 # Dataset Implementation Plan
 
-Status: proposed for file-by-file review
+Status: implementation in progress
 
 Authority:
 
@@ -103,7 +103,6 @@ Pure immutable transformations:
 - reorder Cases only when every Case appears once;
 - build a published DatasetVersion from a draft, explicit version number, publication
   ID, and timestamp;
-- calculate change information used by application workflows.
 
 It performs no repository, SQL, HTTP, or global-state access. IDs and timestamps are
 passed in when deterministic behavior matters. Publication rejects a non-draft source
@@ -198,9 +197,9 @@ Remove `case/validation.py` after migrating valid responsibilities:
 Follow the project checkpoint rule: approve one file's name/responsibility, then review
 classes/functions, implement it, and run focused tests before moving on.
 
-1. Confirm the final Dataset file map and baseline behavior.
-2. Implement `dataset/versioning.py` pure transformations.
-3. Implement `dataset/formats/json.py` and preserve canonical JSON round trips.
+1. [complete] Confirm the final Dataset file map and baseline behavior.
+2. [complete] Implement `dataset/versioning.py` pure transformations.
+3. [next] Implement `dataset/formats/json.py` and preserve canonical JSON round trips.
 4. Implement `dataset/loader.py` and `dataset/export.py`.
 5. Add deterministic `.xlsx` import/export in `dataset/formats/xlsx.py`.
 6. Move workflows into `application/dataset_management.py`.
@@ -265,4 +264,3 @@ Dataset work is complete when:
 - Runs resolve exact published versions;
 - backend tests and required API/Web checks pass;
 - no deferred empty scaffolds are introduced.
-

@@ -5,7 +5,15 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from agentgate.domain import Case, Dataset, DatasetVersion, DatasetVersionStatus
+from agentgate.dataset.versioning import (
+    copy_case as copy_draft_case,
+    create_draft as build_draft,
+    publish_draft as build_published_version,
+    remove_case as remove_draft_case,
+    reorder_cases as reorder_draft_cases,
+    with_case,
+)
+from agentgate.domain import Case, Dataset, DatasetVersion
 from agentgate.storage.repository import AgentGateRepository
 
 from .import_export import DatasetExport, build_export, parse_export
@@ -103,13 +111,12 @@ class DatasetService:
             if based_on_version is not None
             else self.repository.get_latest_published_dataset_version(dataset_id)
         )
-        draft = DatasetVersion(
-            dataset_id=dataset_id,
-            dataset_name=dataset.name,
-            dataset_description=dataset.description,
-            based_on_version=base.version if base else None,
-            cases=base.cases if base else (),
-            notes=base.notes if base else "",
+        created_at = utcnow()
+        draft = build_draft(
+            dataset,
+            base,
+            draft_id=str(uuid4()),
+            created_at=created_at,
         )
         self.repository.save_dataset_version(draft)
         return draft
@@ -126,32 +133,13 @@ class DatasetService:
 
     def save_case(self, dataset_id: str, case: Case) -> DatasetVersion:
         draft = self._draft(dataset_id)
-        cases = list(draft.cases)
-        index = next((i for i, item in enumerate(cases) if item.id == case.id), None)
-        if index is None:
-            cases.append(case)
-        else:
-            cases[index] = case
-        updated = DatasetVersion.model_validate({
-            **draft.model_dump(mode="json"),
-            "cases": cases,
-            "updated_at": utcnow(),
-            "content_sha256": "",
-        })
+        updated = with_case(draft, case, utcnow())
         self.repository.save_dataset_version(updated)
         return updated
 
     def remove_case(self, dataset_id: str, case_id: str) -> DatasetVersion:
         draft = self._draft(dataset_id)
-        cases = tuple(item for item in draft.cases if item.id != case_id)
-        if len(cases) == len(draft.cases):
-            raise ValueError(f"unknown case: {case_id}")
-        updated = DatasetVersion.model_validate({
-            **draft.model_dump(mode="json"),
-            "cases": cases,
-            "updated_at": utcnow(),
-            "content_sha256": "",
-        })
+        updated = remove_draft_case(draft, case_id, utcnow())
         self.repository.save_dataset_version(updated)
         return updated
 
@@ -160,20 +148,19 @@ class DatasetService:
         source = next((item for item in draft.cases if item.id == case_id), None)
         if source is None:
             raise ValueError(f"unknown case: {case_id}")
-        copied = source.model_copy(update={"id": str(uuid4()), "name": f"{source.name}（副本）"})
-        return self.save_case(dataset_id, copied)
+        updated = copy_draft_case(
+            draft,
+            case_id,
+            new_case_id=str(uuid4()),
+            new_name=f"{source.name}（副本）",
+            updated_at=utcnow(),
+        )
+        self.repository.save_dataset_version(updated)
+        return updated
 
     def reorder_cases(self, dataset_id: str, case_ids: list[str]) -> DatasetVersion:
         draft = self._draft(dataset_id)
-        by_id = {item.id: item for item in draft.cases}
-        if len(case_ids) != len(set(case_ids)) or set(case_ids) != set(by_id):
-            raise ValueError("case order must contain every draft Case exactly once")
-        updated = DatasetVersion.model_validate({
-            **draft.model_dump(mode="json"),
-            "cases": [by_id[item] for item in case_ids],
-            "updated_at": utcnow(),
-            "content_sha256": "",
-        })
+        updated = reorder_draft_cases(draft, case_ids, utcnow())
         self.repository.save_dataset_version(updated)
         return updated
 
@@ -182,15 +169,12 @@ class DatasetService:
         validate_dataset_version(draft)
         latest = self.repository.get_latest_published_dataset_version(dataset_id)
         published_at = utcnow()
-        published = DatasetVersion.model_validate({
-            **draft.model_dump(mode="json"),
-            "id": str(uuid4()),
-            "version": (latest.version if latest and latest.version else 0) + 1,
-            "status": DatasetVersionStatus.PUBLISHED,
-            "published_at": published_at,
-            "updated_at": published_at,
-            "content_sha256": "",
-        })
+        published = build_published_version(
+            draft,
+            publication_id=str(uuid4()),
+            version=(latest.version if latest and latest.version else 0) + 1,
+            published_at=published_at,
+        )
         self.repository.replace_dataset_draft(draft.id, published)
         return published
 
