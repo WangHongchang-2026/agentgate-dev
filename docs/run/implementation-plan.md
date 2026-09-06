@@ -57,6 +57,16 @@ accepted.
 - **Job dispatcher**: local/Celery/customer infrastructure that starts a whole Run. It
   is outside `run/`.
 
+There are two distinct asynchronous lifecycles:
+
+```text
+Demo Celery or customer scheduler   schedules a complete EvaluationRun
+TargetProtocol                      controls one Case execution
+```
+
+The demo uses a real job dispatcher under `integrations/job_dispatchers/`. A customer
+may replace that dispatcher without changing Engine or the Target protocol.
+
 ## 4. Ownership Boundaries
 
 `run/` owns:
@@ -90,10 +100,10 @@ domain model.
 
 Required behavior:
 
-- start one Case execution;
-- wait for completion;
-- inspect status where asynchronous adapters require it;
-- cancel an active execution;
+- `start(request) -> handle` starts one Case execution and returns an opaque string;
+- `get_status(handle)` inspects its current status;
+- `wait(handle, timeout_seconds)` waits for and returns its normalized result;
+- `cancel(handle)` requests cancellation;
 - return output, Trace correlation information, and Artifact references without
   exposing vendor response objects to Engine.
 
@@ -253,7 +263,7 @@ No compatibility aliases from old Run modules are retained.
 Each file requires a source assessment and explicit approval before implementation.
 
 1. Confirm this Run plan and current end-to-end baseline.
-2. Review and implement `run/target_protocol.py`.
+2. [complete] Review and implement `run/target_protocol.py`.
 3. Review and implement `run/manifest.py`.
 4. Review and implement `run/engine.py` with one synchronous execution path.
 5. Review and move the demo adapter to
@@ -331,3 +341,18 @@ Run refactoring is complete when:
 - application code, not Engine, owns the complete user workflow and report retrieval;
 - optional modules exist only where exercised;
 - focused tests, the complete backend suite, and a real demo Run pass.
+
+## 13. Implementation Decisions
+
+### `run/target_protocol.py`
+
+Status: implemented; 218 tests passing
+
+| Source | Decision |
+| --- | --- |
+| `goal/p1-demo` | Preserve synchronous execution behavior behind the new lifecycle protocol. |
+| `goal/p1-demo` | Reuse none of `Target`, `LocalScheduler`, or `ExternalSchedulerAdapter`; they are forwarding abstractions with mixed ownership. |
+| `integration/p1-new` | Adapt request/result correlation, W3C Trace context, adapter identity, and typed failure categories. |
+| `integration/p1-new` | Reject obsolete Domain execution models and the credential resolver; credentials belong to concrete integrations. |
+| Current refactor | Reuse `Case`, `TargetSnapshot`, `Trace`, and shared validation helpers. |
+| From scratch | Implement `CaseExecutionStatus`, immutable request/result records, `TargetExecutionError`, and `TargetProtocol`. |

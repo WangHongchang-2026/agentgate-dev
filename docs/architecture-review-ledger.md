@@ -110,8 +110,9 @@ Current Level 2 progress:
   export, atomic Dataset/Version persistence, and Dataset application workflows are
   implemented. All callers use `DatasetManagement`, and the obsolete top-level
   `case/` feature package has been removed without a compatibility alias.
-- Run implementation planning is complete in `docs/run/implementation-plan.md`. The
-  next file checkpoint is `run/target_protocol.py`; no Run implementation has started.
+- Run implementation planning is complete in `docs/run/implementation-plan.md`.
+  `run/target_protocol.py` is implemented with the four-operation Case execution
+  lifecycle. The next file checkpoint is `run/manifest.py`.
 
 ## Global architecture decisions
 
