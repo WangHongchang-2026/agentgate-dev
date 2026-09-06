@@ -11,8 +11,9 @@ working P1 demo behavior  ->  maintainable AgentGate structure
 ```
 
 `integration/p1-new` is a team member's independent implementation. It is review input
-only and is not the base of this refactor. Reuse decisions for it are made separately
-after refactor-1 is stable.
+only and is not the base of this refactor. Before implementing each file, inspect its
+relevant code for behavior or implementation that fits the approved refactor contract.
+Do not merge the branch or adopt conflicting architecture wholesale.
 
 Authority order:
 
@@ -50,7 +51,11 @@ Apply the following sequence separately to each package and file:
 2. Review one file's responsibility and ownership, then obtain user confirmation.
 3. Review that file's classes, functions, protocols, relationships, invariants, and
    dependencies, then obtain user confirmation.
-4. Implement only the confirmed design, add focused tests, and show verification before
+4. Present an implementation-source assessment before coding:
+   - `goal/p1-demo`: identify behavior or code to reuse, adapt, or reject;
+   - `integration/p1-new`: identify behavior or code to reuse, adapt, or reject;
+   - from scratch: identify the code required because neither source fits.
+5. Implement only the confirmed design, add focused tests, and show verification before
    moving to the next file.
 
 Do not combine checkpoints. A naming review must not silently become an implementation,
