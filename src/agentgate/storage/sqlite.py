@@ -11,6 +11,61 @@ from agentgate.domain import (
 )
 
 
+_SCHEMA = """
+CREATE TABLE IF NOT EXISTS datasets (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    archived INTEGER NOT NULL CHECK(archived IN (0, 1)),
+    updated_at TEXT NOT NULL,
+    payload TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS dataset_versions (
+    id TEXT PRIMARY KEY,
+    dataset_id TEXT NOT NULL REFERENCES datasets(id),
+    version INTEGER,
+    status TEXT NOT NULL CHECK(status IN ('draft', 'published')),
+    created_at TEXT NOT NULL,
+    content_sha256 TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    CHECK(
+        (status = 'draft' AND version IS NULL)
+        OR (status = 'published' AND version >= 1)
+    )
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_dataset_published_version
+    ON dataset_versions(dataset_id, version)
+    WHERE status = 'published';
+CREATE UNIQUE INDEX IF NOT EXISTS idx_dataset_active_draft
+    ON dataset_versions(dataset_id)
+    WHERE status = 'draft';
+CREATE INDEX IF NOT EXISTS idx_dataset_versions_dataset
+    ON dataset_versions(dataset_id, status, version);
+CREATE TABLE IF NOT EXISTS runs (
+    id TEXT PRIMARY KEY,
+    status TEXT NOT NULL CHECK(
+        status IN ('pending', 'running', 'completed', 'failed', 'cancelled')
+    ),
+    created_at TEXT NOT NULL,
+    payload TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS traces (
+    id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL,
+    case_id TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    UNIQUE(run_id, case_id)
+);
+CREATE TABLE IF NOT EXISTS results (
+    id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL,
+    case_id TEXT NOT NULL,
+    payload TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_traces_run ON traces(run_id);
+CREATE INDEX IF NOT EXISTS idx_results_run ON results(run_id);
+"""
+
+
 class SQLiteRepository:
     """SQLite JSON-document adapter behind a PostgreSQL-compatible domain boundary."""
 
@@ -42,48 +97,8 @@ class SQLiteRepository:
 
     def _initialize(self) -> None:
         with self._connect() as db:
-            db.executescript(
-                """
-                CREATE TABLE IF NOT EXISTS datasets (
-                    id TEXT PRIMARY KEY,
-                    name TEXT NOT NULL,
-                    archived INTEGER NOT NULL,
-                    updated_at TEXT NOT NULL,
-                    payload TEXT NOT NULL
-                );
-                CREATE TABLE IF NOT EXISTS dataset_versions (
-                    id TEXT PRIMARY KEY,
-                    dataset_id TEXT NOT NULL REFERENCES datasets(id),
-                    version INTEGER,
-                    status TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    content_sha256 TEXT NOT NULL,
-                    payload TEXT NOT NULL
-                );
-                CREATE UNIQUE INDEX IF NOT EXISTS idx_dataset_published_version
-                    ON dataset_versions(dataset_id, version)
-                    WHERE status='published';
-                CREATE UNIQUE INDEX IF NOT EXISTS idx_dataset_active_draft
-                    ON dataset_versions(dataset_id)
-                    WHERE status='draft';
-                CREATE INDEX IF NOT EXISTS idx_dataset_versions_dataset
-                    ON dataset_versions(dataset_id, status, version);
-                CREATE TABLE IF NOT EXISTS runs (
-                    id TEXT PRIMARY KEY, status TEXT NOT NULL, created_at TEXT NOT NULL,
-                    payload TEXT NOT NULL
-                );
-                CREATE TABLE IF NOT EXISTS traces (
-                    id TEXT PRIMARY KEY, run_id TEXT NOT NULL, case_id TEXT NOT NULL,
-                    payload TEXT NOT NULL, UNIQUE(run_id, case_id)
-                );
-                CREATE TABLE IF NOT EXISTS results (
-                    id TEXT PRIMARY KEY, run_id TEXT NOT NULL, case_id TEXT NOT NULL,
-                    payload TEXT NOT NULL
-                );
-                CREATE INDEX IF NOT EXISTS idx_traces_run ON traces(run_id);
-                CREATE INDEX IF NOT EXISTS idx_results_run ON results(run_id);
-                """
-            )
+            db.execute("PRAGMA journal_mode = WAL")
+            db.executescript(_SCHEMA)
 
     @staticmethod
     def _json(model: Any) -> str:

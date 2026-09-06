@@ -23,6 +23,27 @@ def test_sqlite_connection_rejects_invalid_busy_timeout(tmp_path):
         SQLiteRepository(tmp_path / "connection.db", busy_timeout_ms=0)
 
 
+def test_sqlite_initialization_enables_wal_and_schema_checks(tmp_path):
+    repository = SQLiteRepository(tmp_path / "schema.db")
+
+    with sqlite3.connect(repository.path) as connection:
+        assert connection.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
+        connection.execute(
+            "INSERT INTO datasets VALUES(?,?,?,?,?)",
+            ("dataset", "Dataset", 0, "2026-09-06T00:00:00+00:00", "{}"),
+        )
+        with pytest.raises(sqlite3.IntegrityError, match="CHECK constraint"):
+            connection.execute(
+                "INSERT INTO dataset_versions VALUES(?,?,?,?,?,?,?)",
+                ("draft", "dataset", 1, "draft", "now", "hash", "{}"),
+            )
+        with pytest.raises(sqlite3.IntegrityError, match="CHECK constraint"):
+            connection.execute(
+                "INSERT INTO runs VALUES(?,?,?,?)",
+                ("run", "unknown", "now", "{}"),
+            )
+
+
 def test_sqlite_persists_catalog_and_enforces_one_draft(tmp_path):
     repository = SQLiteRepository(tmp_path / "repository.db")
     service = DatasetService(repository)

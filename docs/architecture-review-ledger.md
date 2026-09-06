@@ -102,7 +102,8 @@ Current Level 2 progress:
   retain ownership of hash presence, generation, and content-matching rules.
 - Current next checkpoint: review and execute `docs/storage/implementation-plan.md`, then
   `docs/dataset/implementation-plan.md`. The Storage repository contract is complete;
-  `storage/sqlite.py::_connect()` is complete and `_initialize()` is the current review.
+  `storage/sqlite.py::_connect()` and `_initialize()` are complete; `_json()` and Dataset
+  write semantics are the current review.
 
 ## Global architecture decisions
 

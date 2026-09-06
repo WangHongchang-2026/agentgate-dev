@@ -15,6 +15,8 @@ Implemented checkpoint:
   the next checkpoint.
 - `SQLiteRepository._connect()` is a real context manager: it applies foreign-key and
   busy-timeout settings per connection, commits or rolls back, and always closes.
+- `SQLiteRepository._initialize()` enables WAL and creates the five-table POC schema
+  with DatasetVersion and Run-status checks.
 
 Authority:
 
@@ -161,12 +163,12 @@ review classes/functions, implement it, and run focused tests before moving on.
 1. [completed] Record current repository and Dataset persistence behavior.
 2. [completed] Rename `storage/base.py` to `storage/repository.py` and update imports.
 3. [completed] Review each Protocol method; remove construction and Demo-state operations.
-4. [in progress] Connection lifecycle and per-connection pragmas are complete;
-   `_initialize()` schema and WAL review is next.
-5. Refactor Dataset and DatasetVersion writes and atomic draft replacement.
-6. Extract Demo business state from AgentGate storage.
-7. Reconcile Run, Trace, and Result methods without redesigning those capabilities.
-8. Run storage, Dataset, demo, API, and full backend regression tests.
+4. [completed] Connection lifecycle, pragmas, schema checks, and WAL are implemented.
+5. [next] Remove the forwarding `_json()` helper and review Dataset write semantics.
+6. Refactor Dataset and DatasetVersion writes and atomic draft replacement.
+7. Extract Demo business state from AgentGate storage.
+8. Reconcile Run, Trace, and Result methods without redesigning those capabilities.
+9. Run storage, Dataset, demo, API, and full backend regression tests.
 
 Each checkpoint should produce a small reviewable commit when practical.
 
