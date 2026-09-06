@@ -307,9 +307,30 @@ class SQLiteRepository:
 
     def save_run(self, run: EvaluationRun) -> None:
         with self._connect() as db:
+            existing = db.execute(
+                "SELECT payload FROM runs WHERE id = ?", (run.id,)
+            ).fetchone()
+            if existing is None:
+                db.execute(
+                    "INSERT INTO runs(id,status,created_at,payload) VALUES(?,?,?,?)",
+                    (run.id, run.status, run.created_at.isoformat(), canonical_json(run)),
+                )
+                return
+
+            stored = EvaluationRun.model_validate_json(existing[0])
+            if run == stored:
+                return
+            if run.manifest != stored.manifest:
+                raise ValueError("EvaluationRun manifest is immutable")
+            if run.created_at != stored.created_at:
+                raise ValueError("EvaluationRun created_at is immutable")
+            if stored.started_at is not None and run.started_at != stored.started_at:
+                raise ValueError("EvaluationRun started_at is immutable once set")
+            if stored.completed_at is not None:
+                raise ValueError("terminal EvaluationRun is immutable")
             db.execute(
-                "INSERT OR REPLACE INTO runs(id,status,created_at,payload) VALUES(?,?,?,?)",
-                (run.id, run.status, run.created_at.isoformat(), canonical_json(run)),
+                "UPDATE runs SET status = ?, payload = ? WHERE id = ?",
+                (run.status, canonical_json(run), run.id),
             )
 
     def get_run(self, run_id: str) -> EvaluationRun | None:
@@ -318,9 +339,11 @@ class SQLiteRepository:
         return EvaluationRun.model_validate_json(row[0]) if row else None
 
     def list_runs(self, limit: int = 50) -> list[EvaluationRun]:
+        if limit < 1:
+            raise ValueError("Run list limit must be at least 1")
         with self._connect() as db:
             rows = db.execute(
-                "SELECT payload FROM runs ORDER BY created_at DESC LIMIT ?", (limit,)
+                "SELECT payload FROM runs ORDER BY created_at DESC, id LIMIT ?", (limit,)
             ).fetchall()
         return [EvaluationRun.model_validate_json(row[0]) for row in rows]
 

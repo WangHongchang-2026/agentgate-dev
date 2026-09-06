@@ -24,6 +24,8 @@ Implemented checkpoint:
 - DatasetVersion drafts preserve Dataset identity and creation time, reject stale writes,
   and cannot be published through ordinary save. Publications are immutable/idempotent;
   atomic replacement verifies current draft content, creation time, and ancestry.
+- EvaluationRun writes preserve the exact manifest and lifecycle timestamps, make terminal
+  records immutable/idempotent, and use deterministic bounded listing.
 
 Authority:
 
@@ -175,7 +177,7 @@ review classes/functions, implement it, and run focused tests before moving on.
 6. [completed] Review Dataset catalog write and query semantics.
 7. [completed] Refactor DatasetVersion writes, queries, and atomic draft replacement.
 8. [completed] Extract Demo business state from AgentGate storage.
-9. [next] Reconcile Run, Trace, and Result methods without redesigning those capabilities.
+9. [in progress] Run methods are complete; Trace methods are next, followed by Results.
 10. Run storage, Dataset, demo, API, and full backend regression tests.
 
 Each checkpoint should produce a small reviewable commit when practical.
