@@ -17,6 +17,35 @@ Do not combine these checkpoints or continue to the next checkpoint without expl
 user confirmation. When the user asks only to review names, do not redesign or implement
 classes. During file-level review, discuss and implement one file at a time.
 
+## Goal Mode Workflow
+
+The normal approval checkpoints above remain the default. They are waived only when an
+active Goal explicitly authorizes autonomous implementation and identifies the approved
+scope and completion condition.
+
+While working under such a Goal:
+
+- Continue through file-level design, implementation, and verification without waiting
+  for additional user confirmation.
+- Read the relevant implementation plans before changing code and stay within their
+  approved architecture and ownership boundaries.
+- Assess `goal/p1-demo`, `integration/p1-new`, and the current refactor before implementing
+  each capability. Record whether behavior or ideas are reused, adapted, or written from
+  scratch; reuse never means blindly copying code.
+- Keep changes in small, coherent checkpoints and run focused tests after each checkpoint.
+  Run the required full regression before declaring the Goal complete.
+- Update `docs/project-progress.md` and affected implementation plans as work is completed.
+- Preserve unrelated work and avoid destructive operations, compatibility layers, and
+  unplanned architecture changes.
+- Commit or push only when the Goal explicitly authorizes those actions, and only after
+  the relevant verification passes.
+- Stop and request user input only when blocked by missing credentials or external access,
+  a destructive or irreversible action, conflicting requirements, or a product or
+  architecture decision not covered by the Goal and approved plans.
+
+A Goal is complete only when its stated end-to-end behavior works, required tests pass,
+documentation reflects the result, and no required work within its scope remains.
+
 ## Project Baseline
 
 - `goal/p1-demo` is the behavior-preservation baseline.
