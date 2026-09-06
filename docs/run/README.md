@@ -18,6 +18,7 @@ submission belongs in `integrations/job_dispatchers/`.
 
 Detailed plans:
 
+- [Run implementation](implementation-plan.md)
 - [External target integration](../history/planning-v1/external-target-plan.md)
 - [Instrumented Demo Agent](../history/planning-v1/demo-agent-plan.md)
 
