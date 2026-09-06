@@ -147,7 +147,7 @@ class SQLiteRepository:
     def save_dataset_version(self, version: DatasetVersion) -> None:
         with self._connect() as db:
             existing = db.execute(
-                "SELECT payload FROM dataset_versions WHERE id=?", (version.id,)
+                "SELECT payload FROM dataset_versions WHERE id = ?", (version.id,)
             ).fetchone()
             if existing:
                 stored = DatasetVersion.model_validate_json(existing[0])
@@ -155,6 +155,27 @@ class SQLiteRepository:
                     if stored != version:
                         raise ValueError("published DatasetVersion is immutable")
                     return
+                if version.status != DatasetVersionStatus.DRAFT:
+                    raise ValueError(
+                        "draft DatasetVersion cannot be published through save"
+                    )
+                if version.dataset_id != stored.dataset_id:
+                    raise ValueError("DatasetVersion dataset_id is immutable")
+                if version.created_at != stored.created_at:
+                    raise ValueError("DatasetVersion created_at is immutable")
+                if version.updated_at < stored.updated_at:
+                    raise ValueError("cannot save a stale DatasetVersion draft")
+                if version == stored:
+                    return
+                db.execute(
+                    """
+                    UPDATE dataset_versions
+                    SET content_sha256 = ?, payload = ?
+                    WHERE id = ? AND status = 'draft'
+                    """,
+                    (version.content_sha256, canonical_json(version), version.id),
+                )
+                return
             if version.status == DatasetVersionStatus.PUBLISHED:
                 conflict = db.execute(
                     """
@@ -173,11 +194,6 @@ class SQLiteRepository:
                 INSERT INTO dataset_versions(
                     id,dataset_id,version,status,created_at,content_sha256,payload
                 ) VALUES(?,?,?,?,?,?,?)
-                ON CONFLICT(id) DO UPDATE SET
-                    version=excluded.version,
-                    status=excluded.status,
-                    content_sha256=excluded.content_sha256,
-                    payload=excluded.payload
                 """,
                 (
                     version.id, version.dataset_id, version.version, version.status.value,
@@ -265,6 +281,16 @@ class SQLiteRepository:
                 raise ValueError("published DatasetVersion does not match the draft")
             if published.status != DatasetVersionStatus.PUBLISHED:
                 raise ValueError("replacement DatasetVersion must be published")
+            if published.id == draft.id:
+                raise ValueError("published DatasetVersion requires a new identity")
+            if published.content_sha256 != draft.content_sha256:
+                raise ValueError("published DatasetVersion content does not match the draft")
+            if published.created_at != draft.created_at:
+                raise ValueError("published DatasetVersion must preserve draft created_at")
+            if published.based_on_version != draft.based_on_version:
+                raise ValueError("published DatasetVersion must preserve draft ancestry")
+            if published.updated_at < draft.updated_at:
+                raise ValueError("cannot replace a newer DatasetVersion draft")
             db.execute(
                 """
                 INSERT INTO dataset_versions(

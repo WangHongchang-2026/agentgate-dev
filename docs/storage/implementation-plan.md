@@ -21,6 +21,9 @@ Implemented checkpoint:
   `canonical_json()` directly.
 - Dataset catalog writes use explicit upsert while preserving `created_at` and rejecting
   stale `updated_at` values; catalog queries retain deterministic ordering.
+- DatasetVersion drafts preserve Dataset identity and creation time, reject stale writes,
+  and cannot be published through ordinary save. Publications are immutable/idempotent;
+  atomic replacement verifies current draft content, creation time, and ancestry.
 
 Authority:
 
@@ -170,9 +173,9 @@ review classes/functions, implement it, and run focused tests before moving on.
 4. [completed] Connection lifecycle, pragmas, schema checks, and WAL are implemented.
 5. [completed] Remove the forwarding `_json()` helper.
 6. [completed] Review Dataset catalog write and query semantics.
-7. [next] Refactor DatasetVersion writes, queries, and atomic draft replacement.
-8. Extract Demo business state from AgentGate storage.
-9. Reconcile Run, Trace, and Result methods without redesigning those capabilities.
+7. [completed] Refactor DatasetVersion writes, queries, and atomic draft replacement.
+8. [completed] Extract Demo business state from AgentGate storage.
+9. [next] Reconcile Run, Trace, and Result methods without redesigning those capabilities.
 10. Run storage, Dataset, demo, API, and full backend regression tests.
 
 Each checkpoint should produce a small reviewable commit when practical.
