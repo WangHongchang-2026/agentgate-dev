@@ -1,5 +1,9 @@
 # AgentGate Refactor-1 Architecture
 
+This document defines the target architecture. It is not an inventory of already
+implemented files. See [`project-progress.md`](project-progress.md) for the current
+implementation status and remaining work.
+
 ## Purpose
 
 AgentGate is an Agent Evaluation Harness. It executes versioned test Cases against
@@ -315,7 +319,7 @@ web/src/
 └── styles/
 ```
 
-The Vue 3 application uses Vue Router to map seven active POC routes to pages: Overview,
+The Vue 3 target application uses Vue Router to map seven planned POC routes to pages: Overview,
 Evaluation Tasks, Results Center, Result Detail, Dataset Management, Evaluator Management,
 and Static Skill Analysis. Optimization Center is deferred.
 
@@ -333,8 +337,9 @@ Web/CLI/API
   -> application/run_management.py
   -> resolve exact Dataset, Target, and Evaluator versions
   -> construct immutable domain.RunManifest
-  -> persist queued Run
-  -> synchronous call or Celery dispatch
+  -> persist pending Run
+  -> Web/API submission dispatches its run_id through Celery
+  -> a direct CLI caller may invoke the same application execution boundary
   -> run/engine.py executes each Case
   -> Target adapter invokes the external Agent or Skill
   -> correlate and normalize Trace; collect Artifact references
@@ -398,16 +403,18 @@ Core rules:
 ## Deferred Or Removed Packages
 
 - `experiment/`: removed from refactor-1. General regression comparison belongs in
-  `result/comparison.py`; add a focused `ab_test/` package only for real experimental
-  assignment, paired statistics, and winner decisions.
+  `result/comparison.py`; the initial A/B workflow belongs in
+  `application/ab_testing.py`. Extract a focused package only if experimental assignment
+  and design become independently complex.
 - `lineage/`: removed as a top-level package. RunManifest plus indexed Run-asset
   references and `application/lineage_queries.py` satisfy basic lineage needs.
 - `queue/`: removed as a domain package. Celery dispatch belongs in
   `integrations/job_dispatchers/`; AgentGate storage remains authoritative.
-- `control/` and `control_plane/`: replaced by capability-oriented `application/`
-  orchestration. AgentGate does not rebuild the customer enterprise control plane.
-- `demo/`: demonstration Agent business state and behavior move under examples rather
-  than core AgentGate storage.
+- `control/` and `control_plane/`: target removal after deferred CLI callers migrate to
+  capability-oriented `application/` orchestration. AgentGate does not rebuild the
+  customer enterprise control plane.
+- `demo/`: currently contains the working POC Agent. Moving standalone demonstration
+  behavior under `examples/` remains cleanup work after runtime composition stabilizes.
 
 ## Refactor Principle
 

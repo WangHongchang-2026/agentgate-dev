@@ -1,5 +1,9 @@
 # AgentGate Refactor-1 Implementation Plan
 
+Current implementation status is tracked in
+[`project-progress.md`](project-progress.md). This document remains the migration and
+sequencing authority rather than a claim that every target file already exists.
+
 ## 1. Scope And Authority
 
 This plan reorganizes the working behavior on Git branch `goal/p1-demo` into the
@@ -216,9 +220,19 @@ Those changes must be incorporated rather than overwritten.
 | static Skill analysis | Add after backend contract | Skill Analysis page, components, and API |
 | optimizer UI | Defer | Add only with a real backend use case |
 
-The seven active routes remain those defined in [`web/README.md`](web/README.md).
+The seven planned POC routes remain those defined in [`web/README.md`](web/README.md).
 
 ## 6. Implementation Phases
+
+Current phase status:
+
+- Phases 0-2: complete.
+- Phase 3: Result behavior is aligned; Evaluator structure remains pending.
+- Phase 4: core Trace, Target, and Run behavior works; redaction, async dispatch, and
+  legacy cleanup remain pending.
+- Phase 5: FastAPI uses Application services; async endpoints, CLI migration, and legacy
+  Control Plane removal remain pending.
+- Phases 6-7: pending.
 
 ### Phase 0: Record Baseline
 
@@ -270,7 +284,7 @@ Gate: API and CLI produce equivalent persisted results without direct evaluation
 ### Phase 6: Web
 
 - Reconcile existing Web changes and split routing, layout, pages, components, state, APIs, and types.
-- Connect active pages to real FastAPI responses.
+- Connect the planned POC pages to real FastAPI responses as they are implemented.
 
 Gate: typecheck, unit tests, build, and desktop/mobile Playwright workflows pass.
 
@@ -287,7 +301,7 @@ Gate: no duplicate domain models or obsolete packages remain and all acceptance 
 ```text
 refactor(domain)
 refactor(storage)
-refactor(case)
+refactor(dataset)
 refactor(evaluator)
 refactor(result)
 refactor(run)

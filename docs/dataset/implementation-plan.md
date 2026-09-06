@@ -1,6 +1,7 @@
 # Dataset Implementation Plan
 
-Status: implementation in progress
+Status: backend implementation complete; generation and public benchmarks remain
+separate future capabilities tracked in `docs/project-progress.md`
 
 Authority:
 

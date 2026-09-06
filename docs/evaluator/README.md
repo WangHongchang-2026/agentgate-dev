@@ -2,6 +2,10 @@
 
 The Evaluator capability owns evaluation methods and execution:
 
+The tree below is the approved target structure. Current deterministic evaluator
+behavior still uses inherited module names and awaits structural migration. See
+[project progress](../project-progress.md).
+
 ```text
 evaluator/
 ├── evaluator_protocol.py

@@ -2,6 +2,11 @@
 
 Last updated: 2026-09-06
 
+Status: core Engine, Target protocol, Demo adapter wiring, atomic Run claiming, and
+incremental Result persistence are implemented. Optional mechanics and legacy cleanup
+remain pending. Asynchronous delivery is tracked in
+[`../job-dispatcher/implementation-plan.md`](../job-dispatcher/implementation-plan.md).
+
 ## 1. Purpose
 
 The Run capability executes one immutable evaluation request. It connects a published
@@ -64,7 +69,8 @@ Demo Celery or customer scheduler   schedules a complete EvaluationRun
 TargetAdapterProtocol               controls one Case execution
 ```
 
-The demo uses a real job dispatcher under `integrations/job_dispatchers/`. A customer
+The asynchronous demo will use a real job dispatcher under
+`integrations/job_dispatchers/`. A customer
 may replace that dispatcher without changing Engine or the Target Adapter Protocol.
 
 ## 4. Ownership Boundaries
@@ -258,16 +264,17 @@ Each file requires a source assessment and explicit approval before implementati
 3. [complete] Reject redundant `run/manifest.py` and remove empty `run/snapshot.py`.
 4. [complete] Review and implement `run/engine.py` with one synchronous execution
    path.
-5. Review and implement the demo adapter in `integrations/targets/demo_loan.py` after
+5. [complete] Review and implement the demo adapter in `integrations/targets/demo_loan.py` after
    Trace capture and the clean Loan Agent invocation contract are implemented.
-6. Migrate `application/run_management.py` or the current application caller to the
+6. [complete] Migrate `application/run_management.py` and the Server caller to the
    new Engine boundary.
 7. Add `retry.py` only after typed infrastructure failures have a real caller.
 8. Add `process_manager.py` only with a real local-process Target adapter.
 9. Add `artifacts.py` only with a real Artifact-producing Target.
 10. Remove `run/core.py`, empty legacy files, old target/external folders, and stale
     imports.
-11. Run focused tests, the complete backend suite, and the real demo Run.
+11. [complete] Run focused tests, the complete backend suite, and the real demo Run.
+12. Implement whole-Run asynchronous delivery through the Job Dispatcher plan.
 
 ## 10. Test Plan
 
@@ -294,7 +301,8 @@ Each file requires a source assessment and explicit approval before implementati
 - Results retain exact Run, Case, Evaluator, and Trace references;
 - completion, failure, and cancellation persist legal terminal states;
 - evaluator errors do not become infrastructure retries;
-- rerunning the same manifest does not reuse execution identity.
+- creating a new Run from the same manifest uses a new execution identity, while
+  duplicate delivery of one existing `run_id` does not execute it twice.
 
 ### Optional Mechanics
 
@@ -377,7 +385,7 @@ Status: implemented; 225 tests passing
 
 ### `integrations/targets/demo_loan.py`
 
-Status: implemented; application caller migration pending
+Status: implemented and wired through `application/run_management.py`
 
 | Source | Decision |
 | --- | --- |

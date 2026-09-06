@@ -1,6 +1,7 @@
 # Dataset and Case
 
 Implementation sequence: [implementation-plan.md](implementation-plan.md).
+Current capability status: [project progress](../project-progress.md).
 
 Dataset and Case ownership is split by layer:
 

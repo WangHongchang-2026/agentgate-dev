@@ -75,8 +75,10 @@ point.
 P1 public operations:
 
 ```text
-create_run(...)  -> persisted pending EvaluationRun
-execute_run(...) -> completed/failed/cancelled EvaluationRun
+create_run(...)      -> persisted pending EvaluationRun
+dispatch_run(...)    -> submit only run_id or persist a safe dispatch failure
+execute_run(...)     -> completed/failed/cancelled EvaluationRun
+fail_stale_runs(...) -> fail abandoned running Runs after their recovery deadline
 ```
 
 Add running-Run cancellation only when execution handles are persisted and a real
@@ -260,9 +262,11 @@ Each file requires source assessment and explicit approval before implementation
 
 1. [complete] Implement `dataset_management.py`.
 2. [complete] Implement the initial `run_management.py` create/execute boundary.
-3. Implement `result_reader.py` and move report, Trace, and overview reads.
-4. Migrate the synchronous demo composition to the new Run management boundary.
-5. Update FastAPI and CLI imports to use capability-oriented application modules.
+3. [complete] Implement the initial `result_reader.py` and move report, Trace, and
+   overview reads.
+4. [complete] Migrate demo composition to the new Run management boundary.
+5. [partial] Update FastAPI imports to use capability-oriented application modules;
+   CLI migration remains deferred.
 6. Remove `control_plane/`, `run/core.py`, old Python Target tests, and empty legacy Run
    scaffolds.
 7. Implement `target_catalog.py` when external Target discovery begins.
@@ -326,7 +330,8 @@ Application refactoring is complete when:
 
 ### `application/run_management.py`
 
-Status: implemented; focused tests passing; caller migration pending
+Status: create, execute, dispatch, and stale-Run workflows implemented; asynchronous
+Server and Celery callers pending
 
 | Source | Decision |
 | --- | --- |
@@ -346,6 +351,6 @@ Status: implemented; focused tests passing
 | Current refactor | Reuse repository contracts and `result/report.py`. |
 | From scratch | Implement strict Run/Trace lookup, completed-Run report checks, and status-aware overview data. |
 
-Current POC limitation: repository Run listing is capped at 50 by default, so overview
-Run totals cover that retrieval window. Exact all-time production counts require a
-dedicated aggregate repository query rather than an arbitrarily large list limit.
+Current POC limitation: `ResultReader.overview()` still uses the bounded Run list even
+though the repository now exposes exact status counts. The next ResultReader checkpoint
+will use those counts and add queue/progress activity projections.

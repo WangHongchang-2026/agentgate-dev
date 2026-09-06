@@ -34,8 +34,9 @@ Current review status:
 - `experiment/`, `lineage/`, and `queue/`: removed as top-level `refactor-1` packages for
   the reasons recorded below.
 - P1 behavior preservation remains required during implementation for the inputs listed above.
-- The backend and Web architecture is consolidated. Implementation begins on a dedicated `refactor-1`
-  branch.
+- The backend and Web architecture is consolidated. Implementation is in progress on
+  the dedicated `refactor-1` branch; current status is tracked in
+  `docs/project-progress.md`.
 - The behavior-preserving source-to-target map and implementation gates are recorded in
   `docs/refactor-implementation-plan.md`.
 - Project-authored code and active documentation use English. External data may retain
@@ -113,14 +114,12 @@ Current Level 2 progress:
   implemented. All callers use `DatasetManagement`, and the obsolete top-level
   `case/` feature package has been removed without a compatibility alias.
 - Run implementation planning is complete in `docs/run/implementation-plan.md`.
-  `run/target_protocol.py` is implemented with the four-operation Case execution
-  lifecycle. `run/manifest.py` was rejected as a forwarding layer because
-  `domain.RunManifest` owns the complete contract. The sequential `run/engine.py` is
-  implemented but not yet wired into the demo.
-- Real OTel Trace capture for the Demo Agent is approved. Its complete implementation
-  plan is recorded in `docs/trace/implementation-plan.md`. The strict complete-Trace
-  normalizer is implemented; the next checkpoint is verifying OTel SDK dependencies
-  before reviewing `integrations/observability/in_memory.py`.
+  `run/target_protocol.py`, the sequential `run/engine.py`, and Demo Loan adapter wiring
+  are implemented. Run claiming and incremental Case Result persistence are also
+  implemented; Celery delivery and HTTP activity projections remain pending.
+- Real OTel Trace capture for the Demo Agent is implemented through
+  `integrations/observability/in_memory.py`. OTLP/HTTP JSON ingestion is implemented;
+  Trace redaction and obsolete scaffold removal remain pending.
 
 ## Global architecture decisions
 
@@ -560,9 +559,10 @@ Remove `experiment/` from `refactor-1`. The P1 package contains only docstrings 
 runtime behavior. Generic Run/version/regression comparison belongs in
 `result/comparison.py`.
 
-If controlled A/B testing becomes a concrete requirement, introduce a narrowly named
-`ab_test/` capability later for experiment design, paired statistics, and winner decisions.
-Do not keep an empty broad `experiment/` package.
+For the initial A/B workflow, use `application/ab_testing.py` to compose two ordinary
+Runs and `result/comparison.py` for comparison. Extract a narrowly named `ab_test/`
+package later only if assignment and experiment-design complexity justifies it. Do not
+keep an empty broad `experiment/` package.
 
 ### `lineage/`
 
@@ -604,8 +604,8 @@ empty contracts and no working queue implementation.
 Execution modes use replaceable adapters:
 
 ```text
-Standalone synchronous POC -> direct application execution
-Asynchronous demo          -> Celery job dispatcher + Redis
+Direct CLI/application use -> direct application execution
+Web asynchronous demo      -> Celery job dispatcher + Redis
 Customer environment       -> external scheduler calls AgentGate internal execution API
                              -> shared application execution boundary
 ```
@@ -617,7 +617,8 @@ Rules:
 
 - AgentGate storage owns Run status and Results.
 - Celery task status is operational information only.
-- Store the Celery task ID as an external execution reference.
+- Use `run_id` as the Celery task ID where practical; do not add a duplicate persisted
+  execution-reference field in P1.
 - Celery retries infrastructure failures, not Agent quality failures.
 - Submission is idempotent.
 - Redis/Celery result storage is never the authoritative AgentGate Result store.
@@ -695,14 +696,16 @@ integrations/
 
 - Renamed from `integrations/schedulers/` because the POC responsibility is
   background job submission, not deciding a business schedule.
-- POC contains only `celery.py`.
-- `celery.py` submits a `run_id`, registers the worker task, calls the shared
-  application execution boundary, stores the Celery task ID as an external
-  execution reference, and supports infrastructure retry and best-effort
-  cancellation.
+- POC contains `protocol.py` and `celery.py`; the protocol is implemented and the
+  Celery adapter remains pending.
+- `celery.py` submits a `run_id`, uses that ID as the Celery task ID where practical,
+  registers the worker task, and calls the shared application execution boundary.
+  Infrastructure retry and cooperative cancellation are deferred until their execution
+  semantics are implemented.
 - AgentGate storage remains authoritative for Run status and Results. Celery and
   Redis state is operational only.
-- Synchronous mode calls the application execution boundary directly.
+- Direct CLI or application mode calls the application execution boundary without a
+  broker.
 - A customer-owned scheduler normally calls AgentGate through an inbound internal
   execution API. Add an outbound customer dispatcher only if AgentGate must submit
   work into that scheduler.
@@ -1064,14 +1067,14 @@ Confirmed responsibilities:
 - `types/` contains frontend API contracts without duplicating backend invariants.
 - `styles/` contains design tokens and global base styles; feature styles remain scoped
   where practical.
-- Seven pages are active for the POC. Optimization Center is the eighth, deferred page.
+- Seven pages are planned for the POC. Optimization Center is the eighth, deferred page.
 - Trace inspection remains part of Result Detail rather than a separate primary page.
 - Page-local state and composables are sufficient initially; add Pinia only for proven
   cross-route mutable state.
 - Preserve the inherited Chinese UI, typed Dataset components, responsive sidebar, and
   desktop/mobile Playwright behavior during refactor.
-- Existing uncommitted Web changes are user-owned baseline work and are not included in
-  architecture-documentation commits.
+- Current Web implementation status is tracked in `docs/project-progress.md`; target
+  page structure does not imply that all routes are implemented.
 - Detailed rules are maintained in `docs/web/README.md`.
 
 ## Review completion

@@ -5,7 +5,7 @@ Status: complete
 Implemented checkpoint:
 
 - `storage/base.py` was renamed to `storage/repository.py` without a compatibility alias.
-- `AgentGateRepository` now exposes 19 exercised persistence operations.
+- `AgentGateRepository` now exposes 22 persistence operations.
 - Published-version lookup names are explicit.
 - Draft publication accepts an already-built DatasetVersion and performs atomic
   replacement by expected draft identity.
@@ -13,8 +13,7 @@ Implemented checkpoint:
   DatasetVersion.
 - Result batches accept `Sequence[EvaluationResult]`.
 - Demo Agent business state was removed from the repository contract and SQLite schema.
-- `sqlite.py` was synchronized with this contract, but its complete file review remains
-  the next checkpoint.
+- `sqlite.py` is synchronized with the contract and its file review is complete.
 - `SQLiteRepository._connect()` is a real context manager: it applies foreign-key and
   busy-timeout settings per connection, commits or rolls back, and always closes.
 - `SQLiteRepository._initialize()` enables WAL and creates the five-table POC schema
@@ -27,7 +26,8 @@ Implemented checkpoint:
   and cannot be published through ordinary save. Publications are immutable/idempotent;
   atomic replacement verifies current draft content, creation time, and ancestry.
 - EvaluationRun writes preserve the exact manifest and lifecycle timestamps, make terminal
-  records immutable/idempotent, and use deterministic bounded listing.
+  records immutable/idempotent, atomically claim pending Runs, and provide deterministic
+  status listing and exact status counts.
 - Trace writes allow complete-snapshot updates only for the same Trace/Run/Case identity;
   a different Trace cannot replace the occupied Run/Case record.
 - EvaluationResults are immutable/idempotent, unique by Run/Case/Evaluator, saved in

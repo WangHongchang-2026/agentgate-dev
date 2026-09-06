@@ -2,6 +2,10 @@
 
 Last updated: 2026-09-06
 
+Status: the modular synchronous Server checkpoint is implemented. Asynchronous HTTP
+202 submission and Run activity endpoints are the next Server changes and follow
+`docs/job-dispatcher/implementation-plan.md`.
+
 ## 1. Purpose
 
 The Server exposes AgentGate Application use cases through HTTP for the Vue POC and
@@ -101,11 +105,9 @@ logic.
 ### `routes/runs.py`
 
 - Lists Runs and accepts evaluation submissions.
-- Calls `RunManagement.create_run()` and `execute_run()`.
-- POC synchronous submission returns HTTP 201 for current Web compatibility.
-- When the real job dispatcher is connected, submission persists a pending Run,
-  dispatches its ID, and returns HTTP 202 without changing the route's application
-  boundary.
+- Calls `RunManagement.create_run()` and `dispatch_run()`.
+- Submission persists a pending Run, dispatches only its ID, and returns HTTP 202.
+- Worker-side `execute_run()` is never called inside the HTTP request.
 - Cancellation/progress endpoints are added only when the dispatcher supports them.
 
 ### `routes/datasets.py`
@@ -148,9 +150,14 @@ Vue Web
   -> POST /api/evaluations
   -> routes/runs.py
   -> RunManagement.create_run()
+  -> RunManagement.dispatch_run(run_id)
+  -> HTTP 202 pending EvaluationRun
+
+Celery worker
+  -> receives run_id
+  -> RunManagement.execute_run(run_id)
   -> DemoLoanTargetAdapter
-  -> RunManagement.execute_run()
-  -> HTTP 201 completed EvaluationRun
+  -> persisted terminal EvaluationRun
 
 Vue Web
   -> GET /api/runs/{run_id}
@@ -158,7 +165,8 @@ Vue Web
   -> ResultReader.get_report()
 ```
 
-The synchronous execution is explicitly POC behavior. The final scheduler integration
+The initial synchronous route checkpoint remains visible in implementation history
+below, but it is superseded by the approved Job Dispatcher plan. Scheduler integration
 changes dispatch timing, not Run creation or worker execution contracts.
 
 ## 6. Current Route Groups
@@ -168,6 +176,7 @@ System:       GET /health
 Overview:     GET /api/overview
 Catalogs:     GET /api/versions, GET /api/evaluators
 Runs:         GET /api/runs, POST /api/evaluations
+Run activity: GET /api/runs/activity, GET /api/runs/{run_id}/status   planned
 Results:      GET /api/runs/{run_id}
 Traces:       GET /api/runs/{run_id}/traces/{case_id}
 Datasets:     /api/datasets/**
@@ -251,27 +260,32 @@ module wholesale.
 - OTLP and Dataset uploads have explicit content type and size limits.
 - FastAPI routes do not log complete prompts, Tool arguments, uploaded rows, or Trace
   bodies by default.
-- Synchronous POC execution must still persist a pending Run before Agent invocation.
+- A pending Run must be persisted before its ID is submitted to a dispatcher.
 
 ## 9. Implementation Sequence
 
 Each file requires source assessment and explicit approval before implementation.
 
-1. Create `server/dependencies.py` and compose current Application modules plus the demo
+1. [complete] Create `server/dependencies.py` and compose current Application modules plus the demo
    runtime.
-2. Create `server/errors.py` for stable Dataset and application error mapping.
-3. Create `server/routes/system.py`.
-4. Create `server/routes/datasets.py` and preserve current Dataset endpoints.
-5. Create `server/routes/catalogs.py` for current demo Target and Evaluator reads.
-6. Create `server/routes/runs.py` for listing and synchronous POC submission.
-7. Create `server/routes/results.py` for overview, reports, and Trace reads.
-8. Move OTLP transport to `integrations/observability/otlp_http_receiver.py` and expose it
+2. [complete] Create `server/errors.py` for stable Dataset and application error mapping.
+3. [complete] Create `server/routes/system.py`.
+4. [complete] Create `server/routes/datasets.py` and preserve current Dataset endpoints.
+5. [complete] Create `server/routes/catalogs.py` for current demo Target and Evaluator reads.
+6. [complete] Create `server/routes/runs.py` for initial listing and synchronous POC
+   submission.
+7. [complete] Create `server/routes/results.py` for overview, reports, and Trace reads.
+8. [complete] Move OTLP transport to `integrations/observability/otlp_http_receiver.py` and expose it
    through `server/routes/telemetry.py`.
-9. Implement `server/app.py` and register dependencies, middleware, errors, and routers.
-10. Update imports/tests from `server/application.py` to `server/app.py`.
-11. Remove `server/application.py`, empty `server/routes.py`, and empty
+9. [complete] Implement `server/app.py` and register dependencies, middleware, errors, and routers.
+10. [complete] Update imports/tests from `server/application.py` to `server/app.py`.
+11. [complete] Remove `server/application.py`, empty `server/routes.py`, and empty
     `server/services.py`.
-12. Verify every existing API contract and the Vue POC workflow.
+12. [complete] Verify the initial API contracts and Vue POC workflow.
+13. Follow `docs/job-dispatcher/implementation-plan.md` to replace synchronous launch
+    with HTTP 202 dispatch.
+14. Add Run activity and per-Run status endpoints.
+15. Verify queue, worker, progress, and terminal-state API behavior.
 
 CLI migration is explicitly deferred. `control_plane/` and `run/core.py` remain only for
 CLI until that later phase.
@@ -281,7 +295,8 @@ CLI until that later phase.
 - application factory supports an isolated temporary SQLite database;
 - health endpoint remains available;
 - every Dataset route preserves its current successful and invalid workflows;
-- launch persists and completes a real OTel-backed demo Run;
+- launch persists and dispatches a pending Run, then a worker completes the real
+  OTel-backed demo Run;
 - selected evaluator IDs remain exact;
 - Run/report/Trace/overview reads use Application modules;
 - unknown resources map to stable HTTP errors;
@@ -373,14 +388,14 @@ Status: implemented; 257 tests passing
 
 ### `server/routes/runs.py`
 
-Status: implemented; 260 tests passing
+Status: initial synchronous checkpoint implemented; asynchronous migration pending
 
 | Source | Decision |
 | --- | --- |
 | `goal/p1-demo` | Adapt `/api/runs`, `/api/evaluations`, and the current launch request. |
 | `integration/p1-new` | Reject external HTTP launch, rerun, comparison, and regression routes until their Application contracts exist. |
-| Current refactor | Reuse `ResultReader.list_runs()` and `ServerDependencies.execute_demo_run()`. |
-| From scratch | Add a thin synchronous POC router and focused contract tests. |
+| Current refactor | Reuse `ResultReader.list_runs()` and the existing launch request while replacing `ServerDependencies.execute_demo_run()`. |
+| From scratch | Add HTTP 202 dispatch plus activity and status routes through Application services. |
 
 ### `server/routes/results.py`
 

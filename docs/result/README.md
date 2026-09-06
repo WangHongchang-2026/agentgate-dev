@@ -2,6 +2,10 @@
 
 The Result capability owns derived evaluation conclusions:
 
+`metrics.py`, `gate.py`, and `report.py` are implemented. `comparison.py` is a future
+module and will be created only with an approved regression or A/B workflow. See
+[project progress](../project-progress.md).
+
 ```text
 result/
 ├── metrics.py

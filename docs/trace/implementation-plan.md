@@ -2,6 +2,10 @@
 
 Last updated: 2026-09-06
 
+Status: normalizer, in-memory OTel capture, Demo Agent instrumentation, and OTLP/HTTP
+JSON ingestion are implemented. Redaction and obsolete Trace scaffold cleanup remain
+pending; see [`../project-progress.md`](../project-progress.md).
+
 ## 1. Purpose
 
 AgentGate evaluates observed Agent behavior. Trace data must therefore come from real

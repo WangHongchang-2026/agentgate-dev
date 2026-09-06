@@ -21,3 +21,4 @@ Server / CLI / Worker / External control plane
 ```
 
 Implementation sequence: [implementation-plan.md](implementation-plan.md).
+Current capability status: [project progress](../project-progress.md).

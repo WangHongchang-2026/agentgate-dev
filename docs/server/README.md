@@ -17,3 +17,5 @@ It does not execute Agents, calculate evaluation results, query SQLite directly,
 customer scheduler behavior.
 
 Implementation sequence: [implementation-plan.md](implementation-plan.md).
+The initial synchronous route exists, but asynchronous HTTP 202 dispatch and activity
+endpoints are the current target. See [project progress](../project-progress.md).

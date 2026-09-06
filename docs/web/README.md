@@ -3,6 +3,10 @@
 The AgentGate Web application is a Chinese Vue 3 interface for evaluation workflows. It
 calls the FastAPI server and never imports backend code or accesses persistence directly.
 
+This document defines the target Web structure. Only the Dataset workspace foundation is
+currently split into a page. See [`../project-progress.md`](../project-progress.md) for
+implemented pages and current work.
+
 ## Stack
 
 - Vue 3 and TypeScript
@@ -93,7 +97,7 @@ web/src/
 /optimizer        OptimizerPage              deferred optimization center
 ```
 
-The POC therefore has seven active pages and one deferred page. A route maps a URL to a
+The target POC therefore has seven planned pages and one deferred page. A route maps a URL to a
 page component. Pages may compose many components, but components do not define routes.
 
 Trace inspection remains within Result detail rather than becoming a primary page.
