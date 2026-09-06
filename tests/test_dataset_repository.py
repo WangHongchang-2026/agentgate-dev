@@ -1,4 +1,5 @@
 import sqlite3
+from datetime import timedelta
 
 import pytest
 
@@ -58,6 +59,27 @@ def test_sqlite_persists_catalog_and_enforces_one_draft(tmp_path):
         assert db.execute(
             "SELECT COUNT(*) FROM sqlite_master WHERE name='business_state'"
         ).fetchone()[0] == 0
+
+
+def test_dataset_catalog_rejects_changed_creation_time_and_stale_updates(tmp_path):
+    repository = SQLiteRepository(tmp_path / "dataset-updates.db")
+    service = DatasetService(repository)
+    original = service.create_dataset("Original")
+    current = original.model_copy(
+        update={"name": "Current", "updated_at": original.updated_at + timedelta(seconds=2)}
+    )
+    repository.save_dataset(current)
+
+    changed_creation = current.model_copy(
+        update={"created_at": current.created_at - timedelta(seconds=1)}
+    )
+    with pytest.raises(ValueError, match="created_at is immutable"):
+        repository.save_dataset(changed_creation)
+
+    stale = original.model_copy(update={"name": "Stale"})
+    with pytest.raises(ValueError, match="stale Dataset"):
+        repository.save_dataset(stale)
+    assert repository.get_dataset(original.id) == current
 
 
 def test_stale_draft_identity_cannot_delete_or_replace_current_data(tmp_path):

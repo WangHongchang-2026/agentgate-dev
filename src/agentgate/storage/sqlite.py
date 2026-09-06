@@ -101,6 +101,17 @@ class SQLiteRepository:
 
     def save_dataset(self, dataset: Dataset) -> None:
         with self._connect() as db:
+            existing = db.execute(
+                "SELECT payload FROM datasets WHERE id = ?", (dataset.id,)
+            ).fetchone()
+            if existing:
+                stored = Dataset.model_validate_json(existing[0])
+                if dataset.created_at != stored.created_at:
+                    raise ValueError("Dataset created_at is immutable")
+                if dataset.updated_at < stored.updated_at:
+                    raise ValueError("cannot save a stale Dataset")
+                if dataset == stored:
+                    return
             db.execute(
                 """
                 INSERT INTO datasets(id,name,archived,updated_at,payload)

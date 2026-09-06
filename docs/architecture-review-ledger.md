@@ -103,7 +103,8 @@ Current Level 2 progress:
 - Current next checkpoint: review and execute `docs/storage/implementation-plan.md`, then
   `docs/dataset/implementation-plan.md`. The Storage repository contract is complete;
   `storage/sqlite.py::_connect()`, `_initialize()`, and forwarding-helper cleanup are
-  complete; Dataset catalog methods are the current review.
+  complete; Dataset catalog methods are complete and DatasetVersion methods are the
+  current review.
 
 ## Global architecture decisions
 
