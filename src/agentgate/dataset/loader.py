@@ -5,9 +5,15 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from agentgate.domain import Dataset, DatasetVersion
+from pydantic import TypeAdapter
+
+from agentgate.domain import Case, Dataset, DatasetVersion
 
 from .formats.json import parse as parse_json
+from .formats.xlsx import parse as parse_xlsx
+
+
+_CASES = TypeAdapter(tuple[Case, ...])
 
 
 def load_dataset(
@@ -26,3 +32,10 @@ def load_dataset(
         raise ValueError("Dataset and DatasetVersion identities do not match")
     return dataset, version
 
+
+def load_cases(source: bytes, format_name: str) -> tuple[Case, ...]:
+    """Load Case objects from a supported collection-only format."""
+
+    if format_name != "xlsx":
+        raise ValueError(f"unsupported Case input format: {format_name!r}")
+    return _CASES.validate_python(parse_xlsx(source))

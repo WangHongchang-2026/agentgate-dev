@@ -4,7 +4,8 @@ import pytest
 from pydantic import ValidationError
 
 from agentgate.dataset.formats.json import dump
-from agentgate.dataset.loader import load_dataset
+from agentgate.dataset.formats.xlsx import dump as dump_xlsx
+from agentgate.dataset.loader import load_cases, load_dataset
 from agentgate.domain import (
     Case,
     CaseTurn,
@@ -120,3 +121,22 @@ def test_load_rejects_unknown_expectation_kind() -> None:
 
     with pytest.raises(ValidationError, match="Input tag 'not_supported'"):
         load_dataset(payload, "json")
+
+
+def test_load_xlsx_cases_builds_current_multiturn_domain_objects() -> None:
+    payload = document()
+    expected = DatasetVersion.model_validate(payload["version"]).cases
+
+    loaded = load_cases(
+        dump_xlsx([case.model_dump(mode="json") for case in expected]),
+        "xlsx",
+    )
+
+    assert loaded == expected
+    assert loaded[0].is_multi_turn
+    assert isinstance(loaded[0].turns[0].expectations[0], SkillRouteExpectation)
+
+
+def test_load_cases_rejects_unknown_format() -> None:
+    with pytest.raises(ValueError, match="unsupported Case input format"):
+        load_cases(b"content", "csv")

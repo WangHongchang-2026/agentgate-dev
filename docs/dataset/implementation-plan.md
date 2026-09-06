@@ -208,8 +208,8 @@ classes/functions, implement it, and run focused tests before moving on.
 3. [complete] Implement `dataset/formats/json.py` and preserve canonical JSON round trips.
 4. [complete] Implement `dataset/loader.py` and `dataset/export.py`.
 5. [complete] Add one-sheet `.xlsx` import/export in `dataset/formats/xlsx.py`.
-6. [next] Integrate XLSX parsing into `dataset/loader.py`, then XLSX encoding into
-   `dataset/export.py`.
+6. [in progress] XLSX parsing is integrated into `dataset/loader.py`; integrate XLSX
+   encoding into `dataset/export.py` next.
 7. Move workflows into `application/dataset_management.py`.
 8. Integrate the approved `storage/repository.py` publication operation.
 9. Remove `case/`, duplicate validation, stale imports, and empty scaffolds.
@@ -247,6 +247,18 @@ Status: implemented; 195 tests passing
 | `integration/p1-new` | Rewrite the implementation around one responsibility, current domain fields, and plain Case payloads. |
 | `integration/p1-new` | Reject obsolete convenience fields, Dataset persistence, HTTP handling, and its three-sheet workbook. |
 | From scratch | Add the current 12-column schema, current Expectation payload handling, strict JSON cells, and format-only `parse`/`dump` functions. |
+
+### `dataset/loader.py` XLSX integration
+
+Status: implemented; 197 tests passing
+
+| Source | Decision |
+| --- | --- |
+| `goal/p1-demo` | No XLSX loading behavior or code existed to reuse. |
+| `integration/p1-new` | Preserve the behavior of parsing Cases before constructing a Dataset draft. |
+| `integration/p1-new` | Reuse no code directly; its parsing, domain construction, workflow, and persistence were coupled. |
+| `integration/p1-new` | Reject Dataset creation, repository writes, and publication rules from the loader. |
+| From scratch | Add `load_cases()` with explicit XLSX dispatch and one current-domain Pydantic `TypeAdapter`. |
 
 ## 9. Test Plan
 
