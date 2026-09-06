@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -13,15 +14,31 @@ from agentgate.domain import (
 class SQLiteRepository:
     """SQLite JSON-document adapter behind a PostgreSQL-compatible domain boundary."""
 
-    def __init__(self, path: str | Path = "agentgate.db") -> None:
+    def __init__(
+        self, path: str | Path = "agentgate.db", busy_timeout_ms: int = 5_000
+    ) -> None:
+        if busy_timeout_ms < 1:
+            raise ValueError("busy_timeout_ms must be at least 1")
         self.path = str(path)
+        self.busy_timeout_ms = busy_timeout_ms
         self._initialize()
 
-    def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.path)
+    @contextmanager
+    def _connect(self) -> Iterator[sqlite3.Connection]:
+        connection = sqlite3.connect(
+            self.path, timeout=self.busy_timeout_ms / 1_000
+        )
         connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA foreign_keys=ON")
-        return connection
+        connection.execute("PRAGMA foreign_keys = ON")
+        connection.execute(f"PRAGMA busy_timeout = {self.busy_timeout_ms}")
+        try:
+            yield connection
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
 
     def _initialize(self) -> None:
         with self._connect() as db:

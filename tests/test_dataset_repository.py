@@ -7,6 +7,22 @@ from agentgate.domain import Case, CaseTurn
 from agentgate.storage.sqlite import SQLiteRepository
 
 
+def test_sqlite_connection_enforces_pragmas_and_closes(tmp_path):
+    repository = SQLiteRepository(tmp_path / "connection.db", busy_timeout_ms=1_234)
+
+    with repository._connect() as connection:
+        assert connection.execute("PRAGMA foreign_keys").fetchone()[0] == 1
+        assert connection.execute("PRAGMA busy_timeout").fetchone()[0] == 1_234
+
+    with pytest.raises(sqlite3.ProgrammingError, match="closed database"):
+        connection.execute("SELECT 1")
+
+
+def test_sqlite_connection_rejects_invalid_busy_timeout(tmp_path):
+    with pytest.raises(ValueError, match="busy_timeout_ms"):
+        SQLiteRepository(tmp_path / "connection.db", busy_timeout_ms=0)
+
+
 def test_sqlite_persists_catalog_and_enforces_one_draft(tmp_path):
     repository = SQLiteRepository(tmp_path / "repository.db")
     service = DatasetService(repository)
