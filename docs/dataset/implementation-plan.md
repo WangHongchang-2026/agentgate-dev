@@ -36,7 +36,7 @@ The completed capability supports:
 - immutable numbered publication;
 - single-turn and multi-turn Cases;
 - canonical JSON import/export;
-- Excel `.xlsx` import/export for business-unit data exchange;
+- simple one-sheet Excel `.xlsx` import/export for business-unit data exchange;
 - exact published DatasetVersion resolution for Evaluation Runs.
 
 ## 2. Terms
@@ -123,17 +123,23 @@ It checks envelope syntax and format version. It does not persist or publish.
 
 ### `dataset/formats/xlsx.py`
 
-Implement `.xlsx` exchange with `openpyxl` using four sheets:
+Implement `.xlsx` exchange with `openpyxl` using one `Cases` sheet. One row represents
+one conversation Turn; repeated `case_id` values form a multi-turn Case and `turn_order`
+controls conversation order. The columns are:
 
-- `dataset`: Dataset metadata and format version;
-- `cases`: one row per Case with category, difficulty, tags, notes, and initial state;
-- `turns`: one row per CaseTurn with Case ID, turn order, input, and notes;
-- `expectations`: one row per typed expectation with Case ID, turn ID, kind, and JSON
-  configuration.
+```text
+case_id, case_name, category, difficulty, tags_json, case_notes,
+initial_state_json, turn_id, turn_order, input_json, expectations_json, turn_notes
+```
 
-JSON-valued cells use canonical JSON. IDs are explicit; row position is never identity.
-Import errors identify sheet, row, and field. Macros, formula execution, merged-cell
-semantics, and arbitrary customer templates are out of scope.
+Only `case_id`, `case_name`, and `input_json` are required. JSON-valued cells use
+canonical JSON. Import errors identify sheet, row, and column. The adapter rejects
+formulas, unsafe active workbook content, malformed archives, excessive expansion, and
+lossy JSON values. Dataset catalog identity is supplied by the application workflow and
+is not encoded in this simple sheet.
+
+Excel is a compatibility and bulk-exchange channel, not the primary Dataset editor.
+Users perform full Case, Turn, Expectation, and draft editing through the Web UI.
 
 ### `dataset/loader.py`
 
@@ -201,12 +207,14 @@ classes/functions, implement it, and run focused tests before moving on.
 2. [complete] Implement `dataset/versioning.py` pure transformations.
 3. [complete] Implement `dataset/formats/json.py` and preserve canonical JSON round trips.
 4. [complete] Implement `dataset/loader.py` and `dataset/export.py`.
-5. [next] Add deterministic `.xlsx` import/export in `dataset/formats/xlsx.py`.
-6. Move workflows into `application/dataset_management.py`.
-7. Integrate the approved `storage/repository.py` publication operation.
-8. Remove `case/`, duplicate validation, stale imports, and empty scaffolds.
-9. Update existing API/CLI imports only as required; do not redesign transports or Web.
-10. Run focused and complete regression suites.
+5. [complete] Add one-sheet `.xlsx` import/export in `dataset/formats/xlsx.py`.
+6. [next] Integrate XLSX parsing into `dataset/loader.py`, then XLSX encoding into
+   `dataset/export.py`.
+7. Move workflows into `application/dataset_management.py`.
+8. Integrate the approved `storage/repository.py` publication operation.
+9. Remove `case/`, duplicate validation, stale imports, and empty scaffolds.
+10. Update existing API/CLI imports only as required; do not redesign transports or Web.
+11. Run focused and complete regression suites.
 
 Each checkpoint should produce a small reviewable commit when practical.
 
@@ -226,7 +234,19 @@ Status: implemented; 185 tests passing
 | `integration/p1-new` | Adapt its safe attachment filename normalization into a format-independent suggested filename. |
 | `integration/p1-new` | Reject HTTP `Content-Disposition` handling here; it belongs in `server/`. |
 | From scratch | Add the `ExportedDataset` bytes/media-type/filename output contract and explicit format dispatch. |
-| Deferred | Review the team branch's `build_excel()` implementation during `dataset/formats/xlsx.py`. |
+| Deferred | Integrate the XLSX adapter through `dataset/loader.py` and `dataset/export.py` in separate approved checkpoints. |
+
+### `dataset/formats/xlsx.py`
+
+Status: implemented; 195 tests passing
+
+| Source | Decision |
+| --- | --- |
+| `goal/p1-demo` | No XLSX behavior or code existed to reuse. |
+| `integration/p1-new` | Preserve archive limits, active-content rejection, formula protection, located errors, Case grouping, and Turn ordering. |
+| `integration/p1-new` | Rewrite the implementation around one responsibility, current domain fields, and plain Case payloads. |
+| `integration/p1-new` | Reject obsolete convenience fields, Dataset persistence, HTTP handling, and its three-sheet workbook. |
+| From scratch | Add the current 12-column schema, current Expectation payload handling, strict JSON cells, and format-only `parse`/`dump` functions. |
 
 ## 9. Test Plan
 
@@ -242,7 +262,8 @@ Status: implemented; 185 tests passing
 
 ### Formats
 
-- JSON and XLSX round trips preserve DatasetVersion equality;
+- JSON round trips preserve DatasetVersion equality;
+- XLSX round trips preserve current Case, Turn, and Expectation payloads;
 - multi-turn Cases and each implemented Expectation kind round trip;
 - XLSX errors identify sheet, row, and field;
 - unsupported format versions fail explicitly;
