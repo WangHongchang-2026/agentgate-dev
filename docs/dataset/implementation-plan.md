@@ -344,6 +344,18 @@ Status: implemented; 207 tests passing
 | Current refactor | Reuse `DatasetManagement.import_json()` and `export_version()` directly. |
 | From scratch | Decode canonical export bytes for the existing JSON response and add an API round-trip test. |
 
+### `domain/case.py` recovered Turn-input invariant
+
+Status: implemented; 208 tests passing
+
+| Source | Decision |
+| --- | --- |
+| `goal/p1-demo` | Preserve the rule that every Case Turn must contain input. |
+| `goal/p1-demo` | Reuse no code directly because the old check ran too late during Dataset publication. |
+| `integration/p1-new` | No better behavior or implementation to reuse. |
+| Current refactor | Reuse `CaseTurn` and its existing Pydantic field-validation style. |
+| From scratch | Add one construction-time invariant and one focused domain test. |
+
 ## 9. Test Plan
 
 ### Versioning

@@ -78,10 +78,10 @@ snapshots, manifests, hashes, and persisted representations reproducible across 
 step. `Case` owns one or more ordered turns plus category, difficulty, tags, notes, and
 initial state. Whether a Case is multi-turn is derived from its turn count.
 
-Case-local invariants are enforced during construction: identities cannot be blank, turn
-and Expectation IDs must be unique within a Case, and tags cannot contain blank or
-duplicate values. Dataset-wide invariants remain the responsibility of
-`domain/dataset.py`.
+Case-local invariants are enforced during construction: identities cannot be blank,
+every Turn must contain input, Turn and Expectation IDs must be unique within a Case,
+and tags cannot contain blank or duplicate values. Dataset-wide invariants remain the
+responsibility of `domain/dataset.py`.
 
 ## Expectation Models
 

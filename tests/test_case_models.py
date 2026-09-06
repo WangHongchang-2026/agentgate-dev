@@ -83,3 +83,8 @@ def test_case_rejects_blank_turn_id_and_duplicate_expectation_ids():
                 ),
             ),
         )
+
+
+def test_case_turn_rejects_empty_input():
+    with pytest.raises(ValidationError, match="CaseTurn input must not be empty"):
+        CaseTurn(input={})

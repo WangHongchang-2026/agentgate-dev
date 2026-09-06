@@ -48,6 +48,13 @@ class CaseTurn(DomainModel):
     def validate_id(cls, value: str) -> str:
         return require_non_blank(value, "CaseTurn id")
 
+    @field_validator("input")
+    @classmethod
+    def validate_input(cls, value: FrozenJsonObject) -> FrozenJsonObject:
+        if not value:
+            raise ValueError("CaseTurn input must not be empty")
+        return value
+
 
 class Case(DomainModel):
     """An immutable single-turn or multi-turn evaluation scenario."""
