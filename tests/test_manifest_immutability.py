@@ -115,3 +115,51 @@ def test_repository_lists_runs_with_valid_limit_and_deterministic_ties(tmp_path)
     assert [run.id for run in repository.list_runs(limit=1)] == ["a-run"]
     with pytest.raises(ValueError, match="limit must be at least 1"):
         repository.list_runs(limit=0)
+
+
+def test_repository_claims_a_pending_run_once(tmp_path):
+    repository = SQLiteRepository(tmp_path / "run-claim.db")
+    pending = EvaluationRun(id="run", manifest=manifest())
+    repository.save_run(pending)
+    started_at = pending.created_at + timedelta(seconds=1)
+
+    claimed = repository.claim_pending_run(pending.id, started_at)
+
+    assert claimed is not None
+    assert claimed.status is RunStatus.RUNNING
+    assert claimed.started_at == started_at
+    assert repository.get_run(pending.id) == claimed
+    assert repository.claim_pending_run(pending.id, started_at) is None
+    assert repository.claim_pending_run("missing", started_at) is None
+
+
+def test_repository_lists_and_counts_runs_by_status(tmp_path):
+    repository = SQLiteRepository(tmp_path / "run-status.db")
+    first = EvaluationRun(id="first", manifest=manifest())
+    second = EvaluationRun(
+        id="second",
+        manifest=manifest(),
+        created_at=first.created_at + timedelta(seconds=1),
+    )
+    repository.save_run(first)
+    repository.save_run(second)
+    repository.claim_pending_run(second.id, second.created_at + timedelta(seconds=1))
+
+    assert [
+        run.id
+        for run in repository.list_runs_by_status(
+            RunStatus.PENDING, oldest_first=True
+        )
+    ] == ["first"]
+    assert [
+        run.id for run in repository.list_runs_by_status(RunStatus.RUNNING, limit=1)
+    ] == ["second"]
+    assert repository.count_runs_by_status() == {
+        RunStatus.PENDING: 1,
+        RunStatus.RUNNING: 1,
+        RunStatus.COMPLETED: 0,
+        RunStatus.FAILED: 0,
+        RunStatus.CANCELLED: 0,
+    }
+    with pytest.raises(ValueError, match="limit must be at least 1"):
+        repository.list_runs_by_status(RunStatus.PENDING, limit=0)

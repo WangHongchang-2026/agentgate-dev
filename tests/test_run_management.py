@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import timedelta
+
 import pytest
 
 from agentgate.application import RunManagement
@@ -15,6 +17,17 @@ from agentgate.evaluator import EVALUATORS
 from agentgate.integrations.observability import InMemoryTraceCapture
 from agentgate.integrations.targets import DemoLoanTargetAdapter
 from agentgate.storage.sqlite import SQLiteRepository
+
+
+class RecordingDispatcher:
+    def __init__(self, failure: Exception | None = None) -> None:
+        self.failure = failure
+        self.run_ids: list[str] = []
+
+    def submit(self, run_id: str) -> None:
+        self.run_ids.append(run_id)
+        if self.failure is not None:
+            raise self.failure
 
 
 def target(version: str = "loan-agent-v2-fixed") -> TargetSnapshot:
@@ -101,3 +114,68 @@ def test_execute_run_rejects_unknown_run(tmp_path) -> None:
             "missing", DemoLoanTargetAdapter(capture), capture.resolve
         )
     capture.shutdown()
+
+
+def test_dispatch_run_submits_only_the_persisted_run_id(tmp_path) -> None:
+    repository = SQLiteRepository(tmp_path / "dispatch-run.db")
+    ensure_demo_dataset(repository)
+    management = RunManagement(repository, EVALUATORS)
+    run = management.create_run(target(), dataset_id=LOAN_DATASET.id)
+    dispatcher = RecordingDispatcher()
+
+    dispatched = management.dispatch_run(run.id, dispatcher)
+
+    assert dispatched == run
+    assert dispatcher.run_ids == [run.id]
+    assert repository.get_run(run.id).status is RunStatus.PENDING
+
+
+def test_dispatch_failure_is_persisted_without_exception_details(tmp_path) -> None:
+    repository = SQLiteRepository(tmp_path / "dispatch-failure.db")
+    ensure_demo_dataset(repository)
+    management = RunManagement(repository, EVALUATORS)
+    run = management.create_run(target(), dataset_id=LOAN_DATASET.id)
+    dispatcher = RecordingDispatcher(
+        ConnectionError("redis://user:secret@example.invalid")
+    )
+
+    with pytest.raises(RuntimeError, match="Run dispatch failed"):
+        management.dispatch_run(run.id, dispatcher)
+
+    failed = repository.get_run(run.id)
+    assert failed.status is RunStatus.FAILED
+    assert failed.error == "Run dispatch failed: ConnectionError"
+    assert "secret" not in failed.error
+
+
+def test_fail_stale_runs_preserves_active_and_pending_runs(tmp_path) -> None:
+    repository = SQLiteRepository(tmp_path / "stale-runs.db")
+    ensure_demo_dataset(repository)
+    management = RunManagement(repository, EVALUATORS)
+    stale = management.create_run(
+        target(), dataset_id=LOAN_DATASET.id, timeout_seconds=10
+    )
+    active = management.create_run(
+        target(), dataset_id=LOAN_DATASET.id, timeout_seconds=10
+    )
+    pending = management.create_run(target(), dataset_id=LOAN_DATASET.id)
+    now = max(stale.created_at, active.created_at, pending.created_at) + timedelta(
+        seconds=100
+    )
+    repository.claim_pending_run(stale.id, now - timedelta(seconds=20))
+    repository.claim_pending_run(active.id, now - timedelta(seconds=5))
+
+    failed = management.fail_stale_runs(now=now, grace_seconds=5)
+
+    assert [run.id for run in failed] == [stale.id]
+    assert repository.get_run(stale.id).status is RunStatus.FAILED
+    assert repository.get_run(active.id).status is RunStatus.RUNNING
+    assert repository.get_run(pending.id).status is RunStatus.PENDING
+
+
+def test_fail_stale_runs_rejects_negative_grace_period(tmp_path) -> None:
+    repository = SQLiteRepository(tmp_path / "invalid-grace.db")
+    management = RunManagement(repository, EVALUATORS)
+
+    with pytest.raises(ValueError, match="must not be negative"):
+        management.fail_stale_runs(grace_seconds=-1)

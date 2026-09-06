@@ -3,6 +3,7 @@ from __future__ import annotations
 import sqlite3
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
 
 from agentgate.domain import (
@@ -11,8 +12,10 @@ from agentgate.domain import (
     DatasetVersionStatus,
     EvaluationResult,
     EvaluationRun,
+    RunStatus,
     Trace,
     canonical_json,
+    transition_run,
 )
 
 
@@ -53,6 +56,8 @@ CREATE TABLE IF NOT EXISTS runs (
     created_at TEXT NOT NULL,
     payload TEXT NOT NULL
 );
+CREATE INDEX IF NOT EXISTS idx_runs_status_created
+    ON runs(status, created_at, id);
 CREATE TABLE IF NOT EXISTS traces (
     id TEXT PRIMARY KEY,
     run_id TEXT NOT NULL,
@@ -394,6 +399,62 @@ class SQLiteRepository:
                 "SELECT payload FROM runs ORDER BY created_at DESC, id LIMIT ?", (limit,)
             ).fetchall()
         return [EvaluationRun.model_validate_json(row[0]) for row in rows]
+
+    def claim_pending_run(
+        self, run_id: str, started_at: datetime
+    ) -> EvaluationRun | None:
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT payload FROM runs WHERE id=?", (run_id,)
+            ).fetchone()
+            if row is None:
+                return None
+
+            pending = EvaluationRun.model_validate_json(row[0])
+            if pending.status is not RunStatus.PENDING:
+                return None
+            running = transition_run(
+                pending, RunStatus.RUNNING, occurred_at=started_at
+            )
+            cursor = db.execute(
+                """
+                UPDATE runs SET status=?, payload=?
+                WHERE id=? AND status='pending'
+                """,
+                (running.status, canonical_json(running), run_id),
+            )
+            return running if cursor.rowcount == 1 else None
+
+    def list_runs_by_status(
+        self,
+        status: RunStatus,
+        limit: int | None = None,
+        oldest_first: bool = False,
+    ) -> list[EvaluationRun]:
+        if limit is not None and limit < 1:
+            raise ValueError("Run list limit must be at least 1")
+        direction = "ASC" if oldest_first else "DESC"
+        query = (
+            "SELECT payload FROM runs WHERE status=? "
+            f"ORDER BY created_at {direction}, id"
+        )
+        parameters: tuple[object, ...] = (status.value,)
+        if limit is not None:
+            query += " LIMIT ?"
+            parameters += (limit,)
+        with self._connect() as db:
+            rows = db.execute(query, parameters).fetchall()
+        return [EvaluationRun.model_validate_json(row[0]) for row in rows]
+
+    def count_runs_by_status(self) -> dict[RunStatus, int]:
+        counts = {status: 0 for status in RunStatus}
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT status, COUNT(*) AS count FROM runs GROUP BY status"
+            ).fetchall()
+        for row in rows:
+            counts[RunStatus(row["status"])] = row["count"]
+        return counts
 
     def save_trace(self, trace: Trace) -> None:
         with self._connect() as db:

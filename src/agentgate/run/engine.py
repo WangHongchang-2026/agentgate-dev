@@ -14,6 +14,7 @@ from agentgate.domain import (
     RunStatus,
     Trace,
     transition_run,
+    utcnow,
 )
 from agentgate.storage.repository import AgentGateRepository
 
@@ -50,14 +51,19 @@ class RunEngine:
     def execute(
         self, run: EvaluationRun, target_adapter: TargetAdapterProtocol
     ) -> EvaluationRun:
-        self._require_persisted_pending(run)
-        running = transition_run(run, RunStatus.RUNNING)
-        self.repository.save_run(running)
+        stored = self._require_persisted_run(run)
+        if stored.status is not RunStatus.PENDING:
+            return stored
+        running = self.repository.claim_pending_run(run.id, utcnow())
+        if running is None:
+            claimed = self.repository.get_run(run.id)
+            if claimed is None:
+                raise ValueError("EvaluationRun disappeared while being claimed")
+            return claimed
         active_handle: str | None = None
 
         try:
             self._validate_execution(running, target_adapter)
-            results: list[EvaluationResult] = []
             for case in running.manifest.dataset.cases:
                 request = self._build_request(running, case)
                 active_handle = target_adapter.start(request)
@@ -86,9 +92,8 @@ class RunEngine:
                     )
                 )
                 self._validate_results(running, case, trace, case_results)
-                results.extend(case_results)
+                self.repository.save_results(case_results)
 
-            self.repository.save_results(results)
             completed = transition_run(running, RunStatus.COMPLETED)
             self.repository.save_run(completed)
             return completed
@@ -105,14 +110,15 @@ class RunEngine:
             self.repository.save_run(terminal)
             raise
 
-    def _require_persisted_pending(self, run: EvaluationRun) -> None:
+    def _require_persisted_run(self, run: EvaluationRun) -> EvaluationRun:
         if run.status != RunStatus.PENDING:
             raise ValueError("RunEngine requires a pending EvaluationRun")
         stored = self.repository.get_run(run.id)
         if stored is None:
             raise ValueError("EvaluationRun must be persisted before execution")
-        if stored != run:
+        if stored.status is RunStatus.PENDING and stored != run:
             raise ValueError("persisted EvaluationRun does not match execution request")
+        return stored
 
     @staticmethod
     def _validate_execution(

@@ -3,9 +3,17 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import datetime
 from typing import Protocol
 
-from agentgate.domain import Dataset, DatasetVersion, EvaluationResult, EvaluationRun, Trace
+from agentgate.domain import (
+    Dataset,
+    DatasetVersion,
+    EvaluationResult,
+    EvaluationRun,
+    RunStatus,
+    Trace,
+)
 
 
 class AgentGateRepository(Protocol):
@@ -34,6 +42,16 @@ class AgentGateRepository(Protocol):
     def save_run(self, run: EvaluationRun) -> None: ...
     def get_run(self, run_id: str) -> EvaluationRun | None: ...
     def list_runs(self, limit: int = 50) -> list[EvaluationRun]: ...
+    def claim_pending_run(
+        self, run_id: str, started_at: datetime
+    ) -> EvaluationRun | None: ...
+    def list_runs_by_status(
+        self,
+        status: RunStatus,
+        limit: int | None = None,
+        oldest_first: bool = False,
+    ) -> list[EvaluationRun]: ...
+    def count_runs_by_status(self) -> dict[RunStatus, int]: ...
     def save_trace(self, trace: Trace) -> None: ...
     def get_trace(self, run_id: str, case_id: str) -> Trace | None: ...
     def list_traces(self, run_id: str) -> list[Trace]: ...

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import datetime, timedelta
 
 from agentgate.domain import (
     EvaluationRun,
@@ -10,9 +11,14 @@ from agentgate.domain import (
     MetricPlan,
     ReleaseGateSpec,
     RunManifest,
+    RunStatus,
     TargetSnapshot,
+    normalize_utc,
+    transition_run,
+    utcnow,
 )
 from agentgate.evaluator import evaluate_case, validate_evaluation_plan
+from agentgate.integrations.job_dispatchers import JobDispatcher
 from agentgate.run.engine import RunEngine, TraceResolver
 from agentgate.run.target_protocol import TargetAdapterProtocol
 from agentgate.storage.repository import AgentGateRepository
@@ -82,8 +88,71 @@ class RunManagement:
         run = self.repository.get_run(run_id)
         if run is None:
             raise ValueError(f"unknown EvaluationRun: {run_id}")
+        if run.status is not RunStatus.PENDING:
+            return run
         engine = RunEngine(self.repository, evaluate_case, trace_resolver)
         return engine.execute(run, target_adapter)
+
+    def dispatch_run(
+        self, run_id: str, dispatcher: JobDispatcher
+    ) -> EvaluationRun:
+        """Submit one persisted pending Run for worker-side execution."""
+
+        run = self.repository.get_run(run_id)
+        if run is None:
+            raise ValueError(f"unknown EvaluationRun: {run_id}")
+        if run.status is not RunStatus.PENDING:
+            raise ValueError("only a pending EvaluationRun can be dispatched")
+        try:
+            dispatcher.submit(run.id)
+        except Exception as exc:
+            failed = transition_run(
+                run,
+                RunStatus.FAILED,
+                error=f"Run dispatch failed: {type(exc).__name__}",
+            )
+            try:
+                self.repository.save_run(failed)
+            except ValueError:
+                current = self.repository.get_run(run.id)
+                if current is None or current.status is RunStatus.PENDING:
+                    raise
+            raise RuntimeError("Run dispatch failed") from exc
+        return run
+
+    def fail_stale_runs(
+        self,
+        *,
+        now: datetime | None = None,
+        grace_seconds: float = 30,
+    ) -> list[EvaluationRun]:
+        """Fail running Runs whose execution recovery deadline has expired."""
+
+        if grace_seconds < 0:
+            raise ValueError("grace_seconds must not be negative")
+        current_time = normalize_utc(now or utcnow(), "stale Run check time")
+        failed_runs: list[EvaluationRun] = []
+        for run in self.repository.list_runs_by_status(RunStatus.RUNNING):
+            deadline = run.started_at + timedelta(
+                seconds=run.manifest.timeout_seconds + grace_seconds
+            )
+            if deadline > current_time:
+                continue
+            failed = transition_run(
+                run,
+                RunStatus.FAILED,
+                occurred_at=current_time,
+                error="Execution worker exceeded its recovery deadline",
+            )
+            try:
+                self.repository.save_run(failed)
+            except ValueError:
+                current = self.repository.get_run(run.id)
+                if current is None or current.status is RunStatus.RUNNING:
+                    raise
+                continue
+            failed_runs.append(failed)
+        return failed_runs
 
     def _select_evaluators(
         self, evaluator_ids: Sequence[str] | None

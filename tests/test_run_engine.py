@@ -65,6 +65,17 @@ class StubTargetAdapter:
         self.cancelled.append(handle)
 
 
+class FailOnCaseTargetAdapter(StubTargetAdapter):
+    def __init__(self, case_id: str) -> None:
+        super().__init__()
+        self.case_id = case_id
+
+    def wait(self, handle: str, timeout_seconds: float) -> CaseExecutionResult:
+        if self.requests[handle].case.id == self.case_id:
+            raise TargetExecutionError("unavailable", "Target failed")
+        return super().wait(handle, timeout_seconds)
+
+
 def evaluator_spec() -> EvaluatorSpec:
     return EvaluatorSpec(
         id="final-output",
@@ -75,8 +86,10 @@ def evaluator_spec() -> EvaluatorSpec:
     )
 
 
-def pending_run(**manifest_overrides: object) -> EvaluationRun:
-    case = Case(
+def pending_run(
+    *, cases: tuple[Case, ...] | None = None, **manifest_overrides: object
+) -> EvaluationRun:
+    default_case = Case(
         id="case-1",
         name="Case",
         turns=(CaseTurn(id="turn-1", input={"message": "hello"}),),
@@ -86,7 +99,7 @@ def pending_run(**manifest_overrides: object) -> EvaluationRun:
         dataset_id="dataset-1",
         version=1,
         status="published",
-        cases=(case,),
+        cases=cases or (default_case,),
         created_at=datetime(2026, 9, 6, tzinfo=UTC),
         updated_at=datetime(2026, 9, 6, tzinfo=UTC),
         published_at=datetime(2026, 9, 6, tzinfo=UTC),
@@ -173,6 +186,47 @@ def test_engine_executes_persisted_pending_run(tmp_path) -> None:
     assert request.run_id == run.id
     assert request.case.id == "case-1"
     assert request.target == run.manifest.target
+
+
+def test_engine_does_not_execute_a_run_twice(tmp_path) -> None:
+    repository = SQLiteRepository(tmp_path / "duplicate.db")
+    run = pending_run()
+    repository.save_run(run)
+    target_adapter = StubTargetAdapter()
+
+    completed = engine(repository).execute(run, target_adapter)
+    duplicate = engine(repository).execute(run, target_adapter)
+
+    assert duplicate == completed
+    assert len(target_adapter.requests) == 1
+
+
+def test_engine_preserves_completed_case_results_when_later_case_fails(
+    tmp_path,
+) -> None:
+    repository = SQLiteRepository(tmp_path / "partial-results.db")
+    cases = (
+        Case(
+            id="case-1",
+            name="First",
+            turns=(CaseTurn(id="turn-1", input={"message": "first"}),),
+        ),
+        Case(
+            id="case-2",
+            name="Second",
+            turns=(CaseTurn(id="turn-2", input={"message": "second"}),),
+        ),
+    )
+    run = pending_run(cases=cases)
+    repository.save_run(run)
+
+    with pytest.raises(TargetExecutionError, match="unavailable"):
+        engine(repository).execute(run, FailOnCaseTargetAdapter("case-2"))
+
+    assert [result.case_id for result in repository.list_results(run.id)] == [
+        "case-1"
+    ]
+    assert repository.get_run(run.id).status is RunStatus.FAILED
 
 
 def test_engine_requires_run_to_be_persisted(tmp_path) -> None:
