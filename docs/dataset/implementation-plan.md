@@ -210,7 +210,8 @@ classes/functions, implement it, and run focused tests before moving on.
 5. [complete] Add one-sheet `.xlsx` import/export in `dataset/formats/xlsx.py`.
 6. [complete] Integrate XLSX parsing into `dataset/loader.py` and XLSX encoding into
    `dataset/export.py`.
-7. [next] Move workflows into `application/dataset_management.py`.
+7. [in progress] `application/dataset_management.py` is implemented; migrate its callers
+   before removing the old `case/` package.
 8. [complete] Integrate the approved atomic Dataset creation and draft-publication
    operations in `storage/repository.py`.
 9. Remove `case/`, duplicate validation, stale imports, and empty scaffolds.
@@ -286,6 +287,21 @@ Status: implemented; 202 tests passing
 | `integration/p1-new` | Reject draft-only policy from the storage layer. |
 | Current refactor | Reuse `_connect()` transaction handling and existing schema conventions directly. |
 | From scratch | Add identity validation plus rollback, draft, and published-version tests. |
+
+### `application/dataset_management.py`
+
+Status: implemented; 203 tests passing
+
+| Source | Decision |
+| --- | --- |
+| `goal/p1-demo` | Preserve catalog, draft, Case editing, copying, publication, lookup, and JSON exchange behavior. |
+| `goal/p1-demo` | Reuse simple repository lookup and orchestration method bodies where they already fit the approved boundaries. |
+| `goal/p1-demo` | Rewrite import/export composition and reject local time helpers, the old export wrapper, and duplicate Dataset validation. |
+| `integration/p1-new` | Preserve atomic XLSX import into a new Dataset draft. |
+| `integration/p1-new` | Reuse no application code directly because it mixes obsolete domain fields and Excel mechanics. |
+| Current refactor | Reuse versioning, loading, export, shared UTC time, and repository operations directly. |
+| From scratch | Add the `DatasetManagement` application class and focused JSON/XLSX workflow tests. |
+| Removed | `seed()`; Demo bootstrap data does not belong to Dataset management. |
 
 ## 9. Test Plan
 

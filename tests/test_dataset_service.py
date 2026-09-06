@@ -1,10 +1,10 @@
-from agentgate.case import DatasetService
+from agentgate.application import DatasetManagement
 from agentgate.domain import Case, CaseTurn
 from agentgate.storage.sqlite import SQLiteRepository
 
 
 def test_create_edit_publish_and_preserve_old_version(tmp_path):
-    service = DatasetService(SQLiteRepository(tmp_path / "datasets.db"))
+    service = DatasetManagement(SQLiteRepository(tmp_path / "datasets.db"))
     dataset = service.create_dataset("My Dataset", "demo")
     draft = service.create_draft(dataset.id)
     case = Case(
@@ -26,7 +26,7 @@ def test_create_edit_publish_and_preserve_old_version(tmp_path):
 
 
 def test_copy_dataset_has_independent_identity_and_draft(tmp_path):
-    service = DatasetService(SQLiteRepository(tmp_path / "copy.db"))
+    service = DatasetManagement(SQLiteRepository(tmp_path / "copy.db"))
     source = service.create_dataset("Source")
     service.create_draft(source.id)
     service.save_case(source.id, Case(
@@ -42,7 +42,7 @@ def test_copy_dataset_has_independent_identity_and_draft(tmp_path):
 
 
 def test_archiving_hides_catalog_entry_but_preserves_published_versions(tmp_path):
-    service = DatasetService(SQLiteRepository(tmp_path / "archive.db"))
+    service = DatasetManagement(SQLiteRepository(tmp_path / "archive.db"))
     dataset = service.create_dataset("Archive me")
     service.create_draft(dataset.id)
     service.save_case(dataset.id, Case(
@@ -64,7 +64,7 @@ def test_archiving_hides_catalog_entry_but_preserves_published_versions(tmp_path
 
 
 def test_content_hash_changes_with_case_content_not_catalog_display_name(tmp_path):
-    service = DatasetService(SQLiteRepository(tmp_path / "hash.db"))
+    service = DatasetManagement(SQLiteRepository(tmp_path / "hash.db"))
     dataset = service.create_dataset("Original name")
     draft = service.create_draft(dataset.id)
     empty_hash = draft.content_sha256
@@ -87,7 +87,7 @@ def test_content_hash_changes_with_case_content_not_catalog_display_name(tmp_pat
 
 
 def test_copy_reorder_remove_cases_and_discard_draft(tmp_path):
-    service = DatasetService(SQLiteRepository(tmp_path / "case-workflows.db"))
+    service = DatasetManagement(SQLiteRepository(tmp_path / "case-workflows.db"))
     dataset = service.create_dataset("Case workflows")
     service.create_draft(dataset.id)
     first = Case(

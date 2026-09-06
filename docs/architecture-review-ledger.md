@@ -103,7 +103,9 @@ Current Level 2 progress:
 - Storage implementation is complete.
 - Dataset implementation is in progress. Versioning and the JSON/XLSX format, loading,
   and export paths are complete. Atomic initial Dataset/Version persistence is also
-  complete; the current next checkpoint is `application/dataset_management.py`.
+  complete, and `application/dataset_management.py` is implemented. The current next
+  checkpoint is migrating the Dataset caller in `control_plane/service.py` before the
+  old `case/` package is removed.
 
 ## Global architecture decisions
 
