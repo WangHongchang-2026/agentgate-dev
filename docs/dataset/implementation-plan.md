@@ -199,8 +199,8 @@ classes/functions, implement it, and run focused tests before moving on.
 
 1. [complete] Confirm the final Dataset file map and baseline behavior.
 2. [complete] Implement `dataset/versioning.py` pure transformations.
-3. [next] Implement `dataset/formats/json.py` and preserve canonical JSON round trips.
-4. Implement `dataset/loader.py` and `dataset/export.py`.
+3. [complete] Implement `dataset/formats/json.py` and preserve canonical JSON round trips.
+4. [next] Implement `dataset/loader.py`, followed by `dataset/export.py`.
 5. Add deterministic `.xlsx` import/export in `dataset/formats/xlsx.py`.
 6. Move workflows into `application/dataset_management.py`.
 7. Integrate the approved `storage/repository.py` publication operation.
