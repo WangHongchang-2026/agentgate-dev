@@ -154,7 +154,7 @@ sanitized errors, and independent error Results while removing global registrati
 | `trace/receivers/otlp_http.py` | Move | `integrations/observability/otlp_http_receiver.py` |
 | empty Trace importers/adapters/graph/evidence/models | Remove | Add only for real integrations or analysis needs |
 | none | Add | `trace/redaction.py` |
-| `run/core.py` | Split | `run/engine.py`, `run/target_protocol.py`, `integrations/targets/python_function.py` |
+| `run/core.py` | Split | `run/engine.py`, `run/target_protocol.py`, `integrations/targets/demo_loan.py` |
 | `run/core.py:LocalScheduler` | Remove | Direct application call or real job dispatcher |
 | `run/core.py:ExternalSchedulerAdapter` | Redefine | Application/job-dispatch boundary at whole-Run level |
 | empty `run/snapshot.py` | Remove | `domain.RunManifest` already owns the complete contract |

@@ -21,8 +21,8 @@ P1 behavior-preservation inputs include:
 - `evaluator/models.py` contains runtime-only, non-persisted evaluation models; the earlier blanket assumption that all models belong in `domain/` was incorrect.
 - Preserve the lightweight OTLP ingestion behavior in `trace/receivers/otlp_http.py`; protocol handling moves to `integrations/observability/otlp_http_receiver.py` and semantic conversion remains in `trace/normalizer.py`.
 - Preserve the working P1 behavior in `run/core.py` while splitting Engine, Target
-  Adapter Protocol, application scheduling, and Python-function adapter responsibilities
-  into their confirmed modules.
+  Adapter Protocol, application scheduling, and Demo Loan adapter responsibilities into
+  their confirmed modules.
 - Preserve implemented Result behavior while renaming `calc_metrics.py` to `metrics.py` and `service.py` to `report.py`; do not invent a `verdict.py` module.
 
 Current review status:
@@ -116,8 +116,10 @@ Current Level 2 progress:
   `run/target_protocol.py` is implemented with the four-operation Case execution
   lifecycle. `run/manifest.py` was rejected as a forwarding layer because
   `domain.RunManifest` owns the complete contract. The sequential `run/engine.py` is
-  implemented but not yet wired into the demo. The next checkpoint is
-  `integrations/targets/python_function.py`.
+  implemented but not yet wired into the demo.
+- Real OTel Trace capture for the Demo Agent is approved. Its complete implementation
+  plan is recorded in `docs/trace/implementation-plan.md`; the next Trace file
+  checkpoint is `trace/normalizer.py` before the Demo Target adapter is implemented.
 
 ## Global architecture decisions
 
@@ -637,14 +639,14 @@ integrations/
 
 - Implements the internal `TargetAdapterProtocol` defined by
   `run/target_protocol.py`.
-- Confirmed adapters are `http_agent.py`, `process_agent.py`,
-  `python_function.py`, and `trace_replay.py`.
+- Confirmed adapters are `http_agent.py`, `process_agent.py`, `demo_loan.py`, and
+  `trace_replay.py`.
 - Do not add another `base.py`; the protocol already belongs to `run/`.
 - `process_agent.py` understands Agent commands and outputs, while
   `run/process_manager.py` owns PID, resource, timeout, cancellation, and process
   cleanup behavior.
-- `python_function.py` is primarily for demos and tests because in-process Agent
-  failures can affect the worker.
+- `demo_loan.py` adapts the in-process Loan Agent without making a generic Python
+  callable depend on AgentGate Case execution objects.
 - `trace_replay.py` evaluates an existing execution without invoking an Agent.
 - The generic remote-Agent adapter is named `integrations/targets/http_agent.py`,
   not `http.py`. Its responsibility is to translate the Target Adapter Protocol into a

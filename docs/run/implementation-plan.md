@@ -189,7 +189,8 @@ Refactor or reject:
 
 - split the monolithic `run/core.py`;
 - remove `LocalScheduler` and `ExternalSchedulerAdapter` from Run;
-- move `PythonFunctionTarget` to `integrations/targets/python_function.py`;
+- reject `PythonFunctionTarget`; the demo receives a specific adapter with a clean
+  Agent-native invocation contract;
 - replace direct `evaluate_case()` composition with the approved evaluator executor;
 - remove hardcoded demo TargetSnapshot construction from Engine;
 - remove report construction from Engine.
@@ -236,7 +237,7 @@ It does not mean copying old code.
 
 | Current file | Action | Destination |
 | --- | --- | --- |
-| `run/core.py` | Split and remove | `run/engine.py`, `run/target_protocol.py`, `integrations/targets/python_function.py` |
+| `run/core.py` | Split and remove | `run/engine.py`, `run/target_protocol.py`, `integrations/targets/demo_loan.py` |
 | empty `run/engine.py` | Implement | `run/engine.py` |
 | empty `run/snapshot.py` | Remove | `domain.RunManifest` already owns the complete contract |
 | empty `run/lifecycle.py` | Remove | Domain state transitions already own this behavior |
@@ -257,8 +258,8 @@ Each file requires a source assessment and explicit approval before implementati
 3. [complete] Reject redundant `run/manifest.py` and remove empty `run/snapshot.py`.
 4. [complete] Review and implement `run/engine.py` with one synchronous execution
    path.
-5. Review and move the demo adapter to
-   `integrations/targets/python_function.py`.
+5. Review and implement the demo adapter in `integrations/targets/demo_loan.py` after
+   Trace capture and the clean Loan Agent invocation contract are implemented.
 6. Migrate `application/run_management.py` or the current application caller to the
    new Engine boundary.
 7. Add `retry.py` only after typed infrastructure failures have a real caller.

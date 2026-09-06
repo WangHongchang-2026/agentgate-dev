@@ -214,9 +214,10 @@ integrations/
 ├── targets/
 │   ├── http_agent.py
 │   ├── process_agent.py
-│   ├── python_function.py
+│   ├── demo_loan.py
 │   └── trace_replay.py
 ├── observability/
+│   ├── in_memory.py
 │   └── otlp_http_receiver.py
 ├── model_providers/
 │   └── openai_compatible.py
