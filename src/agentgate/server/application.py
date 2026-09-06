@@ -56,7 +56,7 @@ def _raise_dataset_error(exc: ValueError, status_code: int = 422) -> None:
 def create_app(database_path: str | Path | None = None) -> FastAPI:
     repository = SQLiteRepository(database_path or os.getenv("AGENTGATE_DB", "agentgate.db"))
     service = EvaluationService(repository)
-    datasets = service.dataset_service
+    datasets = service.dataset_management
     app = FastAPI(title="AgentGate", version="0.1.0")
     app.add_middleware(
         CORSMiddleware,

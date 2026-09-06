@@ -315,6 +315,22 @@ Status: implemented; 206 tests passing
 | Current refactor | Reuse atomic initial persistence when storage is empty and ordinary version persistence for a partial seed. |
 | From scratch | Add one bootstrap function plus empty, repeated, and partial-storage tests. |
 
+### `control_plane/service.py` Dataset caller migration
+
+Status: implemented; 206 tests passing
+
+| Source | Decision |
+| --- | --- |
+| `goal/p1-demo` | Preserve demo bootstrap, launch-time Dataset resolution, overview counts, and Dataset summaries. |
+| `goal/p1-demo` | Reuse evaluation behavior and repository queries directly. |
+| `goal/p1-demo` | Replace `DatasetService` construction and reject its `seed()` call. |
+| `integration/p1-new` | Reuse no code; its unrelated Target registry and legacy domain expansion are outside this migration. |
+| Current refactor | Reuse `DatasetManagement` and `ensure_demo_dataset()` directly. |
+| From scratch | No algorithm; synchronize the one server caller with the renamed attribute. |
+
+The application attribute is named `dataset_management`, not `datasets`, because
+`EvaluationService.datasets()` already owns the Dataset-summary query name.
+
 ## 9. Test Plan
 
 ### Versioning

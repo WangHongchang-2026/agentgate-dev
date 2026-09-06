@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from agentgate.case import DatasetService
-from agentgate.demo.loan import LOAN_DATASET, LOAN_DATASET_VERSION, LoanAgent
+from agentgate.application import DatasetManagement
+from agentgate.demo.bootstrap import ensure_demo_dataset
+from agentgate.demo.loan import LOAN_DATASET, LoanAgent
 from agentgate.evaluator import EVALUATORS
 from agentgate.run.core import RunEngine
 from agentgate.storage.repository import AgentGateRepository
@@ -16,8 +17,8 @@ class EvaluationService:
         self.repository = repository
         self.loan_state: dict[str, dict] = {}
         self.engine = RunEngine(repository)
-        self.dataset_service = DatasetService(repository)
-        self.dataset_service.seed(LOAN_DATASET, LOAN_DATASET_VERSION)
+        self.dataset_management = DatasetManagement(repository)
+        ensure_demo_dataset(repository)
 
     def launch(
         self, version: str, dataset_id: str | None = None,
@@ -25,9 +26,9 @@ class EvaluationService:
     ):
         dataset_id = dataset_id or LOAN_DATASET.id
         dataset = (
-            self.dataset_service.get_version(dataset_id, dataset_version)
+            self.dataset_management.get_version(dataset_id, dataset_version)
             if dataset_version is not None
-            else self.dataset_service.latest_published(dataset_id)
+            else self.dataset_management.latest_published(dataset_id)
         )
         selected = EVALUATORS if evaluator_ids is None else tuple(
             item for item in EVALUATORS if item.id in evaluator_ids
@@ -50,7 +51,7 @@ class EvaluationService:
         latest = self.engine.report(completed[0].id) if completed else None
         case_count = sum(
             len(version.cases)
-            for dataset in self.dataset_service.list_datasets()
+            for dataset in self.dataset_management.list_datasets()
             if (
                 version := self.repository.get_latest_published_dataset_version(dataset.id)
             ) is not None
@@ -79,7 +80,7 @@ class EvaluationService:
 
     def datasets(self) -> list[dict]:
         summaries = []
-        for dataset in self.dataset_service.list_datasets():
+        for dataset in self.dataset_management.list_datasets():
             latest = self.repository.get_latest_published_dataset_version(dataset.id)
             draft = self.repository.get_dataset_draft(dataset.id)
             summaries.append({

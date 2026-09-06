@@ -73,10 +73,10 @@ def test_web_dataset_workflow_persists_and_runs_selected_version(tmp_path):
         assert output["checks"][0]["actual"] == "pending_review"
 
 
-def test_publish_returns_structured_validation_issues(tmp_path):
+def test_publish_returns_domain_validation_message(tmp_path):
     with TestClient(create_app(tmp_path / "validation-api.db")) as client:
         created = client.post("/api/datasets", json={"name": "Empty"}).json()
         dataset_id = created["dataset"]["id"]
         response = client.post(f"/api/datasets/{dataset_id}/drafts/publish")
         assert response.status_code == 422
-        assert response.json()["detail"][0]["path"] == "cases"
+        assert "requires at least one Case" in response.json()["detail"]
