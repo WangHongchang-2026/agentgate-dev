@@ -52,13 +52,19 @@ CREATE TABLE IF NOT EXISTS traces (
     run_id TEXT NOT NULL,
     case_id TEXT NOT NULL,
     payload TEXT NOT NULL,
-    UNIQUE(run_id, case_id)
+    UNIQUE(run_id, case_id),
+    UNIQUE(id, run_id, case_id)
 );
 CREATE TABLE IF NOT EXISTS results (
     id TEXT PRIMARY KEY,
     run_id TEXT NOT NULL,
     case_id TEXT NOT NULL,
-    payload TEXT NOT NULL
+    trace_id TEXT NOT NULL,
+    evaluator_id TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    UNIQUE(run_id, case_id, evaluator_id),
+    FOREIGN KEY(run_id) REFERENCES runs(id),
+    FOREIGN KEY(trace_id, run_id, case_id) REFERENCES traces(id, run_id, case_id)
 );
 CREATE INDEX IF NOT EXISTS idx_traces_run ON traces(run_id);
 CREATE INDEX IF NOT EXISTS idx_results_run ON results(run_id);
@@ -390,15 +396,64 @@ class SQLiteRepository:
         return [Trace.model_validate_json(row[0]) for row in rows]
 
     def save_results(self, results: Sequence[EvaluationResult]) -> None:
-        with self._connect() as db:
-            db.executemany(
-                "INSERT OR REPLACE INTO results(id,run_id,case_id,payload) VALUES(?,?,?,?)",
-                [(r.id, r.run_id, r.case_id, canonical_json(r)) for r in results],
+        result_items = tuple(results)
+        result_ids = tuple(result.id for result in result_items)
+        result_keys = tuple(
+            (result.run_id, result.case_id, result.evaluator_id)
+            for result in result_items
+        )
+        if len(set(result_ids)) != len(result_ids):
+            raise ValueError("EvaluationResult ids must be unique within a batch")
+        if len(set(result_keys)) != len(result_keys):
+            raise ValueError(
+                "EvaluationResults must be unique by Run, Case, and Evaluator"
             )
+
+        with self._connect() as db:
+            for result in result_items:
+                existing = db.execute(
+                    "SELECT payload FROM results WHERE id = ?", (result.id,)
+                ).fetchone()
+                if existing:
+                    stored = EvaluationResult.model_validate_json(existing[0])
+                    if stored != result:
+                        raise ValueError("EvaluationResult is immutable")
+                    continue
+
+                occupied = db.execute(
+                    """
+                    SELECT id FROM results
+                    WHERE run_id = ? AND case_id = ? AND evaluator_id = ?
+                    """,
+                    (result.run_id, result.case_id, result.evaluator_id),
+                ).fetchone()
+                if occupied:
+                    raise ValueError(
+                        "Run, Case, and Evaluator already have an EvaluationResult"
+                    )
+                db.execute(
+                    """
+                    INSERT INTO results(
+                        id,run_id,case_id,trace_id,evaluator_id,payload
+                    ) VALUES(?,?,?,?,?,?)
+                    """,
+                    (
+                        result.id,
+                        result.run_id,
+                        result.case_id,
+                        result.trace_id,
+                        result.evaluator_id,
+                        canonical_json(result),
+                    ),
+                )
 
     def list_results(self, run_id: str) -> list[EvaluationResult]:
         with self._connect() as db:
             rows = db.execute(
-                "SELECT payload FROM results WHERE run_id=? ORDER BY case_id,id", (run_id,)
+                """
+                SELECT payload FROM results
+                WHERE run_id=? ORDER BY case_id,evaluator_id,id
+                """,
+                (run_id,),
             ).fetchall()
         return [EvaluationResult.model_validate_json(row[0]) for row in rows]

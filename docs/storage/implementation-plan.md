@@ -1,6 +1,6 @@
 # Storage Implementation Plan
 
-Status: in progress
+Status: complete
 
 Implemented checkpoint:
 
@@ -28,6 +28,8 @@ Implemented checkpoint:
   records immutable/idempotent, and use deterministic bounded listing.
 - Trace writes allow complete-snapshot updates only for the same Trace/Run/Case identity;
   a different Trace cannot replace the occupied Run/Case record.
+- EvaluationResults are immutable/idempotent, unique by Run/Case/Evaluator, saved in
+  atomic batches, and constrained to an existing matching Run and Trace.
 
 Authority:
 
@@ -179,8 +181,9 @@ review classes/functions, implement it, and run focused tests before moving on.
 6. [completed] Review Dataset catalog write and query semantics.
 7. [completed] Refactor DatasetVersion writes, queries, and atomic draft replacement.
 8. [completed] Extract Demo business state from AgentGate storage.
-9. [in progress] Run and Trace methods are complete; Result methods are next.
-10. Run storage, Dataset, demo, API, and full backend regression tests.
+9. [completed] Reconcile Run, Trace, and Result methods without redesigning those
+   capabilities.
+10. [completed] Run storage, Dataset, demo, API, and full backend regression tests.
 
 Each checkpoint should produce a small reviewable commit when practical.
 
