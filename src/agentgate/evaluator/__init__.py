@@ -34,31 +34,31 @@ def _rule(
 
 EVALUATORS = (
     _rule(
-        "skill-routing", "技能路由", "skill_routing", "routing",
+        "skill-routing", "Skill Routing", "skill_routing", "routing",
         "skill_routing_accuracy", operator="equals",
     ),
     _rule(
-        "required-tool", "必需工具", "required_tool", "tool_use",
+        "required-tool", "Required Tool", "required_tool", "tool_use",
         "tool_coverage", operator="contains_all",
     ),
     _rule(
-        "forbidden-tool", "禁用工具", "forbidden_tool", "tool_use",
+        "forbidden-tool", "Forbidden Tool", "forbidden_tool", "tool_use",
         "forbidden_tool_compliance", operator="contains_none",
         severity=EvaluatorSeverity.BLOCKING,
     ),
     _rule(
-        "tool-arguments", "工具参数", "tool_arguments", "tool_use",
+        "tool-arguments", "Tool Arguments", "tool_arguments", "tool_use",
         "tool_argument_accuracy",
     ),
     _rule(
-        "final-state", "最终状态", "final_state", "state", "final_state_match",
+        "final-state", "Final State", "final_state", "state", "final_state_match",
     ),
     _rule(
-        "final-output", "最终输出", "final_output", "answer",
+        "final-output", "Final Output", "final_output", "answer",
         "final_output_match",
     ),
     _rule(
-        "policy-compliance", "策略合规", "policy_compliance", "safety",
+        "policy-compliance", "Policy Compliance", "policy_compliance", "safety",
         "policy_compliance", severity=EvaluatorSeverity.BLOCKING,
     ),
 )

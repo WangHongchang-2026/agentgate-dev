@@ -26,7 +26,7 @@ def test_multi_turn_session_produces_turn_aware_trace_and_checks(tmp_path):
                     OutputExpectation(
                         id="ask-fields",
                         path="message",
-                        condition=MatchesPattern(pattern="请补充"),
+                        condition=MatchesPattern(pattern="Please provide"),
                     ),
                 ),
             ),
@@ -62,7 +62,21 @@ def test_multi_turn_session_produces_turn_aware_trace_and_checks(tmp_path):
     )
     trace = repository.get_trace(run.id, "multi-case")
     assert list(trace.turn_outcomes) == ["collect", "decide"]
-    assert {span.attributes["turn_id"] for span in trace.spans} == {"collect", "decide"}
+    turn_ids = {
+        span.attributes["agentgate.turn.id"]
+        for span in trace.spans
+        if span.operation_type == "turn"
+    }
+    assert turn_ids == {"collect", "decide"}
+    assert not any(
+        span.operation_type == "tool"
+        for span in trace.for_turn("collect").spans
+    )
+    assert {
+        span.name
+        for span in trace.for_turn("decide").spans
+        if span.operation_type == "tool"
+    } == {"credit_inquiry", "request_human_review"}
     report = service.run_detail(run.id)
     output = next(item for item in report.results if item.evaluator_id == "final-output")
     state = next(item for item in report.results if item.evaluator_id == "final-state")

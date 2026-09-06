@@ -2,7 +2,7 @@ import json
 
 from fastapi.testclient import TestClient
 
-from agentgate.server.application import create_app
+from agentgate.server.app import create_app
 
 
 def otlp_attribute(key, value):
@@ -83,5 +83,7 @@ def test_otlp_http_uses_post_and_health_is_separate(tmp_path):
         response = client.post("/v1/traces", json=payload)
         assert response.status_code == 202
         assert response.json() == {"accepted_spans": 1}
-        stored = client.app.state.repository.get_trace("external-run", "external-case")
+        stored = client.app.state.dependencies.repository.get_trace(
+            "external-run", "external-case"
+        )
         assert stored is not None and stored.spans[0].name == "tool.call"

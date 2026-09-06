@@ -115,9 +115,25 @@ class Trace(DomainModel):
             raise ValueError(f"trace has no outcome for turn {turn_id}")
         if not isinstance(outcome, FrozenJsonObject):
             raise ValueError(f"trace outcome for turn {turn_id} must be an object")
-        spans = tuple(
-            span for span in self.spans if span.attributes.get("turn_id") == turn_id
+        turn_spans = tuple(
+            span
+            for span in self.spans
+            if span.operation_type == "turn"
+            and span.attributes.get("agentgate.turn.id") == turn_id
         )
+        if len(turn_spans) != 1:
+            raise ValueError(f"trace must contain exactly one Turn span for {turn_id}")
+        selected_ids = {turn_spans[0].span_id}
+        changed = True
+        while changed:
+            previous_size = len(selected_ids)
+            selected_ids.update(
+                span.span_id
+                for span in self.spans
+                if span.parent_span_id in selected_ids
+            )
+            changed = len(selected_ids) != previous_size
+        spans = tuple(span for span in self.spans if span.span_id in selected_ids)
         output = outcome.get("output", FrozenJsonObject())
         state = outcome.get("state", FrozenJsonObject())
         if not isinstance(output, FrozenJsonObject) or not isinstance(state, FrozenJsonObject):

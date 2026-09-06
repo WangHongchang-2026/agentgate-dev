@@ -129,13 +129,19 @@ def normalize_span(
 
 
 def _required_owner(spans: Sequence[TraceSpan], key: str) -> str:
-    values = {span.attributes.get(key) for span in spans}
+    values: set[str] = set()
+    for span in spans:
+        if key not in span.attributes:
+            continue
+        value = span.attributes[key]
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"Trace Span {key} must be a nonblank string")
+        values.add(value)
     if len(values) != 1:
+        if not values:
+            raise ValueError(f"Trace Spans require {key}")
         raise ValueError(f"Trace Spans contain conflicting {key}")
-    value = values.pop()
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"Trace Spans require {key}")
-    return value
+    return values.pop()
 
 
 def _json_object(span: TraceSpan, key: str) -> dict[str, Any]:

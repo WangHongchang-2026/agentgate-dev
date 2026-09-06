@@ -4,7 +4,7 @@ from agentgate.domain import (
     Case, CaseCategory, CaseDifficulty, CaseTurn, Equals, OutputExpectation,
     PolicyExpectation, SkillRouteExpectation, StateExpectation, ToolCallExpectation,
 )
-from agentgate.server.application import create_app
+from agentgate.server.app import create_app
 
 
 def test_web_dataset_workflow_persists_and_runs_selected_version(tmp_path):

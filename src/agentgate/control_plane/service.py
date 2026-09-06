@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-from agentgate.application import DatasetManagement
+from agentgate.application import DatasetManagement, ResultReader, RunManagement
 from agentgate.demo.bootstrap import ensure_demo_dataset
 from agentgate.demo.loan import LOAN_DATASET, LoanAgent
+from agentgate.domain import TargetRef, TargetSnapshot, TargetType, content_sha256
 from agentgate.evaluator import EVALUATORS
-from agentgate.run.core import RunEngine
+from agentgate.integrations.observability import InMemoryTraceCapture
+from agentgate.integrations.targets import DemoLoanTargetAdapter
 from agentgate.storage.repository import AgentGateRepository
 
 
@@ -16,64 +18,66 @@ class EvaluationService:
     def __init__(self, repository: AgentGateRepository) -> None:
         self.repository = repository
         self.loan_state: dict[str, dict] = {}
-        self.engine = RunEngine(repository)
         self.dataset_management = DatasetManagement(repository)
+        self.run_management = RunManagement(repository, EVALUATORS)
+        self.result_reader = ResultReader(repository)
         ensure_demo_dataset(repository)
 
     def launch(
         self, version: str, dataset_id: str | None = None,
         dataset_version: int | None = None, evaluator_ids: list[str] | None = None,
     ):
-        dataset_id = dataset_id or LOAN_DATASET.id
-        dataset = (
-            self.dataset_management.get_version(dataset_id, dataset_version)
-            if dataset_version is not None
-            else self.dataset_management.latest_published(dataset_id)
+        target = TargetSnapshot(
+            ref=TargetRef(
+                source_id="agentgate-demo",
+                target_type=TargetType.AGENT,
+                external_target_id="loan-agent",
+                external_version_id=version,
+            ),
+            display_name="Loan Agent",
+            adapter_type=DemoLoanTargetAdapter.adapter_type,
+            adapter_version=DemoLoanTargetAdapter.adapter_version,
+            descriptor_sha256=content_sha256({
+                "name": "loan-agent",
+                "versions": LoanAgent.versions,
+            }),
+            invocation_config={"provider": "deterministic"},
         )
-        selected = EVALUATORS if evaluator_ids is None else tuple(
-            item for item in EVALUATORS if item.id in evaluator_ids
+        run = self.run_management.create_run(
+            target,
+            dataset_id=dataset_id or LOAN_DATASET.id,
+            dataset_version=dataset_version,
+            evaluator_ids=evaluator_ids,
         )
-        if not selected:
-            raise ValueError("at least one evaluator is required")
-        unknown = set(evaluator_ids or ()) - {item.id for item in EVALUATORS}
-        if unknown:
-            raise ValueError(f"unknown evaluators: {', '.join(sorted(unknown))}")
-        return self.engine.run(
-            dataset,
-            LoanAgent(state_store=self.loan_state),
-            version,
-            evaluators=selected,
-        )
+        capture = InMemoryTraceCapture()
+        try:
+            adapter = DemoLoanTargetAdapter(
+                capture, state_store=self.loan_state
+            )
+            return self.run_management.execute_run(run.id, adapter, capture.resolve)
+        finally:
+            capture.shutdown()
 
     def overview(self) -> dict:
-        runs = self.repository.list_runs()
-        completed = [run for run in runs if run.status == "completed"]
-        latest = self.engine.report(completed[0].id) if completed else None
-        case_count = sum(
-            len(version.cases)
-            for dataset in self.dataset_management.list_datasets()
-            if (
-                version := self.repository.get_latest_published_dataset_version(dataset.id)
-            ) is not None
-        )
-        return {
-            "total_runs": len(runs),
-            "completed_runs": len(completed),
-            "case_count": case_count,
-            "latest": latest,
-        }
+        return self.result_reader.overview()
 
     def run_detail(self, run_id: str):
-        return self.engine.report(run_id)
+        try:
+            return self.result_reader.get_report(run_id)
+        except (LookupError, ValueError):
+            return None
 
     def trace(self, run_id: str, case_id: str):
-        return self.repository.get_trace(run_id, case_id)
+        try:
+            return self.result_reader.get_trace(run_id, case_id)
+        except LookupError:
+            return None
 
     def versions(self) -> list[dict[str, str]]:
         return [
             {
                 "id": version,
-                "label": "风险版本" if version.endswith("risky") else "修复版本",
+                "label": "Risky version" if version.endswith("risky") else "Fixed version",
             }
             for version in LoanAgent.versions
         ]

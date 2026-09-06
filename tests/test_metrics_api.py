@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 
-from agentgate.server.application import create_app
+from agentgate.server.app import create_app
 
 
 def test_config_catalogs_and_real_report_metrics(tmp_path):

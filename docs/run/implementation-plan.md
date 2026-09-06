@@ -374,3 +374,14 @@ Status: implemented; 225 tests passing
 | `integration/p1-new` | Reject direct polling, obsolete models, and concrete integration exceptions in Engine. |
 | Current refactor | Reuse `EvaluationRun`, `transition_run`, repository operations, and `TargetAdapterProtocol`. |
 | From scratch | Inject Case evaluation and Trace resolution, validate complete Result sets, and fail closed for unimplemented retry/parallel settings. |
+
+### `integrations/targets/demo_loan.py`
+
+Status: implemented; application caller migration pending
+
+| Source | Decision |
+| --- | --- |
+| `goal/p1-demo` | Preserve Case-by-Case deterministic demo behavior; reject `PythonFunctionTarget` and Agent-side Case iteration. |
+| `integration/p1-new` | Preserve W3C Trace context propagation only; reject old execution models and polling. |
+| Current refactor | Reuse `TargetAdapterProtocol`, `LoanAgent.invoke()`, and in-memory Trace capture. |
+| From scratch | Implement synchronous lifecycle state, Case-to-turn translation, completion spans, and typed adapter errors. |

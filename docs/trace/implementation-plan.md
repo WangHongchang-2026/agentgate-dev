@@ -30,9 +30,10 @@ DemoLoanTargetAdapter
   -> establishes W3C Trace Context
   -> LoanAgent.invoke() emits OTel spans
   -> official InMemorySpanExporter receives finished spans
+  -> CaseExecutionResult returns the OTel trace_id
   -> in-memory observability adapter maps SDK span data
   -> trace/normalizer.py builds one Domain Trace
-  -> CaseExecutionResult carries the inline Trace
+  -> RunEngine receives the resolved Domain Trace
 ```
 
 The in-memory exporter replaces only network transport. It does not fabricate spans,
@@ -117,15 +118,19 @@ RunEngine. Polling, timeout, and backend-specific APIs stay here, not in Engine.
 ## 4. Correlation Contract
 
 RunEngine creates one execution identity and W3C `traceparent`. The Target adapter
-activates that context before invoking the Agent. Root and Turn spans carry:
+activates that context before invoking the Agent. The adapter-owned root/completion
+span carries:
 
 ```text
 agentgate.run.id
 agentgate.case.id
-agentgate.turn.id
 agentgate.execution.id
 agentgate.operation.type
 ```
+
+Each adapter-owned Turn span carries `agentgate.turn.id`. Child Agent spans inherit OTel
+Trace Context, not root-span attributes, and do not need AgentGate Run, Case, or
+execution IDs.
 
 Compatibility aliases currently accepted by the P1 receiver may be read during
 migration, but new code emits only the dotted names. No compatibility models or duplicate
@@ -136,6 +141,9 @@ Correlation rules:
 - Trace and Span IDs are lowercase OTel identifiers;
 - a Trace cannot move to a different Run or Case;
 - every normalized Span uses the owning source Trace ID;
+- Run, Case, and execution ownership must appear on at least one span and normally lives
+  on the adapter-owned root/completion span;
+- any child span that explicitly declares ownership must match the Trace owner;
 - each Turn outcome is linked by `agentgate.turn.id`;
 - missing Run/Case correlation is rejected, never assigned to a shared fallback owner;
 - credential values never appear in correlation attributes.
@@ -364,3 +372,26 @@ Status: implemented; 229 tests passing
 | `integration/p1-new` | Reject obsolete TraceBatch/status models and the unexercised ingestion service. |
 | Current refactor | Reuse immutable `Trace` and `TraceSpan` Domain contracts. |
 | From scratch | Add shared `normalize_span()` and `assemble_trace()` functions used by OTLP and in-memory integrations. |
+
+### `integrations/observability/in_memory.py`
+
+Status: implemented; verified with OTel 1.44.0; 233 tests passing
+
+| Source | Decision |
+| --- | --- |
+| `goal/p1-demo` | Reject; it contains no OTel SDK capture implementation. |
+| `integration/p1-new` | Use lifecycle and correlation ideas only; reject obsolete Trace ingestion models and services. |
+| Current refactor | Reuse `normalize_span()`, `assemble_trace()`, and the RunEngine `TraceResolver` callable shape. |
+| Official OTel | Use a private `TracerProvider`, `SimpleSpanProcessor`, and `InMemorySpanExporter`. |
+| From scratch | Implement execution filtering, SDK-to-normalizer mapping, bounded capture, and Case isolation. |
+
+### Demo Agent And Target Adapter
+
+Status: implemented; focused Trace and adapter tests passing
+
+| Source | Decision |
+| --- | --- |
+| `goal/p1-demo` | Preserve deterministic loan behavior and risky/fixed versions; reject the Case-aware `execute()` API and manual Domain Trace construction. |
+| `integration/p1-new` | Preserve W3C propagation as a design reference; reject manual OTLP fabrication and obsolete adapter models. |
+| Current refactor | Reuse `TargetAdapterProtocol`, `InMemoryTraceCapture`, and canonical Trace completion rules. |
+| From scratch | Implement `LoanAgent.invoke()`, real OTel business spans, Case/Turn adapter spans, and parent-based Turn selection. |

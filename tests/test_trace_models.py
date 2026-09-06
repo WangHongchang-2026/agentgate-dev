@@ -90,8 +90,17 @@ def test_trace_allows_missing_parent_and_selects_one_turn():
         run_id="run",
         case_id="case",
         spans=(
-            span(parent_span_id="f" * 16, attributes={"turn_id": "first"}),
-            span("2" * 16, 1, attributes={"turn_id": "second"}),
+            span(
+                operation_type="turn",
+                attributes={"agentgate.turn.id": "first"},
+            ),
+            span(
+                "2" * 16,
+                1,
+                operation_type="turn",
+                attributes={"agentgate.turn.id": "second"},
+            ),
+            span("3" * 16, 2, parent_span_id="1" * 16),
         ),
         turn_outcomes={
             "first": {"input": {"message": "start"}, "output": {"reply": "ask"}, "state": {}},
@@ -102,10 +111,9 @@ def test_trace_allows_missing_parent_and_selects_one_turn():
     )
 
     selected = trace.for_turn("first")
-    assert [item.span_id for item in selected.spans] == ["1" * 16]
+    assert [item.span_id for item in selected.spans] == ["1" * 16, "3" * 16]
     assert selected.final_output == {"reply": "ask"}
     assert selected.final_state == {}
-    assert trace.completion_sequence() == 2
+    assert trace.completion_sequence() == 3
     with pytest.raises(ValueError, match="no outcome"):
         trace.for_turn("missing")
-

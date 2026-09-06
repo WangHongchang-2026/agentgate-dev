@@ -3,8 +3,8 @@ import json
 import pytest
 
 from agentgate.storage.sqlite import SQLiteRepository
+from agentgate.integrations.observability import ingest_otlp_http_json
 from agentgate.trace.normalizer import normalize_otlp_json
-from agentgate.trace.receivers.otlp_http import ingest_otlp_http_json
 
 
 def attribute(key, value):
@@ -122,3 +122,28 @@ def test_normalizer_orders_spans_by_time_instead_of_payload_position():
 
     assert [span.name for span in trace.spans] == ["earlier", "route"]
     assert [span.sequence for span in trace.spans] == [0, 1]
+
+
+def test_normalizer_allows_ownership_only_on_root_span():
+    payload = complete_payload()
+    resource_attributes = payload["resourceSpans"][0]["resource"]["attributes"]
+    spans = payload["resourceSpans"][0]["scopeSpans"][0]["spans"]
+    spans[0]["attributes"].extend(resource_attributes)
+    resource_attributes.clear()
+    spans.append(
+        {
+            "traceId": "0" * 32,
+            "spanId": "2" * 16,
+            "parentSpanId": "1" * 16,
+            "name": "agent-child",
+            "startTimeUnixNano": "1100000000",
+            "endTimeUnixNano": "1200000000",
+            "attributes": [attribute("agentgate.operation.type", "agent")],
+        }
+    )
+
+    trace = normalize_otlp_json(payload)[0]
+
+    assert trace.run_id == "run"
+    assert trace.case_id == "case"
+    assert "agentgate.run.id" not in trace.spans[1].attributes
