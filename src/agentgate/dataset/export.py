@@ -8,6 +8,10 @@ from dataclasses import dataclass
 from agentgate.domain import Dataset, DatasetVersion
 
 from .formats.json import FORMAT_NAME, FORMAT_VERSION, dump as dump_json
+from .formats.xlsx import dump as dump_xlsx
+
+
+XLSX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,21 +37,29 @@ def export_dataset(
 
     if dataset.id != version.dataset_id:
         raise ValueError("Dataset and DatasetVersion identities do not match")
-    if format_name != "json":
+    if format_name == "json":
+        content = dump_json(
+            {
+                "format": FORMAT_NAME,
+                "format_version": FORMAT_VERSION,
+                "dataset": dataset.model_dump(mode="json"),
+                "version": version.model_dump(mode="json"),
+            }
+        )
+        media_type = "application/json"
+        extension = "json"
+    elif format_name == "xlsx":
+        content = dump_xlsx(
+            [case.model_dump(mode="json") for case in version.cases]
+        )
+        media_type = XLSX_MEDIA_TYPE
+        extension = "xlsx"
+    else:
         raise ValueError(f"unsupported Dataset output format: {format_name!r}")
 
-    content = dump_json(
-        {
-            "format": FORMAT_NAME,
-            "format_version": FORMAT_VERSION,
-            "dataset": dataset.model_dump(mode="json"),
-            "version": version.model_dump(mode="json"),
-        }
-    )
     version_label = f"v{version.version}" if version.version is not None else "draft"
     return ExportedDataset(
         content=content,
-        media_type="application/json",
-        filename=f"{_safe_filename_stem(dataset.name)}-{version_label}.json",
+        media_type=media_type,
+        filename=f"{_safe_filename_stem(dataset.name)}-{version_label}.{extension}",
     )
-

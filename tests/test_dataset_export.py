@@ -2,8 +2,8 @@ from datetime import UTC, datetime
 
 import pytest
 
-from agentgate.dataset.export import ExportedDataset, export_dataset
-from agentgate.dataset.loader import load_dataset
+from agentgate.dataset.export import XLSX_MEDIA_TYPE, ExportedDataset, export_dataset
+from agentgate.dataset.loader import load_cases, load_dataset
 from agentgate.domain import Case, CaseTurn, Dataset, DatasetVersion
 
 
@@ -63,6 +63,17 @@ def test_export_uses_safe_fallback_and_draft_filenames() -> None:
     exported = export_dataset(dataset, version, "json")
 
     assert exported.filename == "dataset-draft.json"
+
+
+def test_export_xlsx_returns_metadata_and_round_trips_cases() -> None:
+    dataset, version = dataset_and_version(version_number=3)
+
+    exported = export_dataset(dataset, version, "xlsx")
+    loaded_cases = load_cases(exported.content, "xlsx")
+
+    assert exported.media_type == XLSX_MEDIA_TYPE
+    assert exported.filename == "Loan-Tests-v3.xlsx"
+    assert loaded_cases == version.cases
 
 
 def test_export_rejects_mismatched_identity() -> None:

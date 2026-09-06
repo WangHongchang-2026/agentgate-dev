@@ -208,9 +208,9 @@ classes/functions, implement it, and run focused tests before moving on.
 3. [complete] Implement `dataset/formats/json.py` and preserve canonical JSON round trips.
 4. [complete] Implement `dataset/loader.py` and `dataset/export.py`.
 5. [complete] Add one-sheet `.xlsx` import/export in `dataset/formats/xlsx.py`.
-6. [in progress] XLSX parsing is integrated into `dataset/loader.py`; integrate XLSX
-   encoding into `dataset/export.py` next.
-7. Move workflows into `application/dataset_management.py`.
+6. [complete] Integrate XLSX parsing into `dataset/loader.py` and XLSX encoding into
+   `dataset/export.py`.
+7. [next] Move workflows into `application/dataset_management.py`.
 8. Integrate the approved `storage/repository.py` publication operation.
 9. Remove `case/`, duplicate validation, stale imports, and empty scaffolds.
 10. Update existing API/CLI imports only as required; do not redesign transports or Web.
@@ -259,6 +259,19 @@ Status: implemented; 197 tests passing
 | `integration/p1-new` | Reuse no code directly; its parsing, domain construction, workflow, and persistence were coupled. |
 | `integration/p1-new` | Reject Dataset creation, repository writes, and publication rules from the loader. |
 | From scratch | Add `load_cases()` with explicit XLSX dispatch and one current-domain Pydantic `TypeAdapter`. |
+
+### `dataset/export.py` XLSX integration
+
+Status: implemented; 198 tests passing
+
+| Source | Decision |
+| --- | --- |
+| `goal/p1-demo` | No XLSX export behavior or code existed to reuse. |
+| `integration/p1-new` | Preserve Case/Turn export, the XLSX media type, and safe versioned filenames. |
+| `integration/p1-new` | Reuse no code directly; workbook generation now belongs to the approved format adapter. |
+| `integration/p1-new` | Reject repository lookup, publication checks, HTTP streaming, attachment headers, ETag, and cache handling. |
+| Current refactor | Reuse `ExportedDataset`, identity validation, safe filename normalization, and explicit dispatch structure. |
+| From scratch | Add the small XLSX encoding branch and round-trip metadata tests. |
 
 ## 9. Test Plan
 
