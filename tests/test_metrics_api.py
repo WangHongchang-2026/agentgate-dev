@@ -1,10 +1,22 @@
 from fastapi.testclient import TestClient
 
+from agentgate.integrations.job_dispatchers.celery import execute_evaluation_run
 from agentgate.server.app import create_app
 
 
-def test_config_catalogs_and_real_report_metrics(tmp_path):
-    with TestClient(create_app(tmp_path / "metrics.db")) as client:
+class RecordingDispatcher:
+    def __init__(self) -> None:
+        self.run_ids: list[str] = []
+
+    def submit(self, run_id: str) -> None:
+        self.run_ids.append(run_id)
+
+
+def test_config_catalogs_and_real_report_metrics(tmp_path, monkeypatch):
+    database_path = tmp_path / "metrics.db"
+    dispatcher = RecordingDispatcher()
+    monkeypatch.setenv("AGENTGATE_DB", str(database_path))
+    with TestClient(create_app(database_path, dispatcher)) as client:
         datasets = client.get("/api/datasets").json()
         evaluators = client.get("/api/evaluators").json()
         assert len(datasets) == 1
@@ -23,8 +35,11 @@ def test_config_catalogs_and_real_report_metrics(tmp_path):
             "dataset_version": 1,
             "evaluator_ids": ["required-tool", "forbidden-tool", "tool-arguments"],
         })
-        assert response.status_code == 201
-        report = client.get(f"/api/runs/{response.json()['id']}").json()
+        assert response.status_code == 202
+        run_id = response.json()["run_id"]
+        assert dispatcher.run_ids == [run_id]
+        assert execute_evaluation_run.run(run_id) == "completed"
+        report = client.get(f"/api/runs/{run_id}").json()
         assert len(report["results"]) == 3
         metrics = {(item["level"], item["key"]): item for item in report["metrics"]}
         assert metrics[("dimension", "tool_use")]["key"] == "tool_use"

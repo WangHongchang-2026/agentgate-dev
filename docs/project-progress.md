@@ -95,8 +95,8 @@ Last updated: 2026-09-06
 | [ ] | Evaluator management | Create and manage Evaluator specifications | `src/agentgate/application/evaluator_management.py` **new** |
 | [ ] | Skill analysis service | Coordinate static Skill analysis | `src/agentgate/application/skill_analysis.py` **new** |
 | [ ] | Lineage queries | Find Runs by Dataset, Target, Evaluator, Prompt, or model version | `src/agentgate/application/lineage_queries.py` **new** |
-| [ ] | Asynchronous Run API | Create a Run, dispatch it, and return `202 Accepted` | `src/agentgate/server/routes/runs.py` |
-| [ ] | Run activity API | Expose queue, running status, progress, and history | `src/agentgate/server/routes/runs.py` |
+| [x] | Asynchronous Run API | Create a Run, dispatch it, and return `202 Accepted` | `src/agentgate/server/routes/runs.py` |
+| [x] | Run activity API | Expose queue, running status, progress, and history | `src/agentgate/server/routes/runs.py` |
 | [ ] | API contract review | Finalize response models and sanitized error behavior | `src/agentgate/server/` |
 
 ## CLI

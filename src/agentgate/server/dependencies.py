@@ -20,6 +20,8 @@ from agentgate.domain import (
     content_sha256,
 )
 from agentgate.evaluator import EVALUATORS
+from agentgate.integrations.job_dispatchers import JobDispatcher
+from agentgate.integrations.job_dispatchers.celery import CeleryJobDispatcher
 from agentgate.integrations.observability import (
     InMemoryTraceCapture,
     ingest_otlp_http_json,
@@ -36,12 +38,31 @@ class ServerDependencies:
     datasets: DatasetManagement
     runs: RunManagement
     results: ResultReader
+    dispatcher: JobDispatcher
     demo_state: dict[str, dict]
 
     def ingest_otlp_json(self, payload: dict[str, Any]) -> int:
         """Normalize and persist one external OTLP/HTTP JSON payload."""
 
         return ingest_otlp_http_json(payload, self.repository)
+
+    def submit_demo_run(
+        self,
+        version: str,
+        *,
+        dataset_id: str = LOAN_DATASET.id,
+        dataset_version: int | None = None,
+        evaluator_ids: list[str] | None = None,
+    ) -> EvaluationRun:
+        """Create and asynchronously dispatch one POC Loan Agent evaluation."""
+
+        run = self._create_demo_run(
+            version,
+            dataset_id=dataset_id,
+            dataset_version=dataset_version,
+            evaluator_ids=evaluator_ids,
+        )
+        return self.runs.dispatch_run(run.id, self.dispatcher)
 
     def execute_demo_run(
         self,
@@ -53,11 +74,8 @@ class ServerDependencies:
     ) -> EvaluationRun:
         """Create and synchronously execute one POC Loan Agent evaluation."""
 
-        if version not in LoanAgent.versions:
-            raise ValueError(f"unknown demo Target version: {version}")
-        target = _demo_target(version)
-        run = self.runs.create_run(
-            target,
+        run = self._create_demo_run(
+            version,
             dataset_id=dataset_id,
             dataset_version=dataset_version,
             evaluator_ids=evaluator_ids,
@@ -71,6 +89,23 @@ class ServerDependencies:
         finally:
             capture.shutdown()
 
+    def _create_demo_run(
+        self,
+        version: str,
+        *,
+        dataset_id: str,
+        dataset_version: int | None,
+        evaluator_ids: list[str] | None,
+    ) -> EvaluationRun:
+        if version not in LoanAgent.versions:
+            raise ValueError(f"unknown demo Target version: {version}")
+        return self.runs.create_run(
+            _demo_target(version),
+            dataset_id=dataset_id,
+            dataset_version=dataset_version,
+            evaluator_ids=evaluator_ids,
+        )
+
 
 def get_dependencies(request: Request) -> ServerDependencies:
     """Return the typed dependency container owned by the FastAPI app."""
@@ -83,6 +118,7 @@ def get_dependencies(request: Request) -> ServerDependencies:
 
 def build_dependencies(
     database_path: str | Path | None = None,
+    dispatcher: JobDispatcher | None = None,
 ) -> ServerDependencies:
     """Build isolated dependencies for one AgentGate FastAPI application."""
 
@@ -94,6 +130,7 @@ def build_dependencies(
         datasets=DatasetManagement(repository),
         runs=RunManagement(repository, EVALUATORS),
         results=ResultReader(repository),
+        dispatcher=dispatcher or CeleryJobDispatcher(),
         demo_state={},
     )
 

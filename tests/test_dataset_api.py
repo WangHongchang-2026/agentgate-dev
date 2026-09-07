@@ -4,11 +4,23 @@ from agentgate.domain import (
     Case, CaseCategory, CaseDifficulty, CaseTurn, Equals, OutputExpectation,
     PolicyExpectation, SkillRouteExpectation, StateExpectation, ToolCallExpectation,
 )
+from agentgate.integrations.job_dispatchers.celery import execute_evaluation_run
 from agentgate.server.app import create_app
 
 
-def test_web_dataset_workflow_persists_and_runs_selected_version(tmp_path):
-    with TestClient(create_app(tmp_path / "dataset-api.db")) as client:
+class RecordingDispatcher:
+    def __init__(self) -> None:
+        self.run_ids: list[str] = []
+
+    def submit(self, run_id: str) -> None:
+        self.run_ids.append(run_id)
+
+
+def test_web_dataset_workflow_persists_and_runs_selected_version(tmp_path, monkeypatch):
+    database_path = tmp_path / "dataset-api.db"
+    dispatcher = RecordingDispatcher()
+    monkeypatch.setenv("AGENTGATE_DB", str(database_path))
+    with TestClient(create_app(database_path, dispatcher)) as client:
         created = client.post("/api/datasets", json={
             "name": "UI Dataset", "description": "created from browser",
         })
@@ -63,8 +75,11 @@ def test_web_dataset_workflow_persists_and_runs_selected_version(tmp_path):
             "dataset_id": dataset_id,
             "dataset_version": 1,
         })
-        assert response.status_code == 201
-        report = client.get(f"/api/runs/{response.json()['id']}").json()
+        assert response.status_code == 202
+        run_id = response.json()["run_id"]
+        assert dispatcher.run_ids == [run_id]
+        assert execute_evaluation_run.run(run_id) == "completed"
+        report = client.get(f"/api/runs/{run_id}").json()
         assert report["run"]["manifest"]["dataset"]["dataset_id"] == dataset_id
         assert report["run"]["manifest"]["dataset"]["version"] == 1
         output = next(item for item in report["results"] if item["evaluator_id"] == "final-output")

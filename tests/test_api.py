@@ -2,7 +2,16 @@ import json
 
 from fastapi.testclient import TestClient
 
+from agentgate.integrations.job_dispatchers.celery import execute_evaluation_run
 from agentgate.server.app import create_app
+
+
+class RecordingDispatcher:
+    def __init__(self) -> None:
+        self.run_ids: list[str] = []
+
+    def submit(self, run_id: str) -> None:
+        self.run_ids.append(run_id)
 
 
 def otlp_attribute(key, value):
@@ -50,15 +59,20 @@ def completed_otlp_payload():
     }
 
 
-def test_api_evaluation_and_persisted_trace(tmp_path):
-    with TestClient(create_app(tmp_path / "api.db")) as client:
+def test_api_evaluation_and_persisted_trace(tmp_path, monkeypatch):
+    database_path = tmp_path / "api.db"
+    dispatcher = RecordingDispatcher()
+    monkeypatch.setenv("AGENTGATE_DB", str(database_path))
+    with TestClient(create_app(database_path, dispatcher)) as client:
         response = client.post("/api/evaluations", json={
             "version": "loan-agent-v1-risky",
             "dataset_id": "loan-risk-policy",
             "dataset_version": 1,
         })
-        assert response.status_code == 201
-        run_id = response.json()["id"]
+        assert response.status_code == 202
+        run_id = response.json()["run_id"]
+        assert dispatcher.run_ids == [run_id]
+        assert execute_evaluation_run.run(run_id) == "completed"
         report = client.get(f"/api/runs/{run_id}").json()
         assert report["release_gate"]["outcome"] == "fail"
         trace = client.get(f"/api/runs/{run_id}/traces/high-risk-approval")

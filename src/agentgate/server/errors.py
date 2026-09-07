@@ -27,6 +27,13 @@ def raise_conflict(error: Exception) -> NoReturn:
     raise HTTPException(status_code=409, detail=_safe_message(error)) from error
 
 
+def raise_service_unavailable(error: Exception) -> NoReturn:
+    raise HTTPException(
+        status_code=503,
+        detail="Evaluation dispatch service is unavailable",
+    ) from error
+
+
 def raise_xlsx_error(error: XlsxFormatError) -> NoReturn:
     issues = [
         {
