@@ -75,8 +75,8 @@ Last updated: 2026-09-06
 | [x] | Stale-Run recovery | Fail Runs abandoned by an expired worker | `src/agentgate/application/run_management.py` |
 | [x] | Progress projection | Calculate completed Cases and Run progress from Results | `src/agentgate/application/result_reader.py` |
 | [x] | Activity projection | Return queued, running, and recent terminal Runs | `src/agentgate/application/result_reader.py` |
-| [ ] | Celery dispatcher | Submit `run_id` through Redis | `src/agentgate/integrations/job_dispatchers/celery.py` **new** |
-| [ ] | Celery worker | Load and execute the persisted Run | `src/agentgate/integrations/job_dispatchers/celery.py` **new** |
+| [x] | Celery dispatcher | Submit `run_id` through Redis | `src/agentgate/integrations/job_dispatchers/celery.py` **new** |
+| [x] | Celery worker | Load and execute the persisted Run | `src/agentgate/integrations/job_dispatchers/celery.py` **new** |
 | [ ] | Customer scheduler integration | Accept work from an external Java scheduler through the shared Run boundary | `src/agentgate/server/routes/runs.py` or `src/agentgate/integrations/job_dispatchers/`; design pending |
 | [ ] | Retry mechanics | Retry classified infrastructure failures only | `src/agentgate/run/retry.py` **new** |
 | [ ] | Local process management | Start, monitor, limit, and stop local Agent processes | `src/agentgate/run/process_manager.py` **new** |
