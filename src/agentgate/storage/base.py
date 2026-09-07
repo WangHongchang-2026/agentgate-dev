@@ -19,6 +19,21 @@ class PendingTraceCorrelation:
     created_at: datetime
 
 
+@dataclass(frozen=True)
+class DatasetMutationReceipt:
+    draft_id: str
+    content_sha256: str
+    inserted_case_ids: tuple[str, ...]
+
+
+class DatasetDraftConflictError(ValueError):
+    pass
+
+
+class DatasetIdempotencyConflictError(ValueError):
+    pass
+
+
 class AgentGateRepository(Protocol):
     def save_dataset(self, dataset: Dataset) -> None: ...
     def save_dataset_with_draft(
@@ -37,6 +52,20 @@ class AgentGateRepository(Protocol):
     def publish_dataset_draft(
         self, dataset_id: str, published_at: datetime
     ) -> DatasetVersion: ...
+    def append_generated_cases_if_current(
+        self,
+        dataset_id: str,
+        expected_draft_id: str,
+        expected_content_sha256: str,
+        updated: DatasetVersion,
+        inserted_case_ids: tuple[str, ...],
+        idempotency_key: str,
+        request_sha256: str,
+    ) -> DatasetMutationReceipt: ...
+    def get_dataset_mutation_receipt(
+        self, dataset_id: str, idempotency_key: str, request_sha256: str
+    ) -> DatasetMutationReceipt | None: ...
+    def get_or_create_service_secret(self, name: str, byte_length: int = 32) -> bytes: ...
 
     def save_run(self, run: Run) -> None: ...
     def get_run(self, run_id: str) -> Run | None: ...

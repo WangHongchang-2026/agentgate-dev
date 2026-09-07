@@ -37,6 +37,7 @@ import DatasetList from './components/DatasetList.vue'
 import VersionSelector from './components/VersionSelector.vue'
 import CaseTable from './components/CaseTable.vue'
 import CaseEditor from './components/CaseEditor.vue'
+import DatasetGenerationDialog from './components/DatasetGenerationDialog.vue'
 
 const router = useRouter()
 
@@ -63,6 +64,7 @@ const importErrors = ref<string[]>([])
 const excelImportIssues = ref<ExcelImportIssue[]>([])
 const excelImportTotalCount = ref(0)
 const excelImportTruncated = ref(false)
+const generationDialog = ref(false)
 const cloneJson = <T,>(value: T): T => JSON.parse(JSON.stringify(value))
 
 const activeVersion = computed<DatasetVersion | null>(
@@ -154,6 +156,7 @@ function newCase(): EvaluationCase {
     tags: [],
     notes: '',
     provenance: null,
+    generation_provenance: null,
     initial_state: {},
     turns: [
       {
@@ -168,6 +171,14 @@ function newCase(): EvaluationCase {
       },
     ],
   }
+}
+
+async function generationAccepted(caseIds: string[]) {
+  generationDialog.value = false
+  await selectDataset(activeDatasetId.value)
+  const selected = activeVersion.value?.cases.find((item) => caseIds.includes(item.id)) ?? null
+  if (selected) selectCase(selected)
+  ElMessage.success(`已将 ${caseIds.length} 个生成用例加入草稿`)
 }
 
 function addCase() {
@@ -534,6 +545,19 @@ onMounted(async () => {
       @export-excel="exportExcelVersion"
     />
 
+    <div v-if="activeDatasetId" class="dataset-actions">
+      <ElButton
+        type="primary"
+        plain
+        :disabled="!editable"
+        data-testid="open-ai-generation"
+        @click="generationDialog = true"
+      >
+        AI 生成用例
+      </ElButton>
+      <span>{{ editable ? '候选经人工审核后才会加入草稿' : '请先创建或切换到草稿' }}</span>
+    </div>
+
     <ElAlert
       v-if="importErrors.length || excelImportIssues.length"
       class="validation-alert"
@@ -708,6 +732,14 @@ onMounted(async () => {
         >
       </template>
     </ElDialog>
+
+    <DatasetGenerationDialog
+      :model-value="generationDialog"
+      :dataset-id="activeDatasetId"
+      :draft="editable ? activeVersion : null"
+      @update:model-value="(v: boolean) => (generationDialog = v)"
+      @accepted="generationAccepted"
+    />
   </PageContainer>
 </template>
 
@@ -740,6 +772,17 @@ onMounted(async () => {
     background-color: var(--gray-100);
     padding: 0 var(--spacing-xs);
     border-radius: var(--radius-small);
+  }
+}
+
+.dataset-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+
+  span {
+    color: var(--text-secondary);
+    font-size: var(--font-size-small);
   }
 }
 

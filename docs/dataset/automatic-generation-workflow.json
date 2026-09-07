@@ -1,0 +1,257 @@
+{
+  "schema_version": 1,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "AgentGate 测评集自动生成原理图",
+    "quality_profile": "showcase",
+    "output": "docs/dataset/automatic-generation-workflow.html",
+    "viewBox": [820, 1050]
+  },
+  "lanes": [
+    { "id": "ui", "label": "用户与前端" },
+    { "id": "metadata", "label": "只读输入" },
+    { "id": "generation", "label": "AgentGate 生成内核" },
+    { "id": "external", "label": "外部模型服务" },
+    { "id": "persistence", "label": "审核与持久化" },
+    { "id": "exceptions", "label": "无效候选", "variant": "exception" }
+  ],
+  "phases": [
+    { "id": "prepare", "label": "准备", "fromCol": 0, "toCol": 1 },
+    { "id": "generate", "label": "结构化生成", "fromCol": 2, "toCol": 3, "variant": "emphasis" },
+    { "id": "compile_review", "label": "编译与审核", "fromCol": 4, "toCol": 5, "variant": "dashed" }
+  ],
+  "mainPath": [
+    "generation_config",
+    "generation_service",
+    "case_plan",
+    "provider_adapter",
+    "bailian_model",
+    "blueprint_compiler",
+    "quality_gate",
+    "human_review",
+    "dataset_draft"
+  ],
+  "nodes": [
+    {
+      "id": "generation_config",
+      "lane": "ui",
+      "col": 0,
+      "type": "frontend",
+      "label": "生成配置",
+      "sublabel": "对象版本・数量・轮次・分类・难度"
+    },
+    {
+      "id": "target_descriptor",
+      "lane": "metadata",
+      "col": 0,
+      "type": "backend",
+      "label": "TargetDescriptor",
+      "sublabel": "能力・Skill・工具・输入输出 Schema",
+      "tag": "只读确定版本"
+    },
+    {
+      "id": "reference_cases",
+      "lane": "metadata",
+      "col": 1,
+      "type": "database",
+      "label": "参考用例",
+      "sublabel": "可选的已发布 Dataset Version"
+    },
+    {
+      "id": "generation_service",
+      "lane": "generation",
+      "col": 1,
+      "type": "backend",
+      "label": "生成编排服务",
+      "sublabel": "校验 Draft・解析 Target・脱敏"
+    },
+    {
+      "id": "case_plan",
+      "lane": "generation",
+      "col": 2,
+      "type": "backend",
+      "label": "Case Plan + 动态 Schema",
+      "sublabel": "固定配额并收窄输入、Skill、工具参数"
+    },
+    {
+      "id": "provider_adapter",
+      "lane": "generation",
+      "col": 3,
+      "type": "cloud",
+      "label": "Model Provider Adapter",
+      "sublabel": "strict JSON Schema・限流・错误归一化"
+    },
+    {
+      "id": "bailian_model",
+      "lane": "external",
+      "col": 3,
+      "type": "external",
+      "label": "百炼 Qwen",
+      "sublabel": "只生成简化 Case Blueprint"
+    },
+    {
+      "id": "blueprint_compiler",
+      "lane": "generation",
+      "col": 4,
+      "type": "backend",
+      "label": "确定性 Blueprint 编译器",
+      "sublabel": "生成 Case、Path、Condition 和系统 ID",
+      "tag": "模型不生成领域对象"
+    },
+    {
+      "id": "quality_gate",
+      "lane": "generation",
+      "col": 5,
+      "type": "security",
+      "label": "校验与质量门禁",
+      "sublabel": "Schema・Target・轮次・安全・精确去重"
+    },
+    {
+      "id": "human_review",
+      "lane": "persistence",
+      "col": 5,
+      "type": "frontend",
+      "label": "人工审核候选",
+      "sublabel": "查看・编辑・复验・部分接收"
+    },
+    {
+      "id": "dataset_draft",
+      "lane": "persistence",
+      "col": 5,
+      "type": "database",
+      "label": "Dataset Draft",
+      "sublabel": "原子写入・幂等・来源记录",
+      "tag": "不会自动发布"
+    },
+    {
+      "id": "invalid_candidate",
+      "lane": "exceptions",
+      "col": 5,
+      "type": "security",
+      "label": "保留字段级问题",
+      "sublabel": "单条无效不影响同批合法候选"
+    }
+  ],
+  "edges": [
+    {
+      "id": "config_to_service",
+      "from": "generation_config",
+      "to": "generation_service",
+      "label": "GenerateCandidatesRequest",
+      "variant": "default",
+      "role": "main"
+    },
+    {
+      "id": "target_to_service",
+      "from": "target_descriptor",
+      "to": "generation_service",
+      "label": "确定版本能力",
+      "variant": "dashed",
+      "role": "branch"
+    },
+    {
+      "id": "reference_to_service",
+      "from": "reference_cases",
+      "to": "generation_service",
+      "label": "可选参考",
+      "variant": "dashed",
+      "role": "branch"
+    },
+    {
+      "id": "service_to_plan",
+      "from": "generation_service",
+      "to": "case_plan",
+      "label": "生成槽位与约束",
+      "variant": "emphasis",
+      "role": "main"
+    },
+    {
+      "id": "plan_to_provider",
+      "from": "case_plan",
+      "to": "provider_adapter",
+      "label": "Prompt + JSON Schema",
+      "variant": "emphasis",
+      "role": "main"
+    },
+    {
+      "id": "provider_to_model",
+      "from": "provider_adapter",
+      "to": "bailian_model",
+      "label": "结构化请求",
+      "variant": "default",
+      "role": "main"
+    },
+    {
+      "id": "model_to_compiler",
+      "from": "bailian_model",
+      "to": "blueprint_compiler",
+      "label": "Case Blueprint",
+      "variant": "emphasis",
+      "role": "return"
+    },
+    {
+      "id": "compiler_to_gate",
+      "from": "blueprint_compiler",
+      "to": "quality_gate",
+      "label": "Canonical Case 候选",
+      "variant": "emphasis",
+      "role": "main"
+    },
+    {
+      "id": "gate_to_review",
+      "from": "quality_gate",
+      "to": "human_review",
+      "label": "合法候选",
+      "variant": "emphasis",
+      "role": "main"
+    },
+    {
+      "id": "review_to_draft",
+      "from": "human_review",
+      "to": "dataset_draft",
+      "label": "批量接收",
+      "variant": "default",
+      "role": "main"
+    },
+    {
+      "id": "gate_to_invalid",
+      "from": "quality_gate",
+      "to": "invalid_candidate",
+      "label": "无效候选 + issues",
+      "variant": "security",
+      "role": "error"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "模型负责什么",
+      "items": [
+        "设计具体业务场景与多轮输入",
+        "选择声明过的 Skill 和工具",
+        "给出可由输入确定的工具参数",
+        "返回受 JSON Schema 约束的 Blueprint"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "代码负责什么",
+      "items": [
+        "生成 ID、Path 和 Condition",
+        "工具参数编译为 equals 期望",
+        "输出 Schema 编译为结构期望",
+        "执行校验、去重、并发和幂等保护"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "关键边界",
+      "items": [
+        "Target 只读，不修改外部 Agent/Skill",
+        "候选必须人工审核后才进入草稿",
+        "无效候选保留明确字段路径",
+        "系统不会自动发布或启动评测"
+      ]
+    }
+  ]
+}

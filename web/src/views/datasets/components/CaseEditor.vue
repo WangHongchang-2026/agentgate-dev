@@ -106,6 +106,19 @@ function save() {
         <p>Dataset {{ form.provenance.source_dataset_id }} v{{ form.provenance.source_dataset_version }} · Case {{ form.provenance.source_case_id }}</p>
         <p v-if="form.provenance.reason">加入原因：{{ form.provenance.reason }}</p>
       </ElAlert>
+      <ElAlert
+        v-if="form.generation_provenance"
+        type="info"
+        :closable="false"
+        class="case-provenance"
+      >
+        <template #title>AI 生成 · {{ form.generation_provenance.requested_model }}</template>
+        <p>
+          {{ form.generation_provenance.target_ref.external_target_id }}@
+          {{ form.generation_provenance.target_ref.external_version_id }} ·
+          {{ form.generation_provenance.recipe_version }}
+        </p>
+      </ElAlert>
       <div class="case-meta-grid">
         <ElFormItem label="用例名称">
           <ElInput :model-value="form.name" data-testid="case-name" @update:model-value="(v: any) => (form.name = v)" />

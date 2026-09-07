@@ -23,10 +23,19 @@ from agentgate.case import (
     DatasetValidationError,
     ExcelImportIssue,
 )
+from agentgate.application.dataset_generation import DatasetGenerationService
+from agentgate.application.target_catalog import build_fake_target_catalog
+from agentgate.case.generation.protocol import GenerationModel
 from agentgate.control_plane import EvaluationService
 from agentgate.domain import Case, DatasetPurpose, TargetRef, TargetType
 from agentgate.run.targets.base import TargetIntegrationError
 from agentgate.storage.sqlite import SQLiteRepository
+from agentgate.integrations.model_providers import (
+    OpenAICompatibleGenerationModel,
+    RuntimeCredentialStore,
+    bailian_default_profile,
+)
+from agentgate.server.dataset_generation_api import create_dataset_generation_router
 from agentgate.trace.receivers.otlp_http import (
     decode_content_encoding, encode_otlp_http_protobuf_response,
     ingest_otlp_http_json, ingest_otlp_http_protobuf,
@@ -238,10 +247,28 @@ def _excel_content_disposition(name: str, version: int) -> str:
     return f'attachment; filename="{fallback}"; filename*=UTF-8\'\'{utf8_name}'
 
 
-def create_app(database_path: str | Path | None = None) -> FastAPI:
+def create_app(
+    database_path: str | Path | None = None,
+    generation_model: GenerationModel | None = None,
+    generation_credential_store: RuntimeCredentialStore | None = None,
+) -> FastAPI:
     repository = SQLiteRepository(database_path or os.getenv("AGENTGATE_DB", "agentgate.db"))
     service = EvaluationService(repository)
     datasets = service.dataset_service
+    target_catalog = build_fake_target_catalog()
+    credential_store = generation_credential_store or RuntimeCredentialStore()
+    active_generation_model = generation_model or OpenAICompatibleGenerationModel(
+        credential_lookup=credential_store.get
+    )
+    generation = DatasetGenerationService(
+        datasets=datasets,
+        targets=target_catalog,
+        model=active_generation_model,
+        profiles=(bailian_default_profile(),),
+        acceptance_secret=repository.get_or_create_service_secret(
+            "dataset_generation_acceptance_hmac"
+        ),
+    )
     app = FastAPI(title="AgentGate", version="0.1.0")
     app.add_middleware(
         ExcelRequestBodyLimitMiddleware,
@@ -611,8 +638,16 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
         return report
 
     app.include_router(api)
+    app.include_router(create_dataset_generation_router(
+        generation,
+        target_catalog,
+        credential_store,
+        getattr(active_generation_model, "validate_credential", None),
+    ))
     app.state.repository = repository
     app.state.service = service
+    app.state.dataset_generation_service = generation
+    app.state.generation_credential_store = credential_store
     return app
 
 

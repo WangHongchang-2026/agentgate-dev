@@ -8,8 +8,10 @@ from agentgate.domain import (
     GateSpec,
     MetricPlan,
     RunSnapshot,
+    TargetDescriptor,
     TargetRef,
     TargetSnapshot,
+    TargetToolDescriptor,
     TargetType,
 )
 from agentgate.domain.base import freeze_json
@@ -39,6 +41,46 @@ def test_target_ref_requires_non_empty_fields():
         TargetRef(
             platform_id="", target_type=TargetType.AGENT,
             external_target_id="loan", external_version_id="v1",
+        )
+
+
+@pytest.mark.parametrize("field", ["input_schema", "output_schema"])
+def test_target_descriptor_rejects_invalid_json_schema(field):
+    values = {
+        "ref": TargetRef(
+            platform_id="demo", target_type=TargetType.AGENT,
+            external_target_id="agent", external_version_id="v1",
+        ),
+        "display_name": "Agent",
+        field: {"type": "unknown-json-schema-type"},
+    }
+    with pytest.raises(ValidationError, match=field):
+        TargetDescriptor(**values)
+
+
+def test_target_tool_descriptor_rejects_invalid_arguments_schema():
+    with pytest.raises(ValidationError, match="arguments_schema"):
+        TargetToolDescriptor(
+            name="lookup",
+            arguments_schema={"required": "must-be-an-array"},
+        )
+
+
+@pytest.mark.parametrize("ref", [
+    "https://schemas.example/tool.json",
+    "file:///tmp/tool.json",
+    "other-schema.json#/$defs/Input",
+])
+def test_target_descriptor_rejects_external_schema_references(ref):
+    with pytest.raises(ValidationError, match="unsupported external reference"):
+        TargetToolDescriptor(name="lookup", arguments_schema={"$ref": ref})
+
+
+def test_target_descriptor_rejects_unresolved_local_schema_reference():
+    with pytest.raises(ValidationError, match="unresolved local reference"):
+        TargetToolDescriptor(
+            name="lookup",
+            arguments_schema={"$ref": "#/$defs/Missing"},
         )
 
 

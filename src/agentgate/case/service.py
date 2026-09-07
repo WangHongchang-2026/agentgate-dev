@@ -8,7 +8,7 @@ from uuid import uuid4
 from agentgate.domain import (
     Case, Dataset, DatasetPurpose, DatasetVersion, DatasetVersionStatus,
 )
-from agentgate.storage.base import AgentGateRepository
+from agentgate.storage.base import AgentGateRepository, DatasetMutationReceipt
 
 from .import_export import DatasetExport, build_export, parse_export
 from .excel_import_export import (
@@ -150,6 +150,52 @@ class DatasetService:
         })
         self.repository.save_dataset_version(updated)
         return updated
+
+    def append_generated_cases_if_current(
+        self,
+        dataset_id: str,
+        expected_draft_id: str,
+        expected_content_sha256: str,
+        cases_to_add: tuple[Case, ...],
+        idempotency_key: str,
+        request_sha256: str,
+    ) -> DatasetMutationReceipt:
+        replay = self.repository.get_dataset_mutation_receipt(
+            dataset_id, idempotency_key, request_sha256
+        )
+        if replay is not None:
+            return replay
+        draft = self._draft(dataset_id)
+        if draft.id != expected_draft_id or draft.content_sha256 != expected_content_sha256:
+            from agentgate.storage.base import DatasetDraftConflictError
+            raise DatasetDraftConflictError("dataset draft changed; refresh and try again")
+        existing_ids = {item.id for item in draft.cases}
+        incoming_ids = [item.id for item in cases_to_add]
+        if len(incoming_ids) != len(set(incoming_ids)) or existing_ids.intersection(incoming_ids):
+            raise ValueError("generated Case IDs must be new and unique")
+        updated = DatasetVersion.model_validate({
+            **draft.model_dump(mode="json"),
+            "cases": draft.cases + cases_to_add,
+            "updated_at": utcnow(),
+            "content_sha256": "",
+        })
+        validate_dataset_version(updated)
+        return self.repository.append_generated_cases_if_current(
+            dataset_id=dataset_id,
+            expected_draft_id=expected_draft_id,
+            expected_content_sha256=expected_content_sha256,
+            updated=updated,
+            inserted_case_ids=tuple(incoming_ids),
+            idempotency_key=idempotency_key,
+            request_sha256=request_sha256,
+        )
+
+    def get_mutation_receipt(
+        self, dataset_id: str, idempotency_key: str, request_sha256: str
+    ) -> DatasetMutationReceipt | None:
+        return self.repository.get_dataset_mutation_receipt(
+            dataset_id, idempotency_key, request_sha256
+        )
 
     def remove_case(self, dataset_id: str, case_id: str) -> DatasetVersion:
         draft = self._draft(dataset_id)

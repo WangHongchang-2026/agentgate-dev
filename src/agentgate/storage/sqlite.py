@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import base64
 import json
+import secrets
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
@@ -15,7 +17,12 @@ from agentgate.trace.models import (
     IngestionReport, NormalizedSignal, NormalizedSpan, TraceBatch,
 )
 from agentgate.trace.service import TraceIngestionService
-from agentgate.storage.base import PendingTraceCorrelation
+from agentgate.storage.base import (
+    DatasetDraftConflictError,
+    DatasetIdempotencyConflictError,
+    DatasetMutationReceipt,
+    PendingTraceCorrelation,
+)
 
 
 class SQLiteRepository:
@@ -79,6 +86,21 @@ class SQLiteRepository:
                     WHERE status='draft';
                 CREATE INDEX IF NOT EXISTS idx_dataset_versions_dataset
                     ON dataset_versions(dataset_id, status, version);
+                CREATE TABLE IF NOT EXISTS dataset_mutation_idempotency (
+                    dataset_id TEXT NOT NULL REFERENCES datasets(id),
+                    idempotency_key TEXT NOT NULL,
+                    request_sha256 TEXT NOT NULL,
+                    receipt TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY(dataset_id,idempotency_key)
+                );
+                CREATE INDEX IF NOT EXISTS idx_dataset_mutation_created
+                    ON dataset_mutation_idempotency(dataset_id,created_at DESC);
+                CREATE TABLE IF NOT EXISTS service_secrets (
+                    name TEXT PRIMARY KEY,
+                    value TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
                 CREATE TABLE IF NOT EXISTS runs (
                     id TEXT PRIMARY KEY, status TEXT NOT NULL, created_at TEXT NOT NULL,
                     payload TEXT NOT NULL
@@ -263,6 +285,108 @@ class SQLiteRepository:
                     version.created_at.isoformat(), version.content_sha256, self._json(version),
                 ),
             )
+
+    def append_generated_cases_if_current(
+        self,
+        dataset_id: str,
+        expected_draft_id: str,
+        expected_content_sha256: str,
+        updated: DatasetVersion,
+        inserted_case_ids: tuple[str, ...],
+        idempotency_key: str,
+        request_sha256: str,
+    ) -> DatasetMutationReceipt:
+        if not idempotency_key.strip():
+            raise ValueError("Idempotency-Key is required")
+        if updated.id != expected_draft_id or updated.dataset_id != dataset_id:
+            raise ValueError("updated draft identity mismatch")
+        if updated.status != DatasetVersionStatus.DRAFT:
+            raise ValueError("updated DatasetVersion must remain a draft")
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            replay = db.execute(
+                """SELECT request_sha256,receipt FROM dataset_mutation_idempotency
+                   WHERE dataset_id=? AND idempotency_key=?""",
+                (dataset_id, idempotency_key),
+            ).fetchone()
+            if replay is not None:
+                if replay["request_sha256"] != request_sha256:
+                    raise DatasetIdempotencyConflictError(
+                        "Idempotency-Key was already used for a different request"
+                    )
+                payload = json.loads(replay["receipt"])
+                return DatasetMutationReceipt(
+                    draft_id=payload["draft_id"],
+                    content_sha256=payload["content_sha256"],
+                    inserted_case_ids=tuple(payload["inserted_case_ids"]),
+                )
+            cursor = db.execute(
+                """UPDATE dataset_versions
+                   SET content_sha256=?,payload=?
+                   WHERE dataset_id=? AND id=? AND status='draft' AND content_sha256=?""",
+                (
+                    updated.content_sha256,
+                    self._json(updated),
+                    dataset_id,
+                    expected_draft_id,
+                    expected_content_sha256,
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise DatasetDraftConflictError("dataset draft changed; refresh and try again")
+            receipt = DatasetMutationReceipt(
+                draft_id=updated.id,
+                content_sha256=updated.content_sha256,
+                inserted_case_ids=inserted_case_ids,
+            )
+            receipt_payload = {
+                "draft_id": receipt.draft_id,
+                "content_sha256": receipt.content_sha256,
+                "inserted_case_ids": list(receipt.inserted_case_ids),
+            }
+            db.execute(
+                """INSERT INTO dataset_mutation_idempotency(
+                       dataset_id,idempotency_key,request_sha256,receipt,created_at
+                   ) VALUES(?,?,?,?,?)""",
+                (
+                    dataset_id,
+                    idempotency_key,
+                    request_sha256,
+                    canonical_json(receipt_payload),
+                    datetime.now(UTC).isoformat(),
+                ),
+            )
+            db.execute(
+                """DELETE FROM dataset_mutation_idempotency
+                   WHERE dataset_id=? AND rowid NOT IN (
+                       SELECT rowid FROM dataset_mutation_idempotency
+                       WHERE dataset_id=? ORDER BY created_at DESC,rowid DESC LIMIT 1000
+                   )""",
+                (dataset_id, dataset_id),
+            )
+            return receipt
+
+    def get_dataset_mutation_receipt(
+        self, dataset_id: str, idempotency_key: str, request_sha256: str
+    ) -> DatasetMutationReceipt | None:
+        with self._connect() as db:
+            row = db.execute(
+                """SELECT request_sha256,receipt FROM dataset_mutation_idempotency
+                   WHERE dataset_id=? AND idempotency_key=?""",
+                (dataset_id, idempotency_key),
+            ).fetchone()
+        if row is None:
+            return None
+        if row["request_sha256"] != request_sha256:
+            raise DatasetIdempotencyConflictError(
+                "Idempotency-Key was already used for a different request"
+            )
+        payload = json.loads(row["receipt"])
+        return DatasetMutationReceipt(
+            draft_id=payload["draft_id"],
+            content_sha256=payload["content_sha256"],
+            inserted_case_ids=tuple(payload["inserted_case_ids"]),
+        )
 
     def get_dataset_version(self, dataset_id: str, version: int) -> DatasetVersion | None:
         with self._connect() as db:
@@ -810,6 +934,24 @@ class SQLiteRepository:
                 "SELECT payload FROM business_state WHERE namespace=? AND key=?", (namespace, key)
             ).fetchone()
         return json.loads(row[0]) if row else None
+
+    def get_or_create_service_secret(self, name: str, byte_length: int = 32) -> bytes:
+        if not name.strip():
+            raise ValueError("service secret name must be non-empty")
+        if byte_length < 32:
+            raise ValueError("service secrets must contain at least 32 bytes")
+        candidate = base64.urlsafe_b64encode(secrets.token_bytes(byte_length)).decode("ascii")
+        with self._connect() as db:
+            db.execute(
+                "INSERT OR IGNORE INTO service_secrets(name,value,created_at) VALUES(?,?,?)",
+                (name, candidate, datetime.now(UTC).isoformat()),
+            )
+            row = db.execute(
+                "SELECT value FROM service_secrets WHERE name=?", (name,)
+            ).fetchone()
+        if row is None:  # Defensive: INSERT/SELECT above must be atomic in one transaction.
+            raise RuntimeError("failed to initialize service secret")
+        return base64.urlsafe_b64decode(row[0].encode("ascii"))
 
     def put_pending_trace(
         self, run_id: str, case_id: str, invocation_id: str, trace_id: str

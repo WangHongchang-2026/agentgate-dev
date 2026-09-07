@@ -11,6 +11,7 @@ from pydantic import Field, model_validator
 
 from .base import DomainModel, FrozenJsonObject, content_sha256
 from .expectation import Expectation
+from .target import TargetRef
 
 
 def utcnow() -> datetime:
@@ -49,6 +50,17 @@ class CaseProvenance(DomainModel):
     reason: str = ""
 
 
+class GeneratedCaseProvenance(DomainModel):
+    source_type: Literal["llm_generation"] = "llm_generation"
+    target_ref: TargetRef
+    target_descriptor_sha256: str
+    recipe_version: str
+    model_profile_id: str
+    provider: str
+    requested_model: str
+    generated_at: datetime = Field(default_factory=utcnow)
+
+
 class CaseTurn(DomainModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
     input: FrozenJsonObject
@@ -70,6 +82,7 @@ class Case(DomainModel):
     tags: tuple[str, ...] = ()
     notes: str = ""
     provenance: CaseProvenance | None = None
+    generation_provenance: GeneratedCaseProvenance | None = None
 
     @property
     def input(self) -> FrozenJsonObject:
@@ -112,8 +125,9 @@ class DatasetVersion(DomainModel):
         cases = []
         for case in self.cases:
             serialized = case.model_dump(mode="json")
-            if serialized["provenance"] is None:
-                del serialized["provenance"]
+            for optional_provenance in ("provenance", "generation_provenance"):
+                if serialized[optional_provenance] is None:
+                    del serialized[optional_provenance]
             cases.append(serialized)
         payload = {
             "dataset_id": self.dataset_id,
@@ -122,7 +136,26 @@ class DatasetVersion(DomainModel):
         }
         expected = content_sha256(payload)
         if self.content_sha256 and self.content_sha256 != expected:
-            raise ValueError("DatasetVersion content hash mismatch")
+            # Older readers/writers could include a newly-added optional field as
+            # explicit null while omitting another. Accept those historical hashes
+            # without changing the canonical hash produced for new versions.
+            compatible_hashes: set[str] = set()
+            optional_fields = ("provenance", "generation_provenance")
+            for mask in range(1 << len(optional_fields)):
+                compatible_cases = []
+                for case in self.cases:
+                    serialized = case.model_dump(mode="json")
+                    for index, field in enumerate(optional_fields):
+                        if serialized[field] is None and not mask & (1 << index):
+                            del serialized[field]
+                    compatible_cases.append(serialized)
+                compatible_hashes.add(content_sha256({
+                    "dataset_id": self.dataset_id,
+                    "cases": compatible_cases,
+                    "notes": self.notes,
+                }))
+            if self.content_sha256 not in compatible_hashes:
+                raise ValueError("DatasetVersion content hash mismatch")
         if not self.content_sha256:
             object.__setattr__(self, "content_sha256", expected)
         return self

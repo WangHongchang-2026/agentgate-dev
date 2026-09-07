@@ -20,6 +20,24 @@ export interface CaseProvenance {
   reason: string
 }
 
+export interface TargetRef {
+  platform_id: string
+  target_type: 'agent' | 'skill'
+  external_target_id: string
+  external_version_id: string
+}
+
+export interface GeneratedCaseProvenance {
+  source_type: 'llm_generation'
+  target_ref: TargetRef
+  target_descriptor_sha256: string
+  recipe_version: string
+  model_profile_id: string
+  provider: string
+  requested_model: string
+  generated_at: string
+}
+
 export type Condition =
   | { kind: 'equals'; expected: JsonValue }
   | { kind: 'within_tolerance'; expected: number; epsilon: number }
@@ -70,6 +88,7 @@ export interface EvaluationCase {
   tags: string[]
   notes: string
   provenance: CaseProvenance | null
+  generation_provenance: GeneratedCaseProvenance | null
 }
 
 export interface DatasetRecord {

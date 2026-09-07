@@ -3,6 +3,7 @@
 from .base import DomainModel, FrozenJsonObject, canonical_json, content_sha256, freeze_json
 from .case import (
     Case, CaseCategory, CaseDifficulty, CaseProvenance, CaseTurn, Dataset,
+    GeneratedCaseProvenance,
     DatasetPurpose, DatasetVersion, DatasetVersionStatus,
 )
 from .evaluation import (
@@ -24,7 +25,8 @@ from .result import (
 )
 from .run import Run, RunSnapshot, RunStatus
 from .target import (
-    TargetExecutionRequest, TargetExecutionResult, TargetRef, TargetSnapshot, TargetType,
+    TargetDescriptor, TargetExecutionRequest, TargetExecutionResult, TargetRef,
+    TargetSkillDescriptor, TargetSnapshot, TargetToolDescriptor, TargetType,
 )
 from .trace import (
     SpanKind, Trace, TraceCompletenessPolicy, TraceSpan, TraceStatus, TraceTurn,

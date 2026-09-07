@@ -8,6 +8,7 @@ Detailed plans:
 
 - [Dataset and Case management](implementation-plan.md)
 - [Automatic Dataset generation](automatic-generation-plan.md)
+- [Automatic generation implementation status and remaining plan](automatic-generation-implementation-plan.md)
 - [Regression-set workflow](regression-set-plan.md)
 - [Regression-set design record](regression-set-design.md)
 - [Excel import/export design](import-export-plan.md)
@@ -44,4 +45,54 @@ rows use the same business-readable `case_id` (for example `loan-001`) as their 
 key; ambiguous anonymous rows are rejected. Workbook, row, cell, formula, XML, active
 content, and ZIP-expansion limits are enforced before persistence.
 
-Automatic Dataset generation remains deferred.
+Automatic Dataset generation is implemented as an assisted Draft workflow:
+
+1. Open a Dataset Draft and choose **AI 生成用例**.
+2. Select the exact Agent or Skill version, model profile, quantity, turn mode,
+   category/difficulty distribution, and an optional published reference version.
+3. Review and edit the returned candidates. Candidates stay in the browser and are not
+   persisted until explicitly selected.
+4. Select valid candidates and add them to the Draft in one atomic operation. This never
+   publishes the Draft or starts an evaluation.
+
+The initial Target catalog intentionally contains complete fake Agent and Skill descriptors;
+the read-only external-platform adapter is a later integration. The default model profile uses
+Alibaba Bailian's Beijing OpenAI-compatible endpoint and `qwen3.7-plus`. Configure its standard
+pay-as-you-go API key either in the AI generation dialog or in the server environment:
+
+```bash
+export DASHSCOPE_API_KEY='...'
+```
+
+The paid provider smoke test is opt-in:
+
+```bash
+RUN_BAILIAN_SMOKE=1 PYTHONPATH=src python3 -m pytest -q \
+  tests/test_generation_model_smoke.py
+```
+
+The UI submits the key only to the credential endpoint. The backend validates it with one minimal
+model call and keeps the accepted override only in process memory; it is never returned, logged,
+persisted in the database, or included in a generation request. Restarting the backend clears the
+override. The environment variable remains the POC server-side fallback. The generator sends a
+redacted capability/reference payload, requests strict JSON Schema output, validates each candidate
+against the Case and Target contracts, blocks forbidden topics, and performs exact functional
+deduplication. Accepted Cases record immutable generation provenance.
+
+Generation-related REST endpoints:
+
+```text
+GET  /api/targets?target_type=agent|skill
+GET  /api/targets/{platform_id}/{target_type}/{target_id}/versions
+GET  /api/dataset-generation/model-profiles
+PUT  /api/dataset-generation/model-profiles/{profile_id}/credential
+DELETE /api/dataset-generation/model-profiles/{profile_id}/credential
+POST /api/datasets/{dataset_id}/drafts/generate-candidates
+POST /api/datasets/{dataset_id}/drafts/generated-candidates/validate
+POST /api/datasets/{dataset_id}/drafts/cases/batch
+```
+
+Batch acceptance requires `Idempotency-Key` plus the current Draft ID/content hash. Each selected
+Case remains bound to its signed generation slot, so review edits cannot bypass the requested
+category, difficulty, single/multi-turn mode, or maximum-turn constraints. A stale Draft or changed
+Target descriptor returns `409` instead of overwriting newer content.

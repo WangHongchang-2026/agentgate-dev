@@ -72,3 +72,9 @@ Evaluator documents. The original P1 walkthrough is retained under
 Published Dataset versions can be exported as JSON or Excel. Excel imports create a new
 Dataset Draft and support single-turn and multi-turn Cases. See the
 [Dataset documentation](docs/dataset/README.md) for the workbook contract and limits.
+
+Dataset Drafts also support AI-assisted Case generation from an exact Agent or Skill version.
+Candidates are reviewed before an atomic batch insert; generation never publishes or runs the
+Dataset automatically. The initial implementation uses complete fake Target descriptors and an
+optional Alibaba Bailian model profile. Its API key can be supplied from the generation dialog as
+a process-memory-only override, or through the server-side `DASHSCOPE_API_KEY` environment variable.
