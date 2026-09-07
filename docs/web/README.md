@@ -3,9 +3,10 @@
 The AgentGate Web application is a Chinese Vue 3 interface for evaluation workflows. It
 calls the FastAPI server and never imports backend code or accesses persistence directly.
 
-This document defines the target Web structure. Only the Dataset workspace foundation is
-currently split into a page. See [`../project-progress.md`](../project-progress.md) for
-implemented pages and current work.
+This document defines the target Web structure. The Dataset workspace foundation and
+asynchronous Run activity page are implemented; the final Vue Router/layout split and
+remaining planned pages are still pending. See [`../project-progress.md`](../project-progress.md)
+for implemented scope.
 
 ## Stack
 
@@ -125,6 +126,18 @@ Page -> composable -> API module -> FastAPI
 - Long-running Run progress uses polling or server streaming through
   `useRunProgress.ts`; it must not block the browser request until the full evaluation
   completes.
+
+## Current Implementation
+
+The current vertical slice keeps the inherited manual navigation temporarily and adds
+`RunWorkspacePage.vue`, `api/runs.ts`, and `types/run.ts`. It submits persisted Runs
+through FastAPI, presents all five lifecycle counters, filters queued/running/history
+views, and polls only while active work exists. Browser tests exercise this flow against
+real Redis, Celery, FastAPI, and SQLite on desktop and mobile.
+
+The standalone Overview, Result Center, Result Detail, and Vue Router/layout split remain
+future Phase 6 work. The Run page's lifecycle counters satisfy the dispatcher POC without
+pretending the full Overview page exists.
 
 ## Refactor Notes
 

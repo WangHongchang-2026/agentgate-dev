@@ -228,11 +228,13 @@ Current phase status:
 
 - Phases 0-2: complete.
 - Phase 3: Result behavior is aligned; Evaluator structure remains pending.
-- Phase 4: core Trace, Target, and Run behavior works; redaction, async dispatch, and
-  legacy cleanup remain pending.
-- Phase 5: FastAPI uses Application services; async endpoints, CLI migration, and legacy
-  Control Plane removal remain pending.
-- Phases 6-7: pending.
+- Phase 4: core Trace, Target, Run, incremental Result persistence, and asynchronous
+  dispatch work; redaction and legacy cleanup remain pending.
+- Phase 5: FastAPI uses Application services and asynchronous Run endpoints; CLI migration
+  and legacy Control Plane removal remain pending.
+- Phase 6: the asynchronous Run vertical slice and desktop/mobile workflow are complete;
+  final Router/layout and remaining planned pages are pending.
+- Phase 7: pending.
 
 ### Phase 0: Record Baseline
 

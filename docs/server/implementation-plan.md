@@ -1,10 +1,10 @@
 # Server Implementation Plan
 
-Last updated: 2026-09-06
+Last updated: 2026-09-07
 
-Status: the modular synchronous Server checkpoint is implemented. Asynchronous HTTP
-202 submission and Run activity endpoints are the next Server changes and follow
-`docs/job-dispatcher/implementation-plan.md`.
+Status: the modular Server and asynchronous HTTP 202 Run slice are implemented.
+Submission, activity, per-Run status, completed reports, and stale-Run reconciliation
+follow `docs/job-dispatcher/implementation-plan.md`.
 
 ## 1. Purpose
 
@@ -282,10 +282,10 @@ Each file requires source assessment and explicit approval before implementation
 11. [complete] Remove `server/application.py`, empty `server/routes.py`, and empty
     `server/services.py`.
 12. [complete] Verify the initial API contracts and Vue POC workflow.
-13. Follow `docs/job-dispatcher/implementation-plan.md` to replace synchronous launch
-    with HTTP 202 dispatch.
-14. Add Run activity and per-Run status endpoints.
-15. Verify queue, worker, progress, and terminal-state API behavior.
+13. [complete] Follow `docs/job-dispatcher/implementation-plan.md` to replace synchronous
+    launch with HTTP 202 dispatch.
+14. [complete] Add Run activity and per-Run status endpoints.
+15. [complete] Verify queue, worker, progress, and terminal-state API behavior.
 
 CLI migration is explicitly deferred. `control_plane/` and `run/core.py` remain only for
 CLI until that later phase.
@@ -388,7 +388,7 @@ Status: implemented; 257 tests passing
 
 ### `server/routes/runs.py`
 
-Status: initial synchronous checkpoint implemented; asynchronous migration pending
+Status: asynchronous HTTP 202 dispatch, activity, and status endpoints implemented
 
 | Source | Decision |
 | --- | --- |

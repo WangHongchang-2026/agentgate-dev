@@ -1,6 +1,6 @@
 # Application Implementation Plan
 
-Last updated: 2026-09-06
+Last updated: 2026-09-07
 
 ## 1. Purpose
 
@@ -330,8 +330,8 @@ Application refactoring is complete when:
 
 ### `application/run_management.py`
 
-Status: create, execute, dispatch, and stale-Run workflows implemented; asynchronous
-Server and Celery callers pending
+Status: create, execute, dispatch, stale-Run, FastAPI, and Celery worker workflows
+implemented
 
 | Source | Decision |
 | --- | --- |
@@ -342,7 +342,7 @@ Server and Celery callers pending
 
 ### `application/result_reader.py`
 
-Status: implemented; focused tests passing
+Status: activity, progress, exact status counts, reports, and Trace reads implemented
 
 | Source | Decision |
 | --- | --- |
@@ -351,6 +351,6 @@ Status: implemented; focused tests passing
 | Current refactor | Reuse repository contracts and `result/report.py`. |
 | From scratch | Implement strict Run/Trace lookup, completed-Run report checks, and status-aware overview data. |
 
-Current POC limitation: `ResultReader.overview()` still uses the bounded Run list even
-though the repository now exposes exact status counts. The next ResultReader checkpoint
-will use those counts and add queue/progress activity projections.
+`ResultReader.overview()` and Run activity use exact repository status counts rather
+than the bounded history page. Progress is derived from complete per-Case evaluator
+result sets, and pending queue position tolerates concurrent worker claims.

@@ -1,6 +1,6 @@
 # AgentGate Project Progress
 
-Last updated: 2026-09-06
+Last updated: 2026-09-07
 
 ## Status Legend
 
@@ -75,7 +75,7 @@ Last updated: 2026-09-06
 | [x] | Stale-Run recovery | Fail Runs abandoned by an expired worker | `src/agentgate/application/run_management.py` |
 | [x] | Progress projection | Calculate completed Cases and Run progress from Results | `src/agentgate/application/result_reader.py` |
 | [x] | Activity projection | Return queued, running, and recent terminal Runs | `src/agentgate/application/result_reader.py` |
-| [x] | Celery dispatcher | Submit `run_id` through Redis | `src/agentgate/integrations/job_dispatchers/celery.py` **new** |
+| [x] | Celery dispatcher | Submit `run_id` through Redis | `src/agentgate/integrations/job_dispatchers/celery.py` |
 | [x] | Celery worker | Load and execute the persisted Run | `src/agentgate/integrations/job_dispatchers/celery.py` **new** |
 | [ ] | Customer scheduler integration | Accept work from an external Java scheduler through the shared Run boundary | `src/agentgate/server/routes/runs.py` or `src/agentgate/integrations/job_dispatchers/`; design pending |
 | [ ] | Retry mechanics | Retry classified infrastructure failures only | `src/agentgate/run/retry.py` **new** |
@@ -119,14 +119,14 @@ CLI work is deferred until the FastAPI and worker workflows are stable.
 | [x] | Dataset workspace foundation | Browse and edit Dataset content | `web/src/pages/DatasetWorkspace.vue` |
 | [ ] | Web routing | Provide final Vue page navigation | `web/src/router/` |
 | [ ] | Overview | Show Dataset and Run status statistics | `web/src/pages/OverviewPage.vue` **new** |
-| [ ] | Run workspace | Configure Runs and show queued, running, and historical work | `web/src/pages/RunWorkspacePage.vue` **new** |
-| [ ] | Progress polling | Refresh status while queued or running work exists | `web/src/api/runs.ts` **new** |
+| [x] | Run workspace | Show lifecycle counters plus queued, running, and historical work | `web/src/pages/RunWorkspacePage.vue` |
+| [x] | Progress polling | Refresh every two seconds while active work exists and stop at terminal state | `web/src/api/runs.ts`, `web/src/pages/RunWorkspacePage.vue` |
 | [ ] | Result center | Browse completed and failed Runs | `web/src/pages/ResultCenterPage.vue` **new** |
 | [ ] | Result detail | Show metrics, release gate, badcases, evidence, and Trace attribution | `web/src/pages/ResultDetailPage.vue` **new** |
 | [ ] | Evaluator management | Configure Rule, Judge, and Hybrid Evaluators | `web/src/pages/EvaluatorWorkspacePage.vue` **new** |
 | [ ] | Skill analysis | Display Skill conflicts and prompt mismatches | `web/src/pages/SkillAnalysisPage.vue` **new** |
 | [ ] | Optimizer | Display failure clusters and suggestions | `web/src/pages/OptimizerPage.vue` **new** |
-| [ ] | Browser verification | Verify desktop and mobile workflows | `web/tests/` |
+| [x] | Browser verification | Verify desktop and mobile workflows against Redis, Celery, FastAPI, and SQLite | `web/tests/` |
 
 Visible Web labels remain Chinese. Source identifiers, API fields, TypeScript names,
 and comments remain English.
@@ -169,13 +169,13 @@ plan before implementation.
 
 | Status | Capability | Function | Code location |
 |---|---|---|---|
-| [x] | Current backend regression | Verify current refactor behavior | `tests/` - 278 passing |
-| [ ] | Redis/Celery integration | Verify broker, worker, state, and progress end to end | `tests/integration/` **new** |
-| [ ] | Browser verification | Verify all primary desktop and mobile workflows | `web/tests/` |
-| [ ] | Documentation | Explain setup, APIs, Redis, Celery, and demo operation | `README.md`, `docs/` |
+| [x] | Current backend regression | Verify current refactor behavior | `tests/` - 289 passing |
+| [x] | Redis/Celery integration | Verify broker, worker, state, queue visibility, and progress end to end | `tests/test_celery_dispatcher.py`, `web/tests/`, operational smoke |
+| [x] | Browser verification | Verify all currently implemented desktop and mobile workflows | `web/tests/` - 8 passing |
+| [x] | Documentation | Explain setup, APIs, Redis, Celery, and demo operation | `README.md`, `web/README.md`, `docs/` |
 | [ ] | Repository cleanup | Delete obsolete placeholders and compatibility code | Entire repository |
 | [ ] | Demo packaging cleanup | Move standalone demo behavior out of the reusable AgentGate package if still appropriate | `src/agentgate/demo/`, `examples/` |
-| [ ] | Final regression | Run backend, frontend, and browser suites | Entire repository |
+| [x] | Async slice regression | Run backend, frontend, and browser suites for the asynchronous vertical slice | Entire repository |
 | [ ] | Delivery | Commit, push, and tag the completed refactor POC | Git repository |
 
 ## Deferred Production Capabilities

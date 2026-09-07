@@ -1,6 +1,6 @@
 # Job Dispatcher Implementation Plan
 
-Last updated: 2026-09-06
+Last updated: 2026-09-07
 
 ## 1. Purpose
 
@@ -335,21 +335,21 @@ Reuse directly:
 
 ## 12. Implementation Sequence
 
-Each step is reviewed and explicitly approved before its files are edited.
+Goal Mode authorized this sequence for autonomous implementation.
 
-1. Add `integrations/job_dispatchers/protocol.py` and protocol tests.
-2. Add atomic claim and activity query contracts to `storage/repository.py`.
-3. Implement the contracts transactionally in `storage/sqlite.py`.
-4. Modify `run/engine.py` to claim a Run and persist Results per completed Case.
-5. Modify `application/run_management.py` for dispatch and stale reconciliation.
-6. Extend `application/result_reader.py` with progress and activity projections.
-7. Add `integrations/job_dispatchers/celery.py` and focused Celery task tests.
-8. Change FastAPI dependencies and Run routes to asynchronous submission and status
-   reads.
-9. Update the Web Overview and Run workspace with Chinese queue/running views and
-   polling.
-10. Run backend tests, API integration tests, Web unit tests, and browser verification
-    where host dependencies permit it.
+1. [complete] Add `integrations/job_dispatchers/protocol.py` and protocol tests.
+2. [complete] Add atomic claim and activity query contracts to `storage/repository.py`.
+3. [complete] Implement the contracts transactionally in `storage/sqlite.py`.
+4. [complete] Modify `run/engine.py` to claim a Run and persist Results per completed Case.
+5. [complete] Modify `application/run_management.py` for dispatch and stale reconciliation.
+6. [complete] Extend `application/result_reader.py` with progress and activity projections.
+7. [complete] Add `integrations/job_dispatchers/celery.py` and focused Celery task tests.
+8. [complete] Change FastAPI dependencies and Run routes to asynchronous submission and
+   status reads.
+9. [complete] Add Chinese lifecycle counters and queued/running/history views to the Run
+   workspace, with polling that stops when no active Runs remain.
+10. [complete] Run backend tests, API integration tests, Web checks, and real-stack
+    desktop/mobile browser verification.
 
 No compatibility aliases are added during the refactor.
 
@@ -369,8 +369,8 @@ Backend behavior:
 
 Web behavior:
 
-- Overview counts update while a Run moves through queued, running, and terminal
-  states;
+- Run workspace lifecycle counts update while a Run moves through queued, running,
+  and terminal states;
 - progress cannot resize or shift the Run row;
 - polling starts and stops according to active work;
 - errors and timestamps render without overlapping controls;
@@ -388,7 +388,29 @@ Observe one running and one queued Run
 Observe both complete and appear in history
 ```
 
-## 14. Deferred Capabilities
+## 14. Implementation Outcome
+
+The completed slice reused the current refactor's Domain, RunManagement, RunEngine,
+ResultReader, repository, and modular FastAPI boundaries directly. It adapted the
+`goal/p1-demo` lifecycle behavior and `integration/p1-new` queue/progress presentation
+ideas to the approved single-`EvaluationRun` model. The dispatcher protocol, Celery
+adapter/task, atomic claim, stale reconciliation, projections, async API, and Web polling
+were written from scratch; no code was blindly copied and no duplicate Task model or
+compatibility contract was added.
+
+Verification completed on 2026-09-07:
+
+- `pytest -q`: 289 passed;
+- Web typecheck and production build: passed;
+- Playwright with real Redis, one Celery worker, FastAPI, SQLite, and Vite: 8 passed
+  across desktop and mobile;
+- two-Run operational smoke: observed one 300-Case Run running, the second queued at
+  position 1, and both subsequently completed in history.
+
+The standalone Web Overview page remains Phase 6 work. The Run workspace owns the five
+lifecycle counters required for this dispatcher POC.
+
+## 15. Deferred Capabilities
 
 - time-based reservations and recurring schedules;
 - priority queues and tenant fairness;
