@@ -25,6 +25,8 @@ const props = defineProps<{
   editable: boolean
   saving?: boolean
   validationIssues?: ValidationIssue[]
+  validationTitle?: string
+  showInitialState?: boolean
 }>()
 const emit = defineEmits<{ save: [item: EvaluationCase] }>()
 
@@ -88,7 +90,7 @@ function save() {
     <ElForm v-else label-position="top" class="case-editor-form" :disabled="!editable">
       <ElAlert
         v-if="validationIssues?.length"
-        title="此用例包含发布问题"
+        :title="validationTitle ?? '此用例包含发布问题'"
         type="error"
         :closable="false"
         class="case-validation"
@@ -152,7 +154,7 @@ function save() {
       <ElFormItem label="备注">
         <ElInput :model-value="form.notes" type="textarea" :rows="2" @update:model-value="(v: any) => (form.notes = v)" />
       </ElFormItem>
-      <ElFormItem label="初始状态（JSON）">
+      <ElFormItem v-if="showInitialState !== false" label="初始状态（JSON）">
         <ElInput :model-value="initialState" type="textarea" :rows="3" class="json-editor" @update:model-value="(v: any) => (initialState = v)" />
       </ElFormItem>
 

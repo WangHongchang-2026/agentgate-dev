@@ -436,8 +436,8 @@ POST /api/datasets/{dataset_id}/drafts/generated-candidates/validate
 ```
 
 用于用户编辑后重新校验。请求同时携带 Draft ID/Hash、TargetRef、Descriptor Hash、Recipe、
-接收令牌、候选槽位和 Case；服务端重新解析精确 Target 版本并按签名生成计划复验分类、
-难度及轮数，返回与发布校验一致的字段路径。
+接收令牌、候选槽位和 Case；服务端重新解析精确 Target 版本。候选槽位仅用于验证生成来源，
+不再限制人工修改后的分类、难度和轮数；服务端复验正式 Case、Target 和安全规则并返回字段路径。
 
 ### 10.4 批量写入 Draft
 
@@ -450,7 +450,7 @@ Idempotency-Key: <client-generated-key>
 生成接口返回的短期接收令牌和选中的 `{slot_index, case}`。Model Profile 不由浏览器自行声明，而是由
 服务端验签后从令牌恢复。服务端：
 
-1. 按签名槽位再次校验全部 Case 的分类、难度、轮数及 Target 契约；
+1. 验证签名槽位属于原始生成批次，并校验全部 Case 的正式领域及 Target 契约；
 2. 再次执行禁止主题与重复检查；
 3. 以旧 Hash 做 Compare-And-Swap；
 4. 在一个 SQLite 事务中写入完整新 Draft；

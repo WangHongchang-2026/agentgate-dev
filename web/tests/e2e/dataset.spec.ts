@@ -125,8 +125,13 @@ test('opens AI candidate generation only from a Dataset draft', async ({ page })
   await expect(dialog).toBeVisible()
   await expect(dialog.getByText('客户服务 Agent', { exact: true })).toBeVisible()
   await expect(dialog.getByText('2.1.0', { exact: true })).toBeVisible()
-  await expect(dialog.getByText(/审核勾选后才会写入草稿/)).toBeVisible()
+  await expect(dialog.getByText(/经你审核后/)).toBeVisible()
+  await expect(dialog.getByText('评测对象', { exact: true }).first()).toBeVisible()
+  await expect(dialog.getByText('生成规模', { exact: true })).toBeVisible()
   await expect(dialog.getByTestId('configure-model-credential')).toBeVisible()
+  await expect(dialog.getByText('参考测评集（可选）')).not.toBeVisible()
+  await dialog.getByRole('button', { name: '参考用例（可选）' }).click()
+  await expect(dialog.getByText('参考测评集', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: '关闭', exact: true }).click()
   await expect(dialog).not.toBeVisible()
 })
@@ -140,7 +145,9 @@ test('generates, edits, validates, and accepts an AI candidate through the real 
   const dialog = page.getByTestId('generation-dialog')
   await expect(dialog).toBeVisible()
   await dialog.getByTestId('generate-candidates').click()
-  await expect(dialog.getByText('有效 6 · 有问题 0')).toBeVisible()
+  await expect(dialog.getByTestId('generation-review')).toBeVisible()
+  await expect(dialog.getByTestId('review-summary')).toContainText('6可加入')
+  await expect(dialog.getByTestId('review-summary')).toContainText('0待修正')
 
   const generateUrl = '**/api/datasets/*/drafts/generate-candidates'
   await page.route(generateUrl, async (route) => {
@@ -150,17 +157,31 @@ test('generates, edits, validates, and accepts an AI candidate through the real 
       body: JSON.stringify({ detail: { message: '模拟重新生成失败' } }),
     })
   })
+  await dialog.getByTestId('back-to-generation-settings').click()
   await dialog.getByTestId('generate-candidates').click()
   await expect(page.getByText('模拟重新生成失败')).toBeVisible()
-  await expect(dialog.getByText('有效 6 · 有问题 0')).toBeVisible()
-  await expect(dialog.locator('.candidate')).toHaveCount(6)
+  await expect(dialog.getByTestId('generation-settings')).toBeVisible()
   await page.unroute(generateUrl)
+  await dialog.getByTestId('continue-candidate-review').click()
+  await expect(dialog.getByTestId('generation-review')).toBeVisible()
+  await expect(dialog.locator('.candidate')).toHaveCount(6)
+  await page.setViewportSize({ width: 900, height: 900 })
+  const sidebarBox = await dialog.locator('.candidate-sidebar').boundingBox()
+  const detailBox = await dialog.locator('.candidate-detail').boundingBox()
+  expect(sidebarBox).not.toBeNull()
+  expect(detailBox).not.toBeNull()
+  expect(sidebarBox!.y + sidebarBox!.height).toBeLessThanOrEqual(detailBox!.y + 1)
+  await dialog.getByRole('button', { name: '全选有效' }).click()
+  await expect(dialog.getByTestId('review-summary')).toContainText('6已选择')
+  await dialog.getByRole('button', { name: '清空' }).click()
+  await expect(dialog.getByTestId('review-summary')).toContainText('0已选择')
+  await expect(dialog.getByText('初始状态（JSON）')).not.toBeVisible()
 
   const editedName = '人工审核后的订单查询用例'
   await dialog.getByTestId('case-name').fill(editedName)
   await dialog.getByTestId('save-case').click()
   await expect(page.getByText('候选修改已通过校验')).toBeVisible()
-  await expect(dialog.getByText('有效 6 · 有问题 0')).toBeVisible()
+  await expect(dialog.getByTestId('review-summary')).toContainText('6可加入')
 
   await dialog.locator('.candidate').first().locator('.el-checkbox').click()
   await dialog.getByTestId('accept-candidates').click()
@@ -169,7 +190,7 @@ test('generates, edits, validates, and accepts an AI candidate through the real 
   await expect(page.getByText(editedName, { exact: true }).first()).toBeVisible()
 })
 
-test('keeps multi-turn generation constraints through review validation', async ({ page }) => {
+test('allows a reviewer to change a generated multi-turn candidate to single-turn', async ({ page }) => {
   await page.goto('/datasets')
   await createDataset(page, uniqueDatasetName('AI 多轮约束'))
   await page.getByTestId('open-ai-generation').click()
@@ -180,13 +201,14 @@ test('keeps multi-turn generation constraints through review validation', async 
   await page.getByRole('option', { name: '仅多轮' }).click()
   await dialog.getByTestId('generate-candidates').click()
 
-  await expect(dialog.getByText('有效 6 · 有问题 0')).toBeVisible()
+  await expect(dialog.getByTestId('review-summary')).toContainText('6可加入')
   await expect(dialog.locator('.candidate').filter({ hasText: '2 轮' })).toHaveCount(6)
 
   await dialog.getByRole('button', { name: '删除此轮' }).first().click()
   await dialog.getByTestId('save-case').click()
-  await expect(dialog.getByText('多轮模式必须至少包含两轮', { exact: true })).toBeVisible()
-  await expect(dialog.getByText('有效 5 · 有问题 1')).toBeVisible()
+  await expect(page.getByText('候选修改已通过校验')).toBeVisible()
+  await expect(dialog.getByTestId('review-summary')).toContainText('6可加入')
+  await expect(dialog.locator('.candidate').filter({ hasText: '1 轮' })).toHaveCount(1)
 })
 
 test('surfaces backend JSON Schema preflight errors without blocking draft save', async ({ page }) => {

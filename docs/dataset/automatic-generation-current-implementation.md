@@ -286,9 +286,9 @@ Response Schema 由 Blueprint DTO 和当前 `TargetDescriptor` 合成：
 批量接收具备以下保护：
 
 - 生成响应携带 HMAC 签名的 `acceptance_token`；
-- Token 固定 Draft ID/Hash、TargetRef、Descriptor Hash、Recipe、模型 Profile、生成槽位和最大轮数；
+- Token 固定 Draft ID/Hash、TargetRef、Descriptor Hash、Recipe、模型 Profile及原始生成槽位；
 - Token 有效期两小时；
-- 编辑校验及接收前都按签名槽位复验分类、难度和轮数，再执行完整校验和去重；
+- 槽位只约束模型首次生成；人工审核可修改分类、难度和轮次，编辑校验及接收前仅复验正式 Case、Target、安全与去重规则；
 - `Idempotency-Key` 保证网络重试不会重复插入；
 - Draft Hash 变化返回 409，不覆盖并发修改；
 - 一批候选原子写入，要么全部成功，要么全部失败。

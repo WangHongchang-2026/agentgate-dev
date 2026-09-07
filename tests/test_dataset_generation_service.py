@@ -12,7 +12,14 @@ from agentgate.case.generation.models import (
     ReviewedGeneratedCase,
 )
 from agentgate.case.generation.recipe import RECIPE_VERSION
-from agentgate.domain import Case, CaseTurn, TargetRef, TargetType
+from agentgate.domain import (
+    Case,
+    CaseCategory,
+    CaseDifficulty,
+    CaseTurn,
+    TargetRef,
+    TargetType,
+)
 from agentgate.storage.base import DatasetIdempotencyConflictError
 from agentgate.storage.sqlite import SQLiteRepository
 
@@ -182,11 +189,15 @@ def test_generate_rejects_duplicate_generation_slot(tmp_path):
     )
 
 
-def test_review_cannot_change_a_multi_slot_into_a_single_turn_case(tmp_path):
+def test_review_can_change_generation_slot_fields_after_model_validation(tmp_path):
     service, _, dataset, draft, _, request = _setup(tmp_path)
     result = service.generate(dataset.id, request)
     candidate = result.candidates[1]
-    edited = candidate.case.model_copy(update={"turns": candidate.case.turns[:1]})
+    edited = candidate.case.model_copy(update={
+        "turns": candidate.case.turns[:1],
+        "category": CaseCategory.NEGATIVE,
+        "difficulty": CaseDifficulty.HARD,
+    })
 
     checked = service.validate_candidate(
         dataset_id=dataset.id,
@@ -201,14 +212,43 @@ def test_review_cannot_change_a_multi_slot_into_a_single_turn_case(tmp_path):
         case=edited,
     )
 
-    assert {issue.code for issue in checked.issues} == {"turn_count_mismatch"}
+    assert checked.issues == ()
 
 
-def test_accept_rechecks_the_signed_generation_slot_contract(tmp_path):
+def test_accept_allows_reviewed_case_to_differ_from_generation_slot(tmp_path):
     service, _, dataset, draft, _, request = _setup(tmp_path)
     result = service.generate(dataset.id, request)
     candidate = result.candidates[1]
-    edited = candidate.case.model_copy(update={"turns": candidate.case.turns[:1]})
+    edited = candidate.case.model_copy(update={
+        "turns": candidate.case.turns[:1],
+        "category": CaseCategory.NEGATIVE,
+        "difficulty": CaseDifficulty.HARD,
+    })
+
+    service.accept_cases(
+        dataset.id,
+        draft.id,
+        draft.content_sha256,
+        result.target_ref,
+        result.target_descriptor_sha256,
+        result.recipe_version,
+        result.acceptance_token,
+        (ReviewedGeneratedCase(slot_index=candidate.slot_index, case=edited),),
+        "accept-edited-slot-fields",
+    )
+
+    saved = service.datasets.get_draft(dataset.id).cases[0]
+    assert len(saved.turns) == 1
+    assert saved.category == CaseCategory.NEGATIVE
+    assert saved.difficulty == CaseDifficulty.HARD
+
+
+def test_accept_still_rechecks_target_contract_after_human_edit(tmp_path):
+    service, _, dataset, draft, _, request = _setup(tmp_path)
+    result = service.generate(dataset.id, request)
+    candidate = result.candidates[0]
+    turn = candidate.case.turns[0].model_copy(update={"expected_skill": "invented_skill"})
+    edited = candidate.case.model_copy(update={"turns": (turn,)})
 
     with pytest.raises(DatasetGenerationError) as exc:
         service.accept_cases(
@@ -220,11 +260,11 @@ def test_accept_rechecks_the_signed_generation_slot_contract(tmp_path):
             result.recipe_version,
             result.acceptance_token,
             (ReviewedGeneratedCase(slot_index=candidate.slot_index, case=edited),),
-            "reject-edited-turn-mode",
+            "reject-invalid-target-contract",
         )
 
     assert exc.value.code == "candidate_validation_failed"
-    assert {issue.code for issue in exc.value.issues} == {"turn_count_mismatch"}
+    assert {issue.code for issue in exc.value.issues} == {"unknown_skill"}
 
 
 def test_generate_repairs_anyvalue_input_wrapper_when_inner_value_matches_schema(tmp_path):

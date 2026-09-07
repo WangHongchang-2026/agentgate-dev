@@ -508,7 +508,7 @@ class DatasetGenerationService:
         descriptor = self.targets.resolve(target_ref)
         if descriptor.descriptor_sha256 != target_descriptor_sha256:
             raise DatasetGenerationError("descriptor_conflict", "评测对象能力信息已变化")
-        _, issued_at, slots, max_turns_per_case = self._verify_acceptance_token(
+        _, issued_at, slots, _ = self._verify_acceptance_token(
             acceptance_token,
             draft_id,
             draft_hash,
@@ -524,8 +524,17 @@ class DatasetGenerationService:
             raise DatasetGenerationError("recipe_conflict", "生成规则版本已变化，请重新生成")
         if slot_index >= len(slots):
             raise DatasetGenerationError("invalid_generation_slot", "候选生成槽位无效")
-        slot = slots[slot_index]
-        issues = list(self._slot_issues(case, slot, max_turns_per_case, descriptor))
+        # The signed slot proves where the candidate came from, but its generation
+        # category/difficulty/turn-mode contract is complete once the provider
+        # response has passed initial validation. Human reviewers may deliberately
+        # change those fields. Revalidate only the edited Case's durable Target and
+        # safety contracts here.
+        issues = list(validate_case_for_target(
+            case,
+            descriptor,
+            turn_mode=None,
+            max_turns_per_case=None,
+        ))
         issues.extend(CandidateIssue(
             path="case", code=item.code, message=item.message,
         ) for item in instruction_issues(canonical_json(case)))
@@ -540,29 +549,6 @@ class DatasetGenerationService:
             case=case,
             issues=tuple(issues),
         )
-
-    @staticmethod
-    def _slot_issues(case: Case, slot: GenerationSlot, max_turns_per_case: int, descriptor):
-        issues: list[CandidateIssue] = []
-        if case.category != slot.category:
-            issues.append(CandidateIssue(
-                path="category",
-                code="category_slot_mismatch",
-                message=f"该候选应为 {slot.category.value} 分类",
-            ))
-        if case.difficulty != slot.difficulty:
-            issues.append(CandidateIssue(
-                path="difficulty",
-                code="difficulty_slot_mismatch",
-                message=f"该候选应为 {slot.difficulty.value} 难度",
-            ))
-        issues.extend(validate_case_for_target(
-            case,
-            descriptor,
-            TurnMode(slot.turn_mode),
-            max_turns_per_case,
-        ))
-        return tuple(issues)
 
     def accept_cases(
         self,
@@ -606,7 +592,7 @@ class DatasetGenerationService:
         )
         if replay is not None:
             return replay
-        verified_profile_id, issued_at, slots, max_turns_per_case = self._verify_acceptance_token(
+        verified_profile_id, issued_at, slots, _ = self._verify_acceptance_token(
             acceptance_token,
             draft_id,
             draft_hash,
@@ -660,11 +646,11 @@ class DatasetGenerationService:
                 ))
                 continue
             seen_slot_indexes.add(candidate.slot_index)
-            case_issues = list(self._slot_issues(
+            case_issues = list(validate_case_for_target(
                 case,
-                slots[candidate.slot_index],
-                max_turns_per_case,
                 descriptor,
+                turn_mode=None,
+                max_turns_per_case=None,
             ))
             if case.provenance is not None or case.generation_provenance is not None:
                 case_issues.append(CandidateIssue(

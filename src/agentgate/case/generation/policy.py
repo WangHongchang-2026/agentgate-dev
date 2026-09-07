@@ -103,7 +103,7 @@ def validate_case_for_target(
     case: Case,
     descriptor: TargetDescriptor,
     turn_mode: TurnMode | None = None,
-    max_turns_per_case: int = 5,
+    max_turns_per_case: int | None = 5,
 ) -> tuple[CandidateIssue, ...]:
     issues: list[CandidateIssue] = []
     if len(canonical_json(case).encode("utf-8")) > MAX_CANDIDATE_BYTES:
@@ -123,7 +123,7 @@ def validate_case_for_target(
         issues.append(CandidateIssue(
             path="turns", code="turn_count_mismatch", message="多轮模式必须至少包含两轮",
         ))
-    if len(case.turns) > max_turns_per_case:
+    if max_turns_per_case is not None and len(case.turns) > max_turns_per_case:
         issues.append(CandidateIssue(
             path="turns", code="too_many_turns", message="用例轮数超过生成配置上限",
         ))

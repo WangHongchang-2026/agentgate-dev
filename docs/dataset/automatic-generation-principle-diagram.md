@@ -39,8 +39,8 @@ flowchart TB
 
     subgraph REVIEW[⑥ 人工审核与入库]
         LIST[候选列表<br/>合法候选 + 字段级错误]
-        EDIT[用户查看、编辑、重新校验<br/>按签名槽位复验生成约束]
-        ACCEPT[批量接收<br/>Token/槽位 · Draft Hash 校验<br/>幂等 · 原子写入]
+        EDIT[用户查看、自由编辑、重新校验<br/>复验正式 Case 与 Target 规则]
+        ACCEPT[批量接收<br/>Token/来源槽位 · Draft Hash 校验<br/>幂等 · 原子写入]
         DRAFT[(Dataset Draft<br/>保存 Case 与生成来源)]
         PUBLISH[用户继续验证并手动发布]
     end

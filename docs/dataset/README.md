@@ -92,7 +92,8 @@ POST /api/datasets/{dataset_id}/drafts/generated-candidates/validate
 POST /api/datasets/{dataset_id}/drafts/cases/batch
 ```
 
-Batch acceptance requires `Idempotency-Key` plus the current Draft ID/content hash. Each selected
-Case remains bound to its signed generation slot, so review edits cannot bypass the requested
-category, difficulty, single/multi-turn mode, or maximum-turn constraints. A stale Draft or changed
-Target descriptor returns `409` instead of overwriting newer content.
+Batch acceptance requires `Idempotency-Key` plus the current Draft ID/content hash. A signed slot
+proves each selected Case came from the original generation batch, but reviewers may change its
+category, difficulty, and turn structure. Acceptance revalidates the edited Case's durable domain,
+Target, safety, and duplicate constraints. A stale Draft or changed Target descriptor returns `409`
+instead of overwriting newer content.
