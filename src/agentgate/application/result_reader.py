@@ -2,11 +2,49 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
+from pydantic import BaseModel, ConfigDict, Field
+
 from agentgate.domain import EvaluationReport, EvaluationRun, RunStatus, Trace
+from agentgate.domain.base import normalize_utc, utcnow
 from agentgate.result.report import build_evaluation_report
 from agentgate.storage.repository import AgentGateRepository
+
+
+class RunProgress(BaseModel):
+    """Read projection for one Evaluation Run lifecycle and durable progress."""
+
+    model_config = ConfigDict(frozen=True)
+
+    run_id: str
+    status: RunStatus
+    dataset_id: str
+    dataset_version: int
+    dataset_name: str
+    target_name: str
+    target_version: str
+    total_cases: int = Field(ge=0)
+    completed_cases: int = Field(ge=0)
+    progress: float = Field(ge=0, le=1)
+    created_at: datetime
+    started_at: datetime | None
+    completed_at: datetime | None
+    duration_seconds: float | None = Field(default=None, ge=0)
+    error: str | None
+    queue_position: int | None = Field(default=None, ge=1)
+
+
+class RunActivity(BaseModel):
+    """Queued, running, and recent terminal Run projections."""
+
+    model_config = ConfigDict(frozen=True)
+
+    status_counts: dict[RunStatus, int]
+    queued: tuple[RunProgress, ...]
+    running: tuple[RunProgress, ...]
+    recent: tuple[RunProgress, ...]
 
 
 class ResultReader:
@@ -15,8 +53,78 @@ class ResultReader:
     def __init__(self, repository: AgentGateRepository) -> None:
         self.repository = repository
 
-    def list_runs(self, limit: int = 50) -> list[EvaluationRun]:
+    def list_runs(
+        self, limit: int = 50, status: RunStatus | None = None
+    ) -> list[EvaluationRun]:
+        if status is not None:
+            return self.repository.list_runs_by_status(status, limit=limit)
         return self.repository.list_runs(limit=limit)
+
+    def get_run_progress(
+        self,
+        run_id: str,
+        *,
+        now: datetime | None = None,
+    ) -> RunProgress:
+        """Return lifecycle timing and Result-derived progress for one Run."""
+
+        run = self._get_run(run_id)
+        queue_position = None
+        if run.status is RunStatus.PENDING:
+            queued_ids = tuple(
+                item.id
+                for item in self.repository.list_runs_by_status(
+                    RunStatus.PENDING, oldest_first=True
+                )
+            )
+            queue_position = queued_ids.index(run.id) + 1
+        return self._project_run(run, now=now or utcnow(), queue_position=queue_position)
+
+    def activity(
+        self,
+        *,
+        recent_limit: int = 20,
+        now: datetime | None = None,
+    ) -> RunActivity:
+        """Return uncapped status counts plus active and recent Run projections."""
+
+        if recent_limit < 1:
+            raise ValueError("recent Run limit must be at least 1")
+        projection_time = normalize_utc(now or utcnow(), "Run activity time")
+        queued_runs = self.repository.list_runs_by_status(
+            RunStatus.PENDING, oldest_first=True
+        )
+        running_runs = self.repository.list_runs_by_status(
+            RunStatus.RUNNING, oldest_first=True
+        )
+        terminal_runs = sorted(
+            (
+                run
+                for status in (
+                    RunStatus.COMPLETED,
+                    RunStatus.FAILED,
+                    RunStatus.CANCELLED,
+                )
+                for run in self.repository.list_runs_by_status(status)
+            ),
+            key=lambda run: (run.completed_at or run.created_at, run.id),
+            reverse=True,
+        )[:recent_limit]
+        return RunActivity(
+            status_counts=self.repository.count_runs_by_status(),
+            queued=tuple(
+                self._project_run(run, now=projection_time, queue_position=index)
+                for index, run in enumerate(queued_runs, start=1)
+            ),
+            running=tuple(
+                self._project_run(run, now=projection_time)
+                for run in running_runs
+            ),
+            recent=tuple(
+                self._project_run(run, now=projection_time)
+                for run in terminal_runs
+            ),
+        )
 
     def get_report(self, run_id: str) -> EvaluationReport:
         run = self._get_run(run_id)
@@ -33,10 +141,7 @@ class ResultReader:
 
     def overview(self) -> dict[str, Any]:
         runs = self.repository.list_runs()
-        statuses = {
-            status: sum(run.status is status for run in runs)
-            for status in RunStatus
-        }
+        statuses = self.repository.count_runs_by_status()
         datasets = self.repository.list_datasets()
         case_count = 0
         for dataset in datasets:
@@ -48,7 +153,7 @@ class ResultReader:
         )
         latest = self.get_report(latest_run.id) if latest_run is not None else None
         return {
-            "total_runs": len(runs),
+            "total_runs": sum(statuses.values()),
             "pending_runs": statuses[RunStatus.PENDING],
             "running_runs": statuses[RunStatus.RUNNING],
             "completed_runs": statuses[RunStatus.COMPLETED],
@@ -64,3 +169,45 @@ class ResultReader:
         if run is None:
             raise LookupError(f"unknown EvaluationRun: {run_id}")
         return run
+
+    def _project_run(
+        self,
+        run: EvaluationRun,
+        *,
+        now: datetime,
+        queue_position: int | None = None,
+    ) -> RunProgress:
+        projection_time = normalize_utc(now, "Run progress time")
+        expected_evaluators = {spec.id for spec in run.manifest.evaluator_specs}
+        results_by_case: dict[str, set[str]] = {}
+        for result in self.repository.list_results(run.id):
+            results_by_case.setdefault(result.case_id, set()).add(result.evaluator_id)
+        completed_cases = sum(
+            expected_evaluators.issubset(results_by_case.get(case.id, set()))
+            for case in run.manifest.dataset.cases
+        )
+        total_cases = len(run.manifest.dataset.cases)
+        duration_seconds = None
+        if run.started_at is not None:
+            duration_end = run.completed_at or projection_time
+            duration_seconds = max(
+                0.0, (duration_end - run.started_at).total_seconds()
+            )
+        return RunProgress(
+            run_id=run.id,
+            status=run.status,
+            dataset_id=run.manifest.dataset.dataset_id,
+            dataset_version=run.manifest.dataset.version,
+            dataset_name=run.manifest.dataset.dataset_name,
+            target_name=run.manifest.target.display_name,
+            target_version=run.manifest.target.ref.external_version_id,
+            total_cases=total_cases,
+            completed_cases=completed_cases,
+            progress=completed_cases / total_cases if total_cases else 0,
+            created_at=run.created_at,
+            started_at=run.started_at,
+            completed_at=run.completed_at,
+            duration_seconds=duration_seconds,
+            error=run.error,
+            queue_position=queue_position,
+        )
