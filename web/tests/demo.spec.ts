@@ -23,9 +23,14 @@ test('configures an evaluation and reports real persisted metrics and evidence',
   await expect(page.getByRole('heading', { name: '评估配置' })).toBeVisible()
 
   await page.getByTestId('agent-select').click()
-  await page.getByRole('option', { name: /风险版本/ }).click()
+  await page.getByRole('option', { name: /Risky version/ }).click()
   await page.getByRole('button', { name: /运行评估/ }).click()
 
+  await expect(page).toHaveURL(/\/runs$/)
+  await page.getByTestId('runs-history').click()
+  await page.locator('.run-row').filter({ hasText: '高风险贷款策略评估' })
+    .getByRole('button', { name: '查看结果' }).click()
+  await expect(page).toHaveURL(/\/$/)
   await expect(page.getByText('发布门槛未通过')).toBeVisible()
   await expect(page.getByTestId('metric-dimension-tool_use')).toContainText('工具准确率')
   await expect(page.getByTestId('metric-dimension-tool_use')).toContainText('25%')

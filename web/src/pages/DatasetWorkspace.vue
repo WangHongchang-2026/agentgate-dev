@@ -1,17 +1,19 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, shallowRef } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { api, ApiError, type EvaluatorOption, type Run, type Version } from '../api/client'
+import { api, ApiError, type EvaluatorOption, type Version } from '../api/client'
+import { runsApi } from '../api/runs'
 import { datasetApi } from '../api/datasets'
 import DatasetList from '../components/dataset/DatasetList.vue'
 import VersionSelector from '../components/dataset/VersionSelector.vue'
 import CaseTable from '../components/dataset/CaseTable.vue'
 import CaseEditor from '../components/dataset/CaseEditor.vue'
+import type { RunProgress } from '../types/run'
 import type {
   DatasetExport, DatasetSummary, DatasetVersion, EvaluationCase, ValidationIssue,
 } from '../types/dataset'
 
-const emit = defineEmits<{ runCreated: [run: Run] }>()
+const emit = defineEmits<{ runCreated: [run: RunProgress] }>()
 
 const datasets = shallowRef<DatasetSummary[]>([])
 const versions = shallowRef<DatasetVersion[]>([])
@@ -248,6 +250,12 @@ async function publishDraft() {
   } catch (error) {
     if (error instanceof ApiError && Array.isArray(error.detail)) {
       validationIssues.value = error.detail as ValidationIssue[]
+    } else if (
+      error instanceof ApiError
+      && error.status === 422
+      && error.detail === 'published DatasetVersion requires at least one Case'
+    ) {
+      validationIssues.value = [{ path: 'cases', message: '测评集至少需要一个用例' }]
     }
     showError(error, '发布失败，请检查用例')
   } finally {
@@ -291,14 +299,14 @@ async function launchEvaluation() {
   if (!selectedEvaluators.value.length) return ElMessage.warning('请至少选择一个评估器')
   busy.value = true
   try {
-    const run = await api.launch(
-      selectedAgent.value,
-      activeDatasetId.value,
-      activeVersion.value.version,
-      selectedEvaluators.value,
-    )
+    const run = await runsApi.launch({
+      version: selectedAgent.value,
+      datasetId: activeDatasetId.value,
+      datasetVersion: activeVersion.value.version,
+      evaluatorIds: selectedEvaluators.value,
+    })
     emit('runCreated', run)
-    ElMessage.success('评估已完成，正在打开结果报告')
+    ElMessage.success('评估已进入队列')
   } catch (error) {
     showError(error, '运行评估失败')
   } finally {

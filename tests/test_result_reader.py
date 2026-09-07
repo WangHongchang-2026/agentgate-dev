@@ -174,6 +174,30 @@ def test_reader_projects_queue_activity_and_terminal_history(tmp_path) -> None:
     assert reader.list_runs(status=RunStatus.RUNNING) == [running]
 
 
+def test_progress_tolerates_worker_claim_during_queue_lookup(
+    tmp_path, monkeypatch
+) -> None:
+    repository = SQLiteRepository(tmp_path / "claim-race.db")
+    ensure_demo_dataset(repository)
+    management = RunManagement(repository, EVALUATORS)
+    pending = management.create_run(target(), dataset_id=LOAN_DATASET.id)
+    original_list = repository.list_runs_by_status
+
+    def claim_then_list(status, *, limit=None, oldest_first=False):
+        if status is RunStatus.PENDING:
+            repository.claim_pending_run(
+                pending.id, pending.created_at + timedelta(seconds=1)
+            )
+        return original_list(status, limit=limit, oldest_first=oldest_first)
+
+    monkeypatch.setattr(repository, "list_runs_by_status", claim_then_list)
+
+    progress = ResultReader(repository).get_run_progress(pending.id)
+
+    assert progress.status is RunStatus.RUNNING
+    assert progress.queue_position is None
+
+
 def test_overview_counts_all_runs_beyond_history_page(tmp_path) -> None:
     repository = SQLiteRepository(tmp_path / "uncapped-overview.db")
     ensure_demo_dataset(repository)

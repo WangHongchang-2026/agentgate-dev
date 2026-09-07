@@ -1,6 +1,7 @@
 import type {
   DatasetSummary, DatasetVersion, EvaluationCase
 } from '../types/dataset'
+import type { EvaluationRun } from '../types/run'
 
 export interface Version { id: string; label: string }
 export type DatasetOption = DatasetSummary
@@ -15,15 +16,6 @@ export interface EvaluatorOption {
   implementation_id: string
   implementation_version: string
   config: Record<string, unknown>
-}
-export interface Run {
-  id: string
-  status: string
-  manifest: {
-    target: { ref: { external_version_id: string } }
-    dataset: DatasetVersion
-    evaluator_specs: EvaluatorOption[]
-  }
 }
 export type Outcome = 'pass'|'fail'|'review'|'not_applicable'|'error'
 export interface CheckResult {
@@ -77,7 +69,7 @@ export interface Metric {
   applicable: number
   total: number
 }
-export interface Report { run: Run; results: EvaluationResult[]; release_gate: ReleaseGate; metrics: Metric[] }
+export interface Report { run: EvaluationRun; results: EvaluationResult[]; release_gate: ReleaseGate; metrics: Metric[] }
 export interface TraceOutcome {
   input: Record<string, unknown>
   output: Record<string, unknown>
@@ -134,22 +126,6 @@ export const api = {
   versions: () => request<Version[]>('/api/versions'),
   datasets: () => request<DatasetSummary[]>('/api/datasets'),
   evaluators: () => request<EvaluatorOption[]>('/api/evaluators'),
-  runs: () => request<Run[]>('/api/runs'),
-  launch: (
-    version: string,
-    datasetId: string,
-    datasetVersion: number,
-    evaluatorIds: string[],
-  ) => request<Run>('/api/evaluations', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      version,
-      dataset_id: datasetId,
-      dataset_version: datasetVersion,
-      evaluator_ids: evaluatorIds,
-    }),
-  }),
   report: (id: string) => request<Report>(`/api/runs/${id}`),
   trace: (runId: string, caseId: string) =>
     request<Trace>(`/api/runs/${runId}/traces/${caseId}`),

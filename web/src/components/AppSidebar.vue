@@ -1,5 +1,5 @@
 <script setup lang="ts">
-type Page = 'evaluate' | 'datasets'
+type Page = 'evaluate' | 'runs' | 'datasets'
 
 defineProps<{
   page: Page
@@ -47,6 +47,16 @@ const emit = defineEmits<{
       >
         <span class="nav-icon">运</span>
         <span><b>评估运行</b><small>配置、执行与结果报告</small></span>
+      </button>
+      <button
+        type="button"
+        :class="{ active: page === 'runs' }"
+        :aria-current="page === 'runs' ? 'page' : undefined"
+        data-testid="nav-runs"
+        @click="emit('navigate', 'runs')"
+      >
+        <span class="nav-icon">列</span>
+        <span><b>运行队列</b><small>排队、进度与运行历史</small></span>
       </button>
       <button
         type="button"

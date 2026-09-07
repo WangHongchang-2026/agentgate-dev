@@ -1,16 +1,19 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { api, type DatasetOption, type EvaluatorOption, type Overview, type ReleaseGateReason, type Report, type Run, type Trace, type Version } from './api/client'
+import { api, type DatasetOption, type EvaluatorOption, type Overview, type ReleaseGateReason, type Report, type Trace, type Version } from './api/client'
+import { runsApi } from './api/runs'
 import AppSidebar from './components/AppSidebar.vue'
 import DatasetWorkspace from './pages/DatasetWorkspace.vue'
+import RunWorkspacePage from './pages/RunWorkspacePage.vue'
+import type { EvaluationRun, RunProgress } from './types/run'
 import { metricLabel } from './metricLabels'
 
 const overview = ref<Overview>({ total_runs: 0, completed_runs: 0, case_count: 0, latest: null })
 const versions = ref<Version[]>([])
 const datasets = ref<DatasetOption[]>([])
 const evaluators = ref<EvaluatorOption[]>([])
-const runs = ref<Run[]>([])
+const runs = ref<EvaluationRun[]>([])
 const selectedVersion = ref('loan-agent-v2-fixed')
 const selectedDataset = ref('loan-risk-policy')
 const selectedEvaluators = ref<string[]>([])
@@ -19,7 +22,11 @@ const trace = ref<Trace|null>(null)
 const loading = ref(false)
 const traceOpen = ref(false)
 const navigationOpen = ref(false)
-const page = ref<'evaluate'|'datasets'>(location.pathname.startsWith('/datasets') ? 'datasets' : 'evaluate')
+const page = ref<'evaluate' | 'runs' | 'datasets'>(
+  location.pathname.startsWith('/datasets')
+    ? 'datasets'
+    : location.pathname.startsWith('/runs') ? 'runs' : 'evaluate',
+)
 
 const caseNames = computed(() => Object.fromEntries((report.value?.run.manifest.dataset.cases ?? []).map(c => [c.id, c.name])))
 const failed = computed(() => report.value?.results.filter(item => item.outcome === 'fail') ?? [])
@@ -29,7 +36,7 @@ const selectedDatasetInfo = computed(() => datasets.value.find(item => item.id =
 
 async function refresh() {
   const [summary, targetVersions, datasetOptions, evaluatorOptions, recentRuns] = await Promise.all([
-    api.overview(), api.versions(), api.datasets(), api.evaluators(), api.runs(),
+    api.overview(), api.versions(), api.datasets(), api.evaluators(), runsApi.list(),
   ])
   overview.value = summary
   versions.value = targetVersions
@@ -45,36 +52,46 @@ async function launch() {
   if (selectedDatasetInfo.value?.version == null) return ElMessage.warning('请选择已有发布版本的测评集')
   loading.value = true
   try {
-    const run = await api.launch(selectedVersion.value, selectedDataset.value, selectedDatasetInfo.value.version, selectedEvaluators.value)
-    report.value = await api.report(run.id)
-    await refresh()
-    document.querySelector('#result-report')?.scrollIntoView({ behavior: 'smooth' })
-    ElMessage.success('评估已完成，指标与证据已持久化')
+    await runsApi.launch({
+      version: selectedVersion.value,
+      datasetId: selectedDataset.value,
+      datasetVersion: selectedDatasetInfo.value.version,
+      evaluatorIds: selectedEvaluators.value,
+    })
+    ElMessage.success('评估已进入队列')
+    navigate('runs')
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '评估失败')
   } finally { loading.value = false }
 }
 
 async function openRun(id: string) { report.value = await api.report(id); trace.value = null }
+async function openRunReport(id: string) {
+  try {
+    await openRun(id)
+    navigate('evaluate')
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '加载结果失败')
+  }
+}
 async function openTrace(caseId: string) { if (!report.value) return; trace.value = await api.trace(report.value.run.id, caseId); traceOpen.value = true }
-function navigate(next: 'evaluate'|'datasets') {
+function navigate(next: 'evaluate' | 'runs' | 'datasets') {
   page.value = next
   navigationOpen.value = false
-  const path = next === 'datasets' ? '/datasets' : '/'
+  const path = next === 'datasets' ? '/datasets' : next === 'runs' ? '/runs' : '/'
   if (location.pathname !== path) history.pushState({}, '', path)
 }
 function onPopState() {
-  page.value = location.pathname.startsWith('/datasets') ? 'datasets' : 'evaluate'
+  page.value = location.pathname.startsWith('/datasets')
+    ? 'datasets'
+    : location.pathname.startsWith('/runs') ? 'runs' : 'evaluate'
   navigationOpen.value = false
 }
 function onKeydown(event: KeyboardEvent) {
   if (event.key === 'Escape') navigationOpen.value = false
 }
-async function showCreatedRun(run: Run) {
-  await openRun(run.id)
-  await refresh()
-  navigate('evaluate')
-  requestAnimationFrame(() => document.querySelector('#result-report')?.scrollIntoView({ behavior: 'smooth' }))
+function showCreatedRun(_run: RunProgress) {
+  navigate('runs')
 }
 const asPercent = (score: number|null) => score === null ? 'N/A' : `${Math.round(score * 100)}%`
 const outcomeText = { pass: '通过', fail: '失败', review: '待复核', not_applicable: '不适用', error: '评估错误' }
@@ -130,9 +147,9 @@ onUnmounted(() => {
           <span></span><span></span><span></span>
         </button>
         <div>
-          <p class="eyebrow">{{ page === 'evaluate' ? 'EVALUATION WORKSPACE' : 'DATASET WORKSPACE' }}</p>
-          <h1>{{ page === 'evaluate' ? 'AgentGate 评估台' : '测评集管理' }}</h1>
-          <p>{{ page === 'evaluate' ? '配置评估对象，运行用例，并用可追溯指标判断是否达到发布门槛。' : '维护测评集、不可变版本与可复用测试用例。' }}</p>
+          <p class="eyebrow">{{ page === 'evaluate' ? 'EVALUATION WORKSPACE' : page === 'runs' ? 'RUN ACTIVITY' : 'DATASET WORKSPACE' }}</p>
+          <h1>{{ page === 'evaluate' ? 'AgentGate 评估台' : page === 'runs' ? '运行队列' : '测评集管理' }}</h1>
+          <p>{{ page === 'evaluate' ? '配置评估对象，运行用例，并用可追溯指标判断是否达到发布门槛。' : page === 'runs' ? '跟踪排队、执行进度与最近结果。' : '维护测评集、不可变版本与可复用测试用例。' }}</p>
         </div>
       </header>
 
@@ -228,6 +245,7 @@ onUnmounted(() => {
         <el-empty v-else description="尚无结果，请先在上方运行评估" />
       </section>
       </main>
+      <RunWorkspacePage v-else-if="page === 'runs'" @open-report="openRunReport" />
       <main v-else class="dataset-main"><DatasetWorkspace @run-created="showCreatedRun" /></main>
     </div>
 

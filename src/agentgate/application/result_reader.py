@@ -77,7 +77,11 @@ class ResultReader:
                     RunStatus.PENDING, oldest_first=True
                 )
             )
-            queue_position = queued_ids.index(run.id) + 1
+            if run.id in queued_ids:
+                queue_position = queued_ids.index(run.id) + 1
+            else:
+                # A worker may claim the Run between these two repository reads.
+                run = self._get_run(run_id)
         return self._project_run(run, now=now or utcnow(), queue_position=queue_position)
 
     def activity(
