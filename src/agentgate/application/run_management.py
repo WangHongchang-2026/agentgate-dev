@@ -46,6 +46,7 @@ class RunManagement:
         *,
         dataset_id: str,
         dataset_version: int | None = None,
+        case_ids: Sequence[str] | None = None,
         evaluator_ids: Sequence[str] | None = None,
         evaluator_refs: Sequence[EvaluatorRef] | None = None,
         metric_plan: MetricPlan | None = None,
@@ -75,6 +76,7 @@ class RunManagement:
         run = EvaluationRun(
             manifest=RunManifest(
                 dataset=dataset,
+                selected_case_ids=tuple(case_ids) if case_ids is not None else None,
                 target=target,
                 evaluator_specs=selected,
                 primary_evaluator_ids=tuple(spec.id for spec in selected),
@@ -147,7 +149,7 @@ class RunManagement:
         current_time = normalize_utc(now or utcnow(), "stale Run check time")
         failed_runs: list[EvaluationRun] = []
         for run in self.repository.list_runs_by_status(RunStatus.RUNNING):
-            case_count = len(run.manifest.dataset.cases)
+            case_count = len(run.manifest.execution_cases)
             batch_count = (
                 case_count + run.manifest.max_parallel_cases - 1
             ) // run.manifest.max_parallel_cases

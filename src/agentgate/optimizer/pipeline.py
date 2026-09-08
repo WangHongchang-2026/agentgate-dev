@@ -52,7 +52,7 @@ def build_optimization_report(
     )
     clusters = cluster_failed_results(failed_results)
     confusion_matrix = build_routing_confusion_matrix(
-        dataset.cases,
+        run.manifest.execution_cases,
         result_items,
     )
     hypotheses = infer_root_causes(

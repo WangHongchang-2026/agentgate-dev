@@ -72,6 +72,11 @@ def evaluate(
         "--evaluator",
         help="评估器 ID，可重复指定",
     ),
+    case_ids: list[str] | None = typer.Option(
+        None,
+        "--case",
+        help="只运行指定 Case ID，可重复指定",
+    ),
     timeout_seconds: float = typer.Option(300, min=0.001, help="单案例超时秒数"),
 ) -> None:
     """同步运行一次演示评估。"""
@@ -84,6 +89,7 @@ def evaluate(
             target,
             dataset_id=dataset_id,
             dataset_version=dataset_version,
+            case_ids=case_ids,
             evaluator_ids=evaluator_ids,
             timeout_seconds=timeout_seconds,
         )

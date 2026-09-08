@@ -340,7 +340,7 @@ def _build_run_graph(
     )
     _add_edge(edges, run_node.id, target_node.id, target_relation)
 
-    for case in run.manifest.dataset.cases:
+    for case in run.manifest.execution_cases:
         case_node = _case_node(run.manifest.dataset, case)
         _add_node(nodes, case_node)
         _add_edge(edges, dataset_node.id, case_node.id, "contains_case")

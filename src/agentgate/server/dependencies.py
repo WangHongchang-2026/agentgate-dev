@@ -91,6 +91,7 @@ class ServerDependencies:
         *,
         dataset_id: str = LOAN_DATASET.id,
         dataset_version: int | None = None,
+        case_ids: list[str] | None = None,
         evaluator_ids: list[str] | None = None,
         max_parallel_cases: int = 1,
     ) -> EvaluationRun:
@@ -100,6 +101,7 @@ class ServerDependencies:
             version,
             dataset_id=dataset_id,
             dataset_version=dataset_version,
+            case_ids=case_ids,
             evaluator_ids=evaluator_ids,
             max_parallel_cases=max_parallel_cases,
         )
@@ -132,6 +134,7 @@ class ServerDependencies:
         *,
         dataset_id: str = LOAN_DATASET.id,
         dataset_version: int | None = None,
+        case_ids: list[str] | None = None,
         evaluator_ids: list[str] | None = None,
     ) -> EvaluationRun:
         """Create and synchronously execute one POC Loan Agent evaluation."""
@@ -140,6 +143,7 @@ class ServerDependencies:
             version,
             dataset_id=dataset_id,
             dataset_version=dataset_version,
+            case_ids=case_ids,
             evaluator_ids=evaluator_ids,
             max_parallel_cases=1,
         )
@@ -158,6 +162,7 @@ class ServerDependencies:
         *,
         dataset_id: str,
         dataset_version: int | None,
+        case_ids: list[str] | None,
         evaluator_ids: list[str] | None,
         max_parallel_cases: int,
     ) -> EvaluationRun:
@@ -166,6 +171,7 @@ class ServerDependencies:
             target,
             dataset_id=dataset_id,
             dataset_version=dataset_version,
+            case_ids=case_ids,
             evaluator_ids=evaluator_ids,
             max_parallel_cases=max_parallel_cases,
         )

@@ -20,6 +20,8 @@ from agentgate.demo.targets import (
     get_demo_target_descriptor,
 )
 from agentgate.domain import (
+    Case,
+    CaseTurn,
     EvaluatorKind,
     EvaluatorRef,
     EvaluatorSeverity,
@@ -413,3 +415,98 @@ def test_fail_stale_runs_rejects_negative_grace_period(tmp_path) -> None:
 
     with pytest.raises(ValueError, match="must not be negative"):
         management.fail_stale_runs(grace_seconds=-1)
+
+def test_create_run_can_freeze_reproducible_case_subset(tmp_path) -> None:
+    repository = SQLiteRepository(tmp_path / "case-subset-run.db")
+    seed_demo(repository)
+    management, evaluators = run_management(repository)
+    dataset = management.dataset_management.create_dataset("Subset Dataset")
+    management.dataset_management.create_draft(dataset.id)
+    management.dataset_management.save_case(
+        dataset.id,
+        Case(
+            id="first",
+            name="First",
+            turns=(CaseTurn(id="first-turn", input={"risk": "high"}),),
+        ),
+    )
+    management.dataset_management.save_case(
+        dataset.id,
+        Case(
+            id="second",
+            name="Second",
+            turns=(CaseTurn(id="second-turn", input={"risk": "low"}),),
+        ),
+    )
+    full_dataset = management.dataset_management.publish_draft(dataset.id)
+    selected_ids = ("second",)
+
+    run = management.create_run(
+        target(),
+        dataset_id=dataset.id,
+        dataset_version=1,
+        case_ids=selected_ids,
+        evaluator_ids=("skill-routing", "final-state"),
+    )
+
+    manifest_dataset = run.manifest.dataset
+    assert manifest_dataset == full_dataset
+    assert run.manifest.selected_case_ids == selected_ids
+    assert tuple(case.id for case in run.manifest.execution_cases) == selected_ids
+    other_run = management.create_run(
+        target(),
+        dataset_id=dataset.id,
+        dataset_version=1,
+        case_ids=("first",),
+        evaluator_ids=("skill-routing", "final-state"),
+    )
+    assert other_run.manifest.dataset == full_dataset
+    assert other_run.manifest.manifest_sha256 != run.manifest.manifest_sha256
+
+    capture = InMemoryTraceCapture()
+    try:
+        completed = management.execute_run(
+            run.id,
+            DemoLoanTargetAdapter(capture),
+            capture.resolve,
+        )
+    finally:
+        capture.shutdown()
+
+    assert completed.status is RunStatus.COMPLETED
+    assert len(repository.list_traces(run.id)) == len(selected_ids)
+    assert len(repository.list_results(run.id)) == len(selected_ids) * 2
+    assert len(evaluators.default_specs) >= 2
+
+
+def test_create_run_rejects_invalid_case_subset(tmp_path) -> None:
+    repository = SQLiteRepository(tmp_path / "invalid-case-subset-run.db")
+    seed_demo(repository)
+    management, _ = run_management(repository)
+    first_case = management.dataset_management.get_version(LOAN_DATASET.id, 1).cases[0]
+
+    with pytest.raises(ValueError, match="at least one Case id"):
+        management.create_run(
+            target(),
+            dataset_id=LOAN_DATASET.id,
+            dataset_version=1,
+            case_ids=(),
+        )
+
+    with pytest.raises(ValueError, match="must not contain duplicates"):
+        management.create_run(
+            target(),
+            dataset_id=LOAN_DATASET.id,
+            dataset_version=1,
+            case_ids=(first_case.id, first_case.id),
+        )
+
+    with pytest.raises(ValueError, match="unknown Cases: missing-case"):
+        management.create_run(
+            target(),
+            dataset_id=LOAN_DATASET.id,
+            dataset_version=1,
+            case_ids=("missing-case",),
+        )
+
+    assert repository.list_runs() == []

@@ -160,7 +160,9 @@ provenance belong in `domain/result.py`.
 
 `RunManifest` captures the exact published Dataset version, Target snapshot, Evaluator
 specifications, Metric plan, Gate specification, and effective timeout, retry, and
-parallelism settings for one evaluation. Its content hash excludes creation time.
+parallelism settings for one evaluation. An optional ordered `selected_case_ids` tuple
+limits execution without creating or mutating a Dataset version. Its content hash excludes
+creation time.
 
 `EvaluationRun` records only the lifecycle of that complete evaluation. The pure
 `transition_run()` function returns a new immutable value for each legal transition.

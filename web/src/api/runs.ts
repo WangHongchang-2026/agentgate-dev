@@ -11,6 +11,7 @@ export interface LaunchEvaluationRequest {
   datasetId: string
   datasetVersion: number
   evaluatorIds: string[]
+  caseIds?: string[]
 }
 
 export const runsApi = {
@@ -22,6 +23,7 @@ export const runsApi = {
       dataset_id: input.datasetId,
       dataset_version: input.datasetVersion,
       evaluator_ids: input.evaluatorIds,
+      case_ids: input.caseIds,
     }),
   }),
   list: (status?: RunStatus, limit = 50) => {

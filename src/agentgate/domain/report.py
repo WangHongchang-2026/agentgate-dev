@@ -18,7 +18,7 @@ def _validate_results(
     run: EvaluationRun,
     results: Sequence[EvaluationResult],
 ) -> set[tuple[str, str]]:
-    case_ids = {item.id for item in run.manifest.dataset.cases}
+    case_ids = {item.id for item in run.manifest.execution_cases}
     evaluator_specs = {item.id: item for item in run.manifest.evaluator_specs}
     result_keys: list[tuple[str, str]] = []
     for result in results:
@@ -100,7 +100,7 @@ def _missing_results(
 ) -> tuple[tuple[str, str], ...]:
     return tuple(
         (case.id, evaluator_id)
-        for case in manifest.dataset.cases
+        for case in manifest.execution_cases
         for evaluator_id in manifest.primary_evaluator_ids
         if (case.id, evaluator_id) not in result_keys
     )

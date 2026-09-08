@@ -77,7 +77,7 @@ def _control_signature(run: EvaluationRun) -> tuple[object, ...]:
         dataset.dataset_id,
         dataset.version,
         dataset.content_sha256,
-        tuple(case.id for case in dataset.cases),
+        manifest.selected_case_ids,
         tuple(
             (spec.id, spec.version, spec.content_sha256)
             for spec in manifest.evaluator_specs

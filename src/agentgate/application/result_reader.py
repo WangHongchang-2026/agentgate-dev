@@ -202,9 +202,9 @@ class ResultReader:
             results_by_case.setdefault(result.case_id, set()).add(result.evaluator_id)
         completed_cases = sum(
             expected_evaluators.issubset(results_by_case.get(case.id, set()))
-            for case in run.manifest.dataset.cases
+            for case in run.manifest.execution_cases
         )
-        total_cases = len(run.manifest.dataset.cases)
+        total_cases = len(run.manifest.execution_cases)
         duration_seconds = None
         if run.started_at is not None:
             duration_end = run.completed_at or projection_time
