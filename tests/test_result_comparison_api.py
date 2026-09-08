@@ -1,14 +1,132 @@
 from fastapi.testclient import TestClient
 
+from agentgate.demo.loan import LOAN_DATASET
 from agentgate.server.app import create_app
 
 
 class RecordingDispatcher:
-    def __init__(self) -> None:
+    def __init__(self, fail_calls: set[int] | None = None) -> None:
+        self.fail_calls = fail_calls or set()
         self.run_ids: list[str] = []
 
     def submit(self, run_id: str) -> None:
         self.run_ids.append(run_id)
+        if len(self.run_ids) in self.fail_calls:
+            raise ConnectionError("redis password=secret")
+
+
+def _launch_payload() -> dict[str, object]:
+    return {
+        "baseline_version": "loan-agent-v1-risky",
+        "candidate_version": "loan-agent-v2-fixed",
+        "dataset_id": LOAN_DATASET.id,
+        "dataset_version": 1,
+        "evaluator_ids": ["skill-routing", "final-state"],
+    }
+
+
+def test_launch_run_comparison_creates_and_dispatches_controlled_pair(
+    tmp_path,
+) -> None:
+    dispatcher = RecordingDispatcher()
+    application = create_app(tmp_path / "comparison-launch.db", dispatcher)
+
+    with TestClient(application) as client:
+        response = client.post("/api/run-comparisons", json=_launch_payload())
+
+    assert response.status_code == 202
+    body = response.json()
+    assert set(body) == {"baseline", "candidate"}
+    assert set(body["baseline"]) == {"run_id", "status"}
+    assert set(body["candidate"]) == {"run_id", "status"}
+    assert body["baseline"]["status"] == "pending"
+    assert body["candidate"]["status"] == "pending"
+    assert dispatcher.run_ids == [
+        body["baseline"]["run_id"],
+        body["candidate"]["run_id"],
+    ]
+
+    repository = application.state.dependencies.repository
+    baseline = repository.get_run(body["baseline"]["run_id"])
+    candidate = repository.get_run(body["candidate"]["run_id"])
+    assert baseline is not None
+    assert candidate is not None
+    assert baseline.manifest.dataset == candidate.manifest.dataset
+    assert baseline.manifest.evaluator_specs == candidate.manifest.evaluator_specs
+
+
+def test_launch_run_comparison_rejects_identical_versions(tmp_path) -> None:
+    dispatcher = RecordingDispatcher()
+    application = create_app(tmp_path / "comparison-same-version.db", dispatcher)
+    payload = _launch_payload()
+    payload["candidate_version"] = payload["baseline_version"]
+
+    with TestClient(application) as client:
+        response = client.post("/api/run-comparisons", json=payload)
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == (
+        "A/B variants must use different Agent versions"
+    )
+    assert dispatcher.run_ids == []
+    assert application.state.dependencies.repository.list_runs() == []
+
+
+def test_launch_run_comparison_rejects_unknown_demo_version(tmp_path) -> None:
+    dispatcher = RecordingDispatcher()
+    application = create_app(tmp_path / "comparison-unknown-version.db", dispatcher)
+    payload = _launch_payload()
+    payload["candidate_version"] = "unknown-version"
+
+    with TestClient(application) as client:
+        response = client.post("/api/run-comparisons", json=payload)
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == (
+        "unknown demo Target version: unknown-version"
+    )
+    assert dispatcher.run_ids == []
+    assert application.state.dependencies.repository.list_runs() == []
+
+
+def test_launch_run_comparison_rejects_raw_target_configuration(tmp_path) -> None:
+    dispatcher = RecordingDispatcher()
+    application = create_app(tmp_path / "comparison-extra-input.db", dispatcher)
+    payload = _launch_payload()
+    payload["invocation_config"] = {"api_key": "must-not-be-accepted"}
+
+    with TestClient(application) as client:
+        response = client.post("/api/run-comparisons", json=payload)
+
+    assert response.status_code == 422
+    assert dispatcher.run_ids == []
+    assert application.state.dependencies.repository.list_runs() == []
+
+
+def test_launch_run_comparison_returns_partial_dispatch_states(tmp_path) -> None:
+    dispatcher = RecordingDispatcher(fail_calls={1})
+    application = create_app(tmp_path / "comparison-partial-dispatch.db", dispatcher)
+
+    with TestClient(application) as client:
+        response = client.post("/api/run-comparisons", json=_launch_payload())
+
+    assert response.status_code == 202
+    body = response.json()
+    assert dispatcher.run_ids == [
+        body["baseline"]["run_id"],
+        body["candidate"]["run_id"],
+    ]
+    assert body["baseline"]["status"] == "failed"
+    assert body["candidate"]["status"] == "pending"
+    assert "secret" not in response.text
+
+    repository = application.state.dependencies.repository
+    baseline = repository.get_run(body["baseline"]["run_id"])
+    candidate = repository.get_run(body["candidate"]["run_id"])
+    assert baseline is not None
+    assert candidate is not None
+    assert baseline.error == "Run dispatch failed: ConnectionError"
+    assert candidate.error is None
 
 
 def test_compare_completed_runs(tmp_path) -> None:
