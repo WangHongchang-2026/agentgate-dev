@@ -54,11 +54,62 @@ def test_run_routes_submit_pending_evaluation_and_expose_activity(tmp_path) -> N
     assert dispatcher.run_ids == [run_id]
     assert listed.status_code == 200
     assert [item["id"] for item in listed.json()] == [run_id]
+    assert listed.json()[0]["manifest"]["max_parallel_cases"] == 1
     assert status.status_code == 200
     assert status.json()["queue_position"] == 1
     assert activity.status_code == 200
     assert activity.json()["status_counts"]["pending"] == 1
     assert activity.json()["queued"][0]["run_id"] == run_id
+
+
+def test_run_route_persists_configured_case_concurrency(tmp_path) -> None:
+    client, dispatcher = _client(tmp_path)
+
+    with client:
+        launched = client.post(
+            "/api/evaluations",
+            json={
+                "version": "loan-agent-v2-fixed",
+                "dataset_id": LOAN_DATASET.id,
+                "dataset_version": 1,
+                "max_parallel_cases": 4,
+            },
+        )
+        runs = client.get("/api/runs")
+
+    assert launched.status_code == 202
+    assert runs.json()[0]["manifest"]["max_parallel_cases"] == 4
+    assert dispatcher.run_ids == [launched.json()["run_id"]]
+
+
+def test_run_route_rejects_unsafe_case_concurrency(tmp_path) -> None:
+    client, dispatcher = _client(tmp_path)
+
+    with client:
+        below_minimum = client.post(
+            "/api/evaluations",
+            json={
+                "version": "loan-agent-v2-fixed",
+                "dataset_id": LOAN_DATASET.id,
+                "dataset_version": 1,
+                "max_parallel_cases": 0,
+            },
+        )
+        above_maximum = client.post(
+            "/api/evaluations",
+            json={
+                "version": "loan-agent-v2-fixed",
+                "dataset_id": LOAN_DATASET.id,
+                "dataset_version": 1,
+                "max_parallel_cases": 33,
+            },
+        )
+        runs = client.get("/api/runs")
+
+    assert below_minimum.status_code == 422
+    assert above_maximum.status_code == 422
+    assert dispatcher.run_ids == []
+    assert runs.json() == []
 
 
 def test_run_route_rejects_unknown_target_without_creating_run(tmp_path) -> None:

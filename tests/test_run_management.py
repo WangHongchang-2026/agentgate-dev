@@ -80,6 +80,29 @@ def test_create_run_persists_exact_pending_manifest(tmp_path) -> None:
     ]
     assert run.manifest.target.ref.external_version_id == "loan-agent-v2-fixed"
     assert run.manifest.timeout_seconds == 30
+    assert run.manifest.max_parallel_cases == 1
+
+
+def test_create_run_persists_case_concurrency_limit(tmp_path) -> None:
+    repository = SQLiteRepository(tmp_path / "create-parallel-run.db")
+    seed_demo(repository)
+    management, _ = run_management(repository)
+
+    run = management.create_run(
+        target(),
+        dataset_id=LOAN_DATASET.id,
+        max_parallel_cases=4,
+    )
+
+    assert run.manifest.max_parallel_cases == 4
+    assert repository.get_run(run.id) == run
+
+    with pytest.raises(ValueError, match="max_parallel_cases"):
+        management.create_run(
+            target(),
+            dataset_id=LOAN_DATASET.id,
+            max_parallel_cases=0,
+        )
 
 
 def test_create_run_snapshots_latest_enabled_user_evaluator_version(tmp_path) -> None:
@@ -283,6 +306,45 @@ def test_fail_stale_runs_preserves_active_and_pending_runs(tmp_path) -> None:
     assert repository.get_run(stale.id).status is RunStatus.FAILED
     assert repository.get_run(active.id).status is RunStatus.RUNNING
     assert repository.get_run(pending.id).status is RunStatus.PENDING
+
+
+def test_fail_stale_runs_accounts_for_parallel_case_batches(tmp_path) -> None:
+    repository = SQLiteRepository(tmp_path / "parallel-stale-runs.db")
+    seed_demo(repository)
+    management, _ = run_management(repository)
+    dataset, draft = management.dataset_management.copy_dataset(
+        LOAN_DATASET.id,
+        "Four cases",
+    )
+    source_case_id = draft.cases[0].id
+    for _ in range(3):
+        management.dataset_management.copy_case(dataset.id, source_case_id)
+    management.dataset_management.publish_draft(dataset.id)
+
+    sequential = management.create_run(
+        target(),
+        dataset_id=dataset.id,
+        dataset_version=1,
+        timeout_seconds=10,
+        max_parallel_cases=1,
+    )
+    parallel = management.create_run(
+        target(),
+        dataset_id=dataset.id,
+        dataset_version=1,
+        timeout_seconds=10,
+        max_parallel_cases=2,
+    )
+    now = max(sequential.created_at, parallel.created_at) + timedelta(seconds=100)
+    started_at = now - timedelta(seconds=30)
+    repository.claim_pending_run(sequential.id, started_at)
+    repository.claim_pending_run(parallel.id, started_at)
+
+    failed = management.fail_stale_runs(now=now, grace_seconds=5)
+
+    assert [run.id for run in failed] == [parallel.id]
+    assert repository.get_run(sequential.id).status is RunStatus.RUNNING
+    assert repository.get_run(parallel.id).status is RunStatus.FAILED
 
 
 def test_fail_stale_runs_rejects_negative_grace_period(tmp_path) -> None:

@@ -76,6 +76,39 @@ class FailOnCaseTargetAdapter(StubTargetAdapter):
         return super().wait(handle, timeout_seconds)
 
 
+class WindowedTargetAdapter(StubTargetAdapter):
+    def __init__(self, failure_handle_index: int | None = None) -> None:
+        super().__init__()
+        self.failure_handle_index = failure_handle_index
+        self.statuses: dict[str, CaseExecutionStatus] = {}
+        self.active_count = 0
+        self.max_active_count = 0
+
+    def start(self, request: CaseExecutionRequest) -> str:
+        handle = super().start(request)
+        self.statuses[handle] = CaseExecutionStatus.RUNNING
+        self.active_count += 1
+        self.max_active_count = max(self.max_active_count, self.active_count)
+        return handle
+
+    def get_status(self, handle: str) -> CaseExecutionStatus:
+        return self.statuses[handle]
+
+    def wait(self, handle: str, timeout_seconds: float) -> CaseExecutionResult:
+        handle_index = tuple(self.requests).index(handle)
+        if handle_index == self.failure_handle_index:
+            raise TargetExecutionError("unavailable", "Target failed")
+        self.statuses[handle] = CaseExecutionStatus.COMPLETED
+        self.active_count -= 1
+        return super().wait(handle, timeout_seconds)
+
+    def cancel(self, handle: str) -> None:
+        if self.statuses[handle] == CaseExecutionStatus.RUNNING:
+            self.statuses[handle] = CaseExecutionStatus.CANCELLED
+            self.active_count -= 1
+        super().cancel(handle)
+
+
 def evaluator_spec() -> EvaluatorSpec:
     return EvaluatorSpec(
         id="final-output",
@@ -226,6 +259,57 @@ def test_engine_preserves_completed_case_results_when_later_case_fails(
     assert [result.case_id for result in repository.list_results(run.id)] == [
         "case-1"
     ]
+    assert repository.get_run(run.id).status is RunStatus.FAILED
+
+
+def test_engine_limits_active_cases_to_manifest_configuration(tmp_path) -> None:
+    repository = SQLiteRepository(tmp_path / "parallel.db")
+    cases = tuple(
+        Case(
+            id=f"case-{index}",
+            name=f"Case {index}",
+            turns=(
+                CaseTurn(
+                    id=f"turn-{index}",
+                    input={"message": f"message {index}"},
+                ),
+            ),
+        )
+        for index in range(1, 6)
+    )
+    run = pending_run(cases=cases, max_parallel_cases=2)
+    repository.save_run(run)
+    target_adapter = WindowedTargetAdapter()
+
+    completed = engine(repository).execute(run, target_adapter)
+
+    assert completed.status is RunStatus.COMPLETED
+    assert target_adapter.max_active_count == 2
+    assert target_adapter.active_count == 0
+    assert len(repository.list_traces(run.id)) == 5
+    assert len(repository.list_results(run.id)) == 5
+
+
+def test_engine_cancels_all_active_cases_after_parallel_failure(tmp_path) -> None:
+    repository = SQLiteRepository(tmp_path / "parallel-failure.db")
+    cases = tuple(
+        Case(
+            id=f"case-{index}",
+            name=f"Case {index}",
+            turns=(CaseTurn(id=f"turn-{index}", input={"message": "hello"}),),
+        )
+        for index in range(1, 5)
+    )
+    run = pending_run(cases=cases, max_parallel_cases=3)
+    repository.save_run(run)
+    target_adapter = WindowedTargetAdapter(failure_handle_index=0)
+
+    with pytest.raises(TargetExecutionError, match="unavailable"):
+        engine(repository).execute(run, target_adapter)
+
+    assert target_adapter.max_active_count == 3
+    assert target_adapter.active_count == 0
+    assert len(target_adapter.cancelled) == 3
     assert repository.get_run(run.id).status is RunStatus.FAILED
 
 

@@ -41,6 +41,7 @@ def test_submit_demo_run_persists_then_dispatches_pending_run(tmp_path) -> None:
         "loan-agent-v2-fixed",
         dataset_version=1,
         evaluator_ids=["skill-routing", "final-state"],
+        max_parallel_cases=4,
     )
 
     assert run.status is RunStatus.PENDING
@@ -50,6 +51,7 @@ def test_submit_demo_run_persists_then_dispatches_pending_run(tmp_path) -> None:
         run.manifest.target.descriptor_sha256,
     )
     assert descriptor.ref.external_version_id == "loan-agent-v2-fixed"
+    assert run.manifest.max_parallel_cases == 4
     assert dispatcher.run_ids == [run.id]
 
 

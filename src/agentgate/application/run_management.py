@@ -49,6 +49,7 @@ class RunManagement:
         metric_plan: MetricPlan | None = None,
         gate_spec: ReleaseGateSpec | None = None,
         timeout_seconds: float = 300,
+        max_parallel_cases: int = 1,
     ) -> EvaluationRun:
         """Resolve exact inputs, persist a pending Run, and return it."""
 
@@ -72,6 +73,7 @@ class RunManagement:
                 metric_plan=metric_plan or MetricPlan(),
                 gate_spec=gate_spec or ReleaseGateSpec(),
                 timeout_seconds=timeout_seconds,
+                max_parallel_cases=max_parallel_cases,
             )
         )
         self.repository.save_run(run)
@@ -137,8 +139,14 @@ class RunManagement:
         current_time = normalize_utc(now or utcnow(), "stale Run check time")
         failed_runs: list[EvaluationRun] = []
         for run in self.repository.list_runs_by_status(RunStatus.RUNNING):
+            case_count = len(run.manifest.dataset.cases)
+            batch_count = (
+                case_count + run.manifest.max_parallel_cases - 1
+            ) // run.manifest.max_parallel_cases
             deadline = run.started_at + timedelta(
-                seconds=run.manifest.timeout_seconds + grace_seconds
+                seconds=(
+                    run.manifest.timeout_seconds * batch_count + grace_seconds
+                )
             )
             if deadline > current_time:
                 continue

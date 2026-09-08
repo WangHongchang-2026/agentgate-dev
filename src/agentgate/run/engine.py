@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable, Sequence
+from collections import deque
+from collections.abc import Callable, Iterable, Sequence
 from uuid import uuid4
 
 from agentgate.domain import (
@@ -33,6 +34,7 @@ CaseEvaluator = Callable[
     [Case, Trace, tuple[EvaluatorSpec, ...]], Sequence[EvaluationResult]
 ]
 TraceResolver = Callable[[CaseExecutionRequest, CaseExecutionResult], Trace]
+ActiveCase = tuple[Case, CaseExecutionRequest, str]
 
 
 class RunEngine:
@@ -60,46 +62,15 @@ class RunEngine:
             if claimed is None:
                 raise ValueError("EvaluationRun disappeared while being claimed")
             return claimed
-        active_handle: str | None = None
 
         try:
             self._validate_execution(running, target_adapter)
-            for case in running.manifest.dataset.cases:
-                request = self._build_request(running, case)
-                active_handle = target_adapter.start(request)
-                if not active_handle.strip():
-                    raise TargetExecutionError(
-                        "protocol_error", "Target returned a blank execution handle"
-                    )
-                outcome = target_adapter.wait(active_handle, request.timeout_seconds)
-                status = target_adapter.get_status(active_handle)
-                if status == CaseExecutionStatus.CANCELLED:
-                    raise TargetExecutionError(
-                        "cancelled", "Target execution was cancelled"
-                    )
-                if status != CaseExecutionStatus.COMPLETED:
-                    raise TargetExecutionError(
-                        "protocol_error",
-                        f"Target wait returned while execution status was {status.value}",
-                    )
-                active_handle = None
-                trace = self.resolve_trace(request, outcome)
-                self._validate_trace(request, outcome, trace)
-                self.repository.save_trace(trace)
-                case_results = tuple(
-                    self.evaluate_case(
-                        case, trace, running.manifest.evaluator_specs
-                    )
-                )
-                self._validate_results(running, case, trace, case_results)
-                self.repository.save_results(case_results)
+            self._execute_cases(running, target_adapter)
 
             completed = transition_run(running, RunStatus.COMPLETED)
             self.repository.save_run(completed)
             return completed
         except Exception as exc:
-            if active_handle is not None:
-                self._cancel(target_adapter, active_handle)
             terminal_status = (
                 RunStatus.CANCELLED
                 if isinstance(exc, TargetExecutionError) and exc.code == "cancelled"
@@ -109,6 +80,92 @@ class RunEngine:
             terminal = transition_run(running, terminal_status, error=error)
             self.repository.save_run(terminal)
             raise
+
+    def _execute_cases(
+        self,
+        run: EvaluationRun,
+        target_adapter: TargetAdapterProtocol,
+    ) -> None:
+        pending_cases = iter(run.manifest.dataset.cases)
+        active: deque[ActiveCase] = deque()
+        exhausted = False
+
+        try:
+            while active or not exhausted:
+                while not exhausted and len(active) < run.manifest.max_parallel_cases:
+                    try:
+                        case = next(pending_cases)
+                    except StopIteration:
+                        exhausted = True
+                        break
+
+                    request, handle = self._start_case(run, case, target_adapter)
+                    active.append((case, request, handle))
+                    status = target_adapter.get_status(handle)
+                    if status not in {
+                        CaseExecutionStatus.PENDING,
+                        CaseExecutionStatus.RUNNING,
+                    }:
+                        break
+
+                if not active:
+                    continue
+
+                case, request, handle = active[0]
+                self._complete_case(run, case, request, handle, target_adapter)
+                active.popleft()
+        except Exception:
+            self._cancel_active(target_adapter, active)
+            raise
+
+    def _start_case(
+        self,
+        run: EvaluationRun,
+        case: Case,
+        target_adapter: TargetAdapterProtocol,
+    ) -> tuple[CaseExecutionRequest, str]:
+        request = self._build_request(run, case)
+        handle = target_adapter.start(request)
+        if not handle.strip():
+            raise TargetExecutionError(
+                "protocol_error", "Target returned a blank execution handle"
+            )
+        return request, handle
+
+    def _complete_case(
+        self,
+        run: EvaluationRun,
+        case: Case,
+        request: CaseExecutionRequest,
+        handle: str,
+        target_adapter: TargetAdapterProtocol,
+    ) -> None:
+        outcome = target_adapter.wait(handle, request.timeout_seconds)
+        status = target_adapter.get_status(handle)
+        if status == CaseExecutionStatus.CANCELLED:
+            raise TargetExecutionError("cancelled", "Target execution was cancelled")
+        if status != CaseExecutionStatus.COMPLETED:
+            raise TargetExecutionError(
+                "protocol_error",
+                f"Target wait returned while execution status was {status.value}",
+            )
+        trace = self.resolve_trace(request, outcome)
+        self._validate_trace(request, outcome, trace)
+        self.repository.save_trace(trace)
+        case_results = tuple(
+            self.evaluate_case(case, trace, run.manifest.evaluator_specs)
+        )
+        self._validate_results(run, case, trace, case_results)
+        self.repository.save_results(case_results)
+
+    @classmethod
+    def _cancel_active(
+        cls,
+        target_adapter: TargetAdapterProtocol,
+        active: Iterable[ActiveCase],
+    ) -> None:
+        for _, _, handle in active:
+            cls._cancel(target_adapter, handle)
 
     def _require_persisted_run(self, run: EvaluationRun) -> EvaluationRun:
         if run.status != RunStatus.PENDING:
@@ -127,8 +184,6 @@ class RunEngine:
         manifest = run.manifest
         if manifest.max_retries != 0:
             raise ValueError("RunEngine retry support is not implemented")
-        if manifest.max_parallel_cases != 1:
-            raise ValueError("RunEngine parallel Case execution is not implemented")
         if target_adapter.adapter_type != manifest.target.adapter_type:
             raise ValueError("Target adapter_type does not match RunManifest")
         if target_adapter.adapter_version != manifest.target.adapter_version:
