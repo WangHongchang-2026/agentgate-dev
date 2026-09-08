@@ -14,6 +14,7 @@ from agentgate.domain import (
     RunStatus,
     TargetDescriptor,
     TargetRef,
+    TargetType,
     Trace,
 )
 
@@ -52,6 +53,35 @@ class AgentGateRepository(Protocol):
     def save_run(self, run: EvaluationRun) -> None: ...
     def get_run(self, run_id: str) -> EvaluationRun | None: ...
     def list_runs(self, limit: int = 50) -> list[EvaluationRun]: ...
+    def list_runs_by_dataset_version(
+        self, dataset_id: str, version: int, limit: int = 50
+    ) -> list[EvaluationRun]: ...
+    def list_runs_by_case_content(
+        self,
+        dataset_id: str,
+        version: int,
+        case_id: str,
+        content_sha256: str,
+        limit: int = 50,
+    ) -> list[EvaluationRun]: ...
+    def list_runs_by_target_version(
+        self,
+        source_id: str,
+        target_type: TargetType,
+        target_id: str,
+        version: str,
+        limit: int = 50,
+    ) -> list[EvaluationRun]: ...
+    def list_runs_by_skill_version(
+        self,
+        source_id: str,
+        skill_id: str,
+        version: str,
+        limit: int = 50,
+    ) -> list[EvaluationRun]: ...
+    def list_runs_by_evaluator_version(
+        self, evaluator_id: str, version: str, limit: int = 50
+    ) -> list[EvaluationRun]: ...
     def claim_pending_run(
         self, run_id: str, started_at: datetime
     ) -> EvaluationRun | None: ...
