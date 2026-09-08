@@ -7,7 +7,6 @@ from datetime import datetime, timedelta
 
 from agentgate.domain import (
     EvaluationRun,
-    EvaluatorSpec,
     MetricPlan,
     ReleaseGateSpec,
     RunManifest,
@@ -17,13 +16,13 @@ from agentgate.domain import (
     transition_run,
     utcnow,
 )
-from agentgate.evaluator import evaluate_case, validate_evaluation_plan
 from agentgate.integrations.job_dispatchers import JobDispatcher
 from agentgate.run.engine import RunEngine, TraceResolver
 from agentgate.run.target_protocol import TargetAdapterProtocol
 from agentgate.storage.repository import AgentGateRepository
 
 from .dataset_management import DatasetManagement
+from .evaluator_management import EvaluatorManagement
 
 
 class RunManagement:
@@ -32,16 +31,11 @@ class RunManagement:
     def __init__(
         self,
         repository: AgentGateRepository,
-        evaluator_specs: Sequence[EvaluatorSpec],
+        evaluator_management: EvaluatorManagement,
     ) -> None:
         self.repository = repository
         self.dataset_management = DatasetManagement(repository)
-        self.evaluator_specs = tuple(evaluator_specs)
-        if not self.evaluator_specs:
-            raise ValueError("at least one available Evaluator is required")
-        ids = tuple(spec.id for spec in self.evaluator_specs)
-        if len(set(ids)) != len(ids):
-            raise ValueError("available Evaluator IDs must be unique")
+        self.evaluator_management = evaluator_management
 
     def create_run(
         self,
@@ -61,8 +55,8 @@ class RunManagement:
             if dataset_version is not None
             else self.dataset_management.latest_published(dataset_id)
         )
-        selected = self._select_evaluators(evaluator_ids)
-        validate_evaluation_plan(dataset, selected)
+        selected = self.evaluator_management.select(evaluator_ids)
+        self.evaluator_management.validate_plan(dataset, selected)
         run = EvaluationRun(
             manifest=RunManifest(
                 dataset=dataset,
@@ -90,7 +84,11 @@ class RunManagement:
             raise ValueError(f"unknown EvaluationRun: {run_id}")
         if run.status is not RunStatus.PENDING:
             return run
-        engine = RunEngine(self.repository, evaluate_case, trace_resolver)
+        engine = RunEngine(
+            self.repository,
+            self.evaluator_management.evaluate_case,
+            trace_resolver,
+        )
         return engine.execute(run, target_adapter)
 
     def dispatch_run(
@@ -153,19 +151,3 @@ class RunManagement:
                 continue
             failed_runs.append(failed)
         return failed_runs
-
-    def _select_evaluators(
-        self, evaluator_ids: Sequence[str] | None
-    ) -> tuple[EvaluatorSpec, ...]:
-        if evaluator_ids is None:
-            return self.evaluator_specs
-        requested = tuple(evaluator_ids)
-        if not requested:
-            raise ValueError("at least one Evaluator is required")
-        if len(set(requested)) != len(requested):
-            raise ValueError("evaluator_ids must be unique")
-        by_id = {spec.id: spec for spec in self.evaluator_specs}
-        unknown = set(requested).difference(by_id)
-        if unknown:
-            raise ValueError(f"unknown Evaluators: {', '.join(sorted(unknown))}")
-        return tuple(by_id[evaluator_id] for evaluator_id in requested)

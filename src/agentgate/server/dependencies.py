@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from fastapi import Request
 
 from agentgate.application import DatasetManagement, ResultReader, RunManagement
+from agentgate.application.evaluator_management import (
+    EvaluatorManagement,
+    build_default_evaluator_management,
+)
 from agentgate.demo.bootstrap import ensure_demo_dataset
 from agentgate.demo.loan import LOAN_DATASET, LoanAgent
 from agentgate.domain import (
@@ -19,9 +23,14 @@ from agentgate.domain import (
     TargetType,
     content_sha256,
 )
-from agentgate.evaluator import EVALUATORS
 from agentgate.integrations.job_dispatchers import JobDispatcher
 from agentgate.integrations.job_dispatchers.celery import CeleryJobDispatcher
+from agentgate.integrations.model_providers.environment import (
+    load_judge_model_from_environment,
+)
+from agentgate.integrations.model_providers.openai_compatible import (
+    OpenAICompatibleModelClient,
+)
 from agentgate.integrations.observability import (
     InMemoryTraceCapture,
     ingest_otlp_http_json,
@@ -36,10 +45,23 @@ class ServerDependencies:
 
     repository: SQLiteRepository
     datasets: DatasetManagement
+    evaluators: EvaluatorManagement
     runs: RunManagement
     results: ResultReader
     dispatcher: JobDispatcher
     demo_state: dict[str, dict]
+    _judge_client: OpenAICompatibleModelClient | None = field(
+        default=None,
+        repr=False,
+    )
+
+    def close(self) -> None:
+        """Release process-lifetime resources owned by these dependencies."""
+
+        client = self._judge_client
+        self._judge_client = None
+        if client is not None:
+            client.close()
 
     def ingest_otlp_json(self, payload: dict[str, Any]) -> int:
         """Normalize and persist one external OTLP/HTTP JSON payload."""
@@ -125,14 +147,33 @@ def build_dependencies(
     path = database_path or os.getenv("AGENTGATE_DB", "agentgate.db")
     repository = SQLiteRepository(path)
     ensure_demo_dataset(repository)
-    return ServerDependencies(
-        repository=repository,
-        datasets=DatasetManagement(repository),
-        runs=RunManagement(repository, EVALUATORS),
-        results=ResultReader(repository),
-        dispatcher=dispatcher or CeleryJobDispatcher(),
-        demo_state={},
-    )
+    configured_judge = load_judge_model_from_environment()
+    try:
+        evaluator_management = (
+            build_default_evaluator_management()
+            if configured_judge is None
+            else build_default_evaluator_management(
+                judge_client=configured_judge.client,
+                judge_model_id=configured_judge.model_id,
+                judge_credential_ref=configured_judge.credential_ref,
+            )
+        )
+        return ServerDependencies(
+            repository=repository,
+            datasets=DatasetManagement(repository),
+            evaluators=evaluator_management,
+            runs=RunManagement(repository, evaluator_management),
+            results=ResultReader(repository),
+            dispatcher=dispatcher or CeleryJobDispatcher(),
+            demo_state={},
+            _judge_client=(
+                configured_judge.client if configured_judge is not None else None
+            ),
+        )
+    except Exception:
+        if configured_judge is not None:
+            configured_judge.client.close()
+        raise
 
 
 def _demo_target(version: str) -> TargetSnapshot:

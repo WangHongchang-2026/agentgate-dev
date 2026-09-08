@@ -119,7 +119,7 @@ Current Level 2 progress:
   implemented; Celery delivery and HTTP activity projections remain pending.
 - Real OTel Trace capture for the Demo Agent is implemented through
   `integrations/observability/in_memory.py`. OTLP/HTTP JSON ingestion is implemented;
-  Trace redaction and obsolete scaffold removal remain pending.
+  protected Trace read views and obsolete scaffold removal are implemented.
 
 ## Global architecture decisions
 

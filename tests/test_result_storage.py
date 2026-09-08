@@ -3,19 +3,17 @@ from uuid import uuid4
 
 import pytest
 
-from agentgate.control_plane import EvaluationService
 from agentgate.storage.sqlite import SQLiteRepository
 
 
-def completed_run(tmp_path):
+def completed_run(tmp_path, execute_demo):
     repository = SQLiteRepository(tmp_path / "results.db")
-    service = EvaluationService(repository)
-    run = service.launch("loan-agent-v2-fixed")
+    run, _ = execute_demo(repository, "loan-agent-v2-fixed")
     return repository, run, repository.list_results(run.id)
 
 
-def test_results_are_immutable_idempotent_and_logically_unique(tmp_path):
-    repository, run, results = completed_run(tmp_path)
+def test_results_are_immutable_idempotent_and_logically_unique(tmp_path, execute_demo):
+    repository, run, results = completed_run(tmp_path, execute_demo)
     first = results[0]
 
     repository.save_results(results)
@@ -29,8 +27,8 @@ def test_results_are_immutable_idempotent_and_logically_unique(tmp_path):
     assert repository.list_results(run.id) == results
 
 
-def test_result_batch_rejects_duplicate_ids_and_logical_keys(tmp_path):
-    _, _, results = completed_run(tmp_path)
+def test_result_batch_rejects_duplicate_ids_and_logical_keys(tmp_path, execute_demo):
+    _, _, results = completed_run(tmp_path, execute_demo)
     first = results[0]
 
     with pytest.raises(ValueError, match="ids must be unique"):
@@ -42,8 +40,8 @@ def test_result_batch_rejects_duplicate_ids_and_logical_keys(tmp_path):
         )
 
 
-def test_result_requires_existing_matching_run_and_trace(tmp_path):
-    _, _, results = completed_run(tmp_path)
+def test_result_requires_existing_matching_run_and_trace(tmp_path, execute_demo):
+    _, _, results = completed_run(tmp_path, execute_demo)
     result = results[0]
     empty = SQLiteRepository(tmp_path / "orphan.db")
 
@@ -51,8 +49,8 @@ def test_result_requires_existing_matching_run_and_trace(tmp_path):
         empty.save_results((result,))
 
 
-def test_result_batch_rolls_back_when_a_later_result_conflicts(tmp_path):
-    repository, run, results = completed_run(tmp_path)
+def test_result_batch_rolls_back_when_a_later_result_conflicts(tmp_path, execute_demo):
+    repository, run, results = completed_run(tmp_path, execute_demo)
     first, second = results[:2]
     with sqlite3.connect(repository.path) as connection:
         connection.execute("DELETE FROM results WHERE id = ?", (first.id,))
@@ -66,8 +64,8 @@ def test_result_batch_rolls_back_when_a_later_result_conflicts(tmp_path):
     assert second in stored
 
 
-def test_result_listing_is_deterministically_ordered(tmp_path):
-    repository, run, results = completed_run(tmp_path)
+def test_result_listing_is_deterministically_ordered(tmp_path, execute_demo):
+    repository, run, results = completed_run(tmp_path, execute_demo)
 
     assert [result.evaluator_id for result in results] == sorted(
         result.evaluator_id for result in results

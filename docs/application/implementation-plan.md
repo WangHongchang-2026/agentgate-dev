@@ -1,6 +1,6 @@
 # Application Implementation Plan
 
-Last updated: 2026-09-07
+Last updated: 2026-09-08
 
 ## 1. Purpose
 
@@ -265,10 +265,10 @@ Each file requires source assessment and explicit approval before implementation
 3. [complete] Implement the initial `result_reader.py` and move report, Trace, and
    overview reads.
 4. [complete] Migrate demo composition to the new Run management boundary.
-5. [partial] Update FastAPI imports to use capability-oriented application modules;
-   CLI migration remains deferred.
-6. Remove `control_plane/`, `run/core.py`, old Python Target tests, and empty legacy Run
-   scaffolds.
+5. [complete] Update FastAPI and CLI imports to use capability-oriented application
+   modules.
+6. [complete] Remove `control_plane/`, `run/core.py`, old Python Target tests, and empty
+   legacy Run scaffolds.
 7. Implement `target_catalog.py` when external Target discovery begins.
 8. Implement `evaluator_management.py` when Evaluator CRUD/version APIs begin.
 9. Implement `lineage_queries.py` using persisted RunManifest indexes.

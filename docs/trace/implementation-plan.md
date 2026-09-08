@@ -2,9 +2,9 @@
 
 Last updated: 2026-09-06
 
-Status: normalizer, in-memory OTel capture, Demo Agent instrumentation, and OTLP/HTTP
-JSON ingestion are implemented. Redaction and obsolete Trace scaffold cleanup remain
-pending; see [`../project-progress.md`](../project-progress.md).
+Status: complete. Normalization, in-memory OTel capture, Demo Agent instrumentation,
+OTLP/HTTP JSON ingestion, protected Trace views, and obsolete scaffold cleanup are
+implemented; see [`../project-progress.md`](../project-progress.md).
 
 ## 1. Purpose
 
@@ -212,17 +212,13 @@ Case execution span
   cannot leak across Runs.
 - Raw telemetry and redacted presentation data remain distinguishable.
 
-## 8. Current Gaps
+## 8. Deferred Extensions
 
-- `LoanAgent.execute()` manually constructs AgentGate Trace objects.
-- The official OpenTelemetry SDK is not installed.
-- The current normalizer accepts missing correlation through fallback Run/Case values.
-- The current receiver writes each normalized batch directly and can replace an earlier
-  partial snapshot.
-- Completion, final output, final state, and Turn outcomes are not derived from OTLP.
-- The receiver still lives under `trace/receivers/` instead of integrations.
-- Empty Trace importer, external, graph, evidence, and model scaffolds remain.
-- RunEngine has an injected resolver but only test resolvers currently exist.
+- External stored-Trace retrieval remains deferred until a real backend caller exists.
+- Cross-batch partial Trace merge and conflict handling remain deferred until a real
+  multi-batch ingestion path exists.
+- Customer-managed redaction profiles remain deferred until an application-owned
+  configuration producer and consumer exist.
 
 ## 9. Source Assessment
 
@@ -292,8 +288,8 @@ Each file requires a source assessment and explicit approval before implementati
 8. Review and move the lightweight receiver to
    `integrations/observability/otlp_http_receiver.py`.
 9. Add `stored_trace.py` only with a real external retrieval caller.
-10. Review and implement `trace/redaction.py` with its first Judge/UI caller.
-11. Remove old receiver and empty Trace scaffolds after all imports migrate.
+10. [complete] Review and implement `trace/redaction.py` with its first UI caller.
+11. [complete] Remove old receiver and empty Trace scaffolds after all imports migrate.
 12. Run focused tests, the complete backend suite, and an end-to-end demo Run.
 
 ## 11. Test Plan
@@ -324,6 +320,14 @@ Each file requires a source assessment and explicit approval before implementati
 - partial telemetry is not exposed to Evaluators as complete;
 - credentials and oversized payloads do not enter logs or persisted errors.
 
+### Redaction
+
+- sensitive keys and embedded secrets are removed from every Trace payload location;
+- identity, span topology, ordering, timestamps, and status remain unchanged;
+- redaction is deterministic and idempotent;
+- persisted raw evidence remains unchanged;
+- ResultReader and FastAPI return the protected view.
+
 ### Regression
 
 - existing risky/fixed scores and release-gate outcomes remain equivalent;
@@ -342,6 +346,8 @@ integrations/observability -> trace/normalizer.py
 integrations/observability -> storage repository interface
 
 trace/normalizer.py -> domain Trace models
+trace/redaction.py -> domain Trace models
+ResultReader -> trace/redaction.py
 RunEngine -> injected TraceResolver callable
 ```
 
@@ -399,3 +405,14 @@ Status: implemented; focused Trace and adapter tests passing
 | `integration/p1-new` | Preserve W3C propagation as a design reference; reject manual OTLP fabrication and obsolete adapter models. |
 | Current refactor | Reuse `TargetAdapterProtocol`, `InMemoryTraceCapture`, and canonical Trace completion rules. |
 | From scratch | Implement `LoanAgent.invoke()`, real OTel business spans, Case/Turn adapter spans, and parent-based Turn selection. |
+
+### `trace/redaction.py`
+
+Status: implemented; 361 tests passing
+
+| Source | Decision |
+| --- | --- |
+| `goal/p1-demo` | Reject; it contains no Trace redaction implementation. |
+| `integration/p1-new` | Reject; it contains no Trace redaction implementation. |
+| Current refactor | Reuse immutable `Trace`, `TraceSpan`, and `FrozenJsonObject` contracts and the application read boundary. |
+| From scratch | Implement recursive key and text redaction, checksum-aware card masking, immutable protected views, and ResultReader/FastAPI integration. |

@@ -1,17 +1,24 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from agentgate.application import RunManagement
+from agentgate.application.evaluator_management import (
+    DEFAULT_EVALUATOR_MANAGEMENT,
+    build_default_evaluator_management,
+)
 from agentgate.demo.bootstrap import ensure_demo_dataset
-from agentgate.demo.loan import LOAN_DATASET
+from agentgate.demo.loan import LOAN_DATASET, LOAN_DATASET_VERSION
 from agentgate.domain import RunStatus, TargetRef, TargetSnapshot, TargetType
-from agentgate.evaluator import EVALUATORS
+from agentgate.evaluator.judge import JudgeRequest, JudgeResponse
 from agentgate.integrations.job_dispatchers.celery import (
     CeleryJobDispatcher,
     create_celery_app,
     execute_evaluation_run,
 )
+from agentgate.integrations.model_providers.environment import ConfiguredJudgeModel
 from agentgate.integrations.targets import DemoLoanTargetAdapter
 from agentgate.storage.sqlite import SQLiteRepository
 
@@ -22,6 +29,42 @@ class RecordingTask:
 
     def apply_async(self, **kwargs) -> None:
         self.calls.append(kwargs)
+
+
+class RecordingJudgeClient:
+    provider_id = "company-llm"
+
+    def __init__(self) -> None:
+        self.requests: list[JudgeRequest] = []
+        self.closed = False
+
+    def complete(self, request: JudgeRequest) -> JudgeResponse:
+        self.requests.append(request)
+        return JudgeResponse(
+            text=json.dumps(
+                {
+                    "verdict": "pass",
+                    "score": 0.9,
+                    "confidence": 0.95,
+                    "reason": "The answer satisfies the rubric",
+                    "violations": [],
+                }
+            ),
+            resolved_model_id="resolved-judge-model",
+            request_id="judge-request",
+        )
+
+    def close(self) -> None:
+        self.closed = True
+
+
+def configured_judge(client: RecordingJudgeClient) -> ConfiguredJudgeModel:
+    return ConfiguredJudgeModel(
+        provider_id=client.provider_id,
+        model_id="judge-model",
+        credential_ref="env:AGENTGATE_JUDGE_API_KEY",
+        client=client,  # type: ignore[arg-type]
+    )
 
 
 def target() -> TargetSnapshot:
@@ -75,7 +118,7 @@ def test_worker_executes_persisted_run_and_duplicate_is_noop(
     monkeypatch.setenv("AGENTGATE_DB", str(database_path))
     repository = SQLiteRepository(database_path)
     ensure_demo_dataset(repository)
-    run = RunManagement(repository, EVALUATORS).create_run(
+    run = RunManagement(repository, DEFAULT_EVALUATOR_MANAGEMENT).create_run(
         target(), dataset_id=LOAN_DATASET.id
     )
 
@@ -84,10 +127,74 @@ def test_worker_executes_persisted_run_and_duplicate_is_noop(
     assert completed is not None
     assert completed.status is RunStatus.COMPLETED
     result_count = len(repository.list_results(run.id))
-    assert result_count == len(EVALUATORS)
+    assert result_count == len(DEFAULT_EVALUATOR_MANAGEMENT.available_specs)
 
     assert execute_evaluation_run.run(run.id) == RunStatus.COMPLETED.value
     assert len(repository.list_results(run.id)) == result_count
+
+
+def test_worker_executes_configured_judge_and_closes_client(
+    tmp_path, monkeypatch
+) -> None:
+    database_path = tmp_path / "judge-worker.db"
+    monkeypatch.setenv("AGENTGATE_DB", str(database_path))
+    repository = SQLiteRepository(database_path)
+    ensure_demo_dataset(repository)
+    client = RecordingJudgeClient()
+    configuration = configured_judge(client)
+    management = build_default_evaluator_management(
+        judge_client=client,
+        judge_model_id=configuration.model_id,
+        judge_credential_ref=configuration.credential_ref,
+    )
+    run = RunManagement(repository, management).create_run(
+        target(), dataset_id=LOAN_DATASET.id
+    )
+    monkeypatch.setattr(
+        "agentgate.integrations.job_dispatchers.celery."
+        "load_judge_model_from_environment",
+        lambda: configuration,
+    )
+
+    assert execute_evaluation_run.run(run.id) == RunStatus.COMPLETED.value
+
+    assert len(repository.list_results(run.id)) == len(management.available_specs)
+    assert len(client.requests) == len(LOAN_DATASET_VERSION.cases)
+    assert client.closed is True
+
+
+def test_worker_closes_judge_client_when_composition_fails(
+    tmp_path, monkeypatch
+) -> None:
+    database_path = tmp_path / "judge-composition-failure.db"
+    monkeypatch.setenv("AGENTGATE_DB", str(database_path))
+    repository = SQLiteRepository(database_path)
+    ensure_demo_dataset(repository)
+    run = RunManagement(repository, DEFAULT_EVALUATOR_MANAGEMENT).create_run(
+        target(), dataset_id=LOAN_DATASET.id
+    )
+    client = RecordingJudgeClient()
+    configuration = configured_judge(client)
+    monkeypatch.setattr(
+        "agentgate.integrations.job_dispatchers.celery."
+        "load_judge_model_from_environment",
+        lambda: configuration,
+    )
+
+    def fail_composition(**kwargs) -> None:
+        del kwargs
+        raise ValueError("composition failed")
+
+    monkeypatch.setattr(
+        "agentgate.integrations.job_dispatchers.celery."
+        "build_default_evaluator_management",
+        fail_composition,
+    )
+
+    with pytest.raises(ValueError, match="composition failed"):
+        execute_evaluation_run.run(run.id)
+
+    assert client.closed is True
 
 
 def test_worker_rejects_unknown_run(tmp_path, monkeypatch) -> None:

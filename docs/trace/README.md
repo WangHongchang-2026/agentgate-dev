@@ -2,8 +2,8 @@
 
 The Trace core owns canonical semantic conversion and protection:
 
-Normalization and OTel integrations are implemented. `redaction.py` and obsolete
-scaffold cleanup remain pending. See [project progress](../project-progress.md).
+Normalization, redaction, OTel integrations, and obsolete scaffold cleanup are
+implemented. See [project progress](../project-progress.md).
 
 ```text
 trace/

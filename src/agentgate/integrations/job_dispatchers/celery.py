@@ -9,8 +9,13 @@ from celery import Celery
 from celery.app.task import Task
 
 from agentgate.application import RunManagement
+from agentgate.application.evaluator_management import (
+    build_default_evaluator_management,
+)
 from agentgate.domain import RunStatus
-from agentgate.evaluator import EVALUATORS
+from agentgate.integrations.model_providers.environment import (
+    load_judge_model_from_environment,
+)
 from agentgate.integrations.observability import InMemoryTraceCapture
 from agentgate.integrations.targets import DemoLoanTargetAdapter
 from agentgate.storage.sqlite import SQLiteRepository
@@ -86,15 +91,34 @@ def execute_evaluation_run(run_id: str) -> str:
             "Celery worker does not support the Run Target adapter type"
         )
 
-    capture = InMemoryTraceCapture()
+    configured_judge = load_judge_model_from_environment()
+    capture: InMemoryTraceCapture | None = None
     try:
-        completed = RunManagement(repository, EVALUATORS).execute_run(
+        evaluator_management = (
+            build_default_evaluator_management()
+            if configured_judge is None
+            else build_default_evaluator_management(
+                judge_client=configured_judge.client,
+                judge_model_id=configured_judge.model_id,
+                judge_credential_ref=configured_judge.credential_ref,
+            )
+        )
+        capture = InMemoryTraceCapture()
+        completed = RunManagement(
+            repository,
+            evaluator_management,
+        ).execute_run(
             run.id,
             DemoLoanTargetAdapter(capture),
             capture.resolve,
         )
     finally:
-        capture.shutdown()
+        try:
+            if capture is not None:
+                capture.shutdown()
+        finally:
+            if configured_judge is not None:
+                configured_judge.client.close()
     return completed.status.value
 
 

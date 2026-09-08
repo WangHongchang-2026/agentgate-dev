@@ -11,6 +11,7 @@ from agentgate.domain import EvaluationReport, EvaluationRun, RunStatus, Trace
 from agentgate.domain.base import normalize_utc, utcnow
 from agentgate.result.report import build_evaluation_report
 from agentgate.storage.repository import AgentGateRepository
+from agentgate.trace.redaction import redact_trace
 
 
 class RunProgress(BaseModel):
@@ -141,7 +142,7 @@ class ResultReader:
         trace = self.repository.get_trace(run_id, case_id)
         if trace is None:
             raise LookupError(f"unknown Trace: {run_id}/{case_id}")
-        return trace
+        return redact_trace(trace)
 
     def overview(self) -> dict[str, Any]:
         runs = self.repository.list_runs()

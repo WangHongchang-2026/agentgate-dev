@@ -8,15 +8,17 @@ rules, calculates metrics, and makes release-gate decisions.
 
 Refactor-1 is in progress. The Domain, SQLite, Dataset workflow, deterministic loan
 demo, core Run Engine, result calculation, modular FastAPI foundation, and asynchronous
-Redis/Celery Run workflow are implemented. The Web application can submit Runs, show
-queued and running progress, stop polling after terminal state, and open completed reports.
+Redis/Celery Run workflow are implemented. Case-level LLM Judge evaluation is available
+through an optional OpenAI-compatible model connection. The Web application can submit
+Runs, show queued and running progress, stop polling after terminal state, and open
+completed reports.
 
 - [Whole-project progress and code locations](docs/project-progress.md)
 - [Current architecture](docs/architecture.md)
 - [Documentation index](docs/README.md)
 - [Product requirements](docs/product-requirements-zh.md)
 
-The current backend regression suite has 289 passing tests. The Web application remains
+The current backend regression suite has 508 passing tests. The Web application remains
 partially refactored; consult the progress document for the implemented page scope.
 
 ## Core Flow
@@ -96,8 +98,31 @@ npm install
 cd ..
 ```
 
+### Optional LLM Judge Configuration
+
+The POC can add the built-in `answer-quality` evaluator through one process-level,
+OpenAI-compatible model connection. Export the same four values in the API and Celery
+worker environments:
+
+```bash
+export AGENTGATE_JUDGE_PROVIDER_ID="openai-compatible"
+export AGENTGATE_JUDGE_BASE_URL="https://provider.example/v1"
+export AGENTGATE_JUDGE_API_KEY="$JUDGE_API_KEY"
+export AGENTGATE_JUDGE_MODEL_ID="your-model-id"
+```
+
+`AGENTGATE_JUDGE_PROVIDER_ID` is a stable local label. The base URL must use HTTPS and
+must exclude `/chat/completions`, which the adapter appends. All four variables absent
+keeps the Rule-only catalog; a partial or blank configuration is rejected. The API key
+is held only by the process-local model client and is never persisted in an Evaluator
+specification or Run manifest.
+
+Persistent provider administration, tenant isolation, and Web model-provider settings
+are intentionally deferred beyond this POC configuration path.
+
 Start each process in its own terminal. The API and worker must use the same absolute
-SQLite path and Redis URL.
+SQLite path and Redis URL. When the optional Judge is enabled, both processes must also
+receive the identical four Judge values above.
 
 ```bash
 redis-server --port 6379

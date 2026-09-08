@@ -1,14 +1,15 @@
 """Read-only catalogs used by the AgentGate demo interface."""
 
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from agentgate.demo.loan import LoanAgent
-from agentgate.evaluator import EVALUATORS
+from agentgate.server.dependencies import ServerDependencies, get_dependencies
 
 
 router = APIRouter(prefix="/api", tags=["catalogs"])
+Dependencies = Annotated[ServerDependencies, Depends(get_dependencies)]
 
 _TARGET_VERSION_LABELS = {
     "loan-agent-v1-risky": "Risky version",
@@ -37,8 +38,8 @@ def target_versions() -> list[dict[str, str]]:
 
 
 @router.get("/evaluators")
-def evaluators() -> list[dict[str, Any]]:
+def evaluators(dependencies: Dependencies) -> list[dict[str, Any]]:
     return [
         evaluator.model_dump(mode="json", include=_EVALUATOR_FIELDS)
-        for evaluator in EVALUATORS
+        for evaluator in dependencies.evaluators.available_specs
     ]

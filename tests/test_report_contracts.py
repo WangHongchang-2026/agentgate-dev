@@ -1,20 +1,20 @@
 import pytest
 from pydantic import ValidationError
 
-from agentgate.control_plane import EvaluationService
 from agentgate.domain import EvaluationReport
 from agentgate.result.report import build_evaluation_report
 from agentgate.storage.sqlite import SQLiteRepository
 
 
-def completed_report(tmp_path):
-    service = EvaluationService(SQLiteRepository(tmp_path / "report-contracts.db"))
-    run = service.launch("loan-agent-v2-fixed")
-    return run, service.run_detail(run.id)
+def completed_report(tmp_path, execute_demo):
+    return execute_demo(
+        SQLiteRepository(tmp_path / "report-contracts.db"),
+        "loan-agent-v2-fixed",
+    )
 
 
-def test_empty_results_produce_a_fail_closed_report(tmp_path):
-    run, _ = completed_report(tmp_path)
+def test_empty_results_produce_a_fail_closed_report(tmp_path, execute_demo):
+    run, _ = completed_report(tmp_path, execute_demo)
 
     report = build_evaluation_report(run, ())
 
@@ -27,8 +27,10 @@ def test_empty_results_produce_a_fail_closed_report(tmp_path):
     )
 
 
-def test_report_rejects_overall_metric_counts_that_drift_from_results(tmp_path):
-    _, report = completed_report(tmp_path)
+def test_report_rejects_overall_metric_counts_that_drift_from_results(
+    tmp_path, execute_demo
+):
+    _, report = completed_report(tmp_path, execute_demo)
     overall = report.metrics[0].model_copy(
         update={
             "passed": report.metrics[0].passed + 1,
@@ -46,8 +48,10 @@ def test_report_rejects_overall_metric_counts_that_drift_from_results(tmp_path):
         )
 
 
-def test_report_rejects_gate_reason_that_does_not_match_results(tmp_path):
-    _, report = completed_report(tmp_path)
+def test_report_rejects_gate_reason_that_does_not_match_results(
+    tmp_path, execute_demo
+):
+    _, report = completed_report(tmp_path, execute_demo)
     changed_gate = report.release_gate.model_copy(
         update={"outcome": "fail", "reason_code": "blocking_failure"}
     )

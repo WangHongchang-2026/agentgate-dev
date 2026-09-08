@@ -23,8 +23,11 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
-        dependencies.runs.fail_stale_runs()
-        yield
+        try:
+            dependencies.runs.fail_stale_runs()
+            yield
+        finally:
+            dependencies.close()
 
     application = FastAPI(
         title="AgentGate",

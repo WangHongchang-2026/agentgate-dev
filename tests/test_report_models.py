@@ -1,22 +1,19 @@
 import pytest
 from pydantic import ValidationError
 
-from agentgate.control_plane import EvaluationService
 from agentgate.domain import EvaluationReport, RunStatus
 from agentgate.result.report import build_evaluation_report
 from agentgate.storage.sqlite import SQLiteRepository
 
 
-def completed_report(tmp_path):
+def completed_report(tmp_path, execute_demo):
     repository = SQLiteRepository(tmp_path / "report.db")
-    service = EvaluationService(repository)
-    run = service.launch("loan-agent-v2-fixed")
-    report = service.run_detail(run.id)
+    run, report = execute_demo(repository, "loan-agent-v2-fixed")
     return repository, run, report
 
 
-def test_report_assembles_one_consistent_completed_run(tmp_path):
-    _, run, report = completed_report(tmp_path)
+def test_report_assembles_one_consistent_completed_run(tmp_path, execute_demo):
+    _, run, report = completed_report(tmp_path, execute_demo)
 
     assert isinstance(report, EvaluationReport)
     assert report.run.id == run.id
@@ -25,8 +22,8 @@ def test_report_assembles_one_consistent_completed_run(tmp_path):
     assert report.release_gate.missing_results == ()
 
 
-def test_report_rejects_foreign_and_duplicate_results(tmp_path):
-    _, _, report = completed_report(tmp_path)
+def test_report_rejects_foreign_and_duplicate_results(tmp_path, execute_demo):
+    _, _, report = completed_report(tmp_path, execute_demo)
     foreign = report.results[0].model_copy(update={"run_id": "another-run"})
     with pytest.raises(ValidationError, match="different Run"):
         EvaluationReport(
@@ -45,8 +42,8 @@ def test_report_rejects_foreign_and_duplicate_results(tmp_path):
         )
 
 
-def test_report_rejects_evaluator_and_gate_drift(tmp_path):
-    _, _, report = completed_report(tmp_path)
+def test_report_rejects_evaluator_and_gate_drift(tmp_path, execute_demo):
+    _, _, report = completed_report(tmp_path, execute_demo)
     changed = report.results[0].model_copy(update={"evaluator_version": "other"})
     with pytest.raises(ValidationError, match="RunManifest Evaluator"):
         EvaluationReport(
@@ -66,8 +63,8 @@ def test_report_rejects_evaluator_and_gate_drift(tmp_path):
         )
 
 
-def test_missing_result_produces_valid_fail_closed_report(tmp_path):
-    repository, run, report = completed_report(tmp_path)
+def test_missing_result_produces_valid_fail_closed_report(tmp_path, execute_demo):
+    repository, run, report = completed_report(tmp_path, execute_demo)
     partial = build_evaluation_report(run, report.results[1:])
 
     assert partial.release_gate.outcome == "fail"
@@ -78,8 +75,8 @@ def test_missing_result_produces_valid_fail_closed_report(tmp_path):
     assert repository.get_run(run.id).status == RunStatus.COMPLETED
 
 
-def test_report_requires_completed_run(tmp_path):
-    _, _, report = completed_report(tmp_path)
+def test_report_requires_completed_run(tmp_path, execute_demo):
+    _, _, report = completed_report(tmp_path, execute_demo)
     running = report.run.model_copy(update={"status": RunStatus.PENDING, "started_at": None, "completed_at": None})
     with pytest.raises(ValidationError, match="completed EvaluationRun"):
         EvaluationReport(

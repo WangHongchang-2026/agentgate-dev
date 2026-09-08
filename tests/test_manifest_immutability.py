@@ -4,16 +4,19 @@ from datetime import timedelta
 
 import pytest
 
+from agentgate.application.evaluator_management import (
+    DEFAULT_EVALUATOR_MANAGEMENT,
+)
 from agentgate.domain import (
     Case, CaseTurn, ReleaseGateSpec, MetricPlan, EvaluationRun, RunManifest, TargetRef,
     RunStatus, TargetSnapshot, TargetType, transition_run,
 )
 from agentgate.demo.loan import LOAN_DATASET_VERSION
-from agentgate.evaluator import EVALUATORS
 from agentgate.storage.sqlite import SQLiteRepository
 
 
 def manifest():
+    evaluator_specs = DEFAULT_EVALUATOR_MANAGEMENT.available_specs
     return RunManifest(
         dataset=LOAN_DATASET_VERSION,
         target=TargetSnapshot(
@@ -28,8 +31,8 @@ def manifest():
             adapter_version="1",
             descriptor_sha256="a" * 64,
         ),
-        evaluator_specs=EVALUATORS,
-        primary_evaluator_ids=tuple(item.id for item in EVALUATORS),
+        evaluator_specs=evaluator_specs,
+        primary_evaluator_ids=tuple(item.id for item in evaluator_specs),
         metric_plan=MetricPlan(),
         gate_spec=ReleaseGateSpec(),
     )

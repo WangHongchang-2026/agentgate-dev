@@ -5,6 +5,7 @@ from datetime import timedelta
 import pytest
 
 from agentgate.application import RunManagement
+from agentgate.application.evaluator_management import DEFAULT_EVALUATOR_MANAGEMENT
 from agentgate.demo.bootstrap import ensure_demo_dataset
 from agentgate.demo.loan import LOAN_DATASET
 from agentgate.domain import (
@@ -13,7 +14,7 @@ from agentgate.domain import (
     TargetSnapshot,
     TargetType,
 )
-from agentgate.evaluator import EVALUATORS
+from agentgate.evaluator.models import DuplicateEvaluatorId, UnknownEvaluator
 from agentgate.integrations.observability import InMemoryTraceCapture
 from agentgate.integrations.targets import DemoLoanTargetAdapter
 from agentgate.storage.sqlite import SQLiteRepository
@@ -49,7 +50,7 @@ def target(version: str = "loan-agent-v2-fixed") -> TargetSnapshot:
 def test_create_run_persists_exact_pending_manifest(tmp_path) -> None:
     repository = SQLiteRepository(tmp_path / "create-run.db")
     ensure_demo_dataset(repository)
-    management = RunManagement(repository, EVALUATORS)
+    management = RunManagement(repository, DEFAULT_EVALUATOR_MANAGEMENT)
 
     run = management.create_run(
         target(),
@@ -71,7 +72,7 @@ def test_create_run_persists_exact_pending_manifest(tmp_path) -> None:
 def test_execute_run_uses_engine_adapter_and_trace_resolver(tmp_path) -> None:
     repository = SQLiteRepository(tmp_path / "execute-run.db")
     ensure_demo_dataset(repository)
-    management = RunManagement(repository, EVALUATORS)
+    management = RunManagement(repository, DEFAULT_EVALUATOR_MANAGEMENT)
     run = management.create_run(target(), dataset_id=LOAN_DATASET.id)
     capture = InMemoryTraceCapture()
     adapter = DemoLoanTargetAdapter(capture)
@@ -81,7 +82,7 @@ def test_execute_run_uses_engine_adapter_and_trace_resolver(tmp_path) -> None:
     assert completed.status is RunStatus.COMPLETED
     assert len(repository.list_traces(run.id)) == 1
     results = repository.list_results(run.id)
-    assert len(results) == len(EVALUATORS)
+    assert len(results) == len(DEFAULT_EVALUATOR_MANAGEMENT.available_specs)
     assert all(result.outcome.value not in {"fail", "review", "error"}
                for result in results)
     capture.shutdown()
@@ -90,13 +91,13 @@ def test_execute_run_uses_engine_adapter_and_trace_resolver(tmp_path) -> None:
 def test_create_run_rejects_unknown_or_duplicate_evaluators(tmp_path) -> None:
     repository = SQLiteRepository(tmp_path / "invalid-run.db")
     ensure_demo_dataset(repository)
-    management = RunManagement(repository, EVALUATORS)
+    management = RunManagement(repository, DEFAULT_EVALUATOR_MANAGEMENT)
 
-    with pytest.raises(ValueError, match="unknown Evaluators"):
+    with pytest.raises(UnknownEvaluator, match="unknown Evaluators"):
         management.create_run(
             target(), dataset_id=LOAN_DATASET.id, evaluator_ids=("missing",)
         )
-    with pytest.raises(ValueError, match="must be unique"):
+    with pytest.raises(DuplicateEvaluatorId, match="must be unique"):
         management.create_run(
             target(),
             dataset_id=LOAN_DATASET.id,
@@ -106,7 +107,7 @@ def test_create_run_rejects_unknown_or_duplicate_evaluators(tmp_path) -> None:
 
 def test_execute_run_rejects_unknown_run(tmp_path) -> None:
     repository = SQLiteRepository(tmp_path / "missing-run.db")
-    management = RunManagement(repository, EVALUATORS)
+    management = RunManagement(repository, DEFAULT_EVALUATOR_MANAGEMENT)
     capture = InMemoryTraceCapture()
 
     with pytest.raises(ValueError, match="unknown EvaluationRun"):
@@ -119,7 +120,7 @@ def test_execute_run_rejects_unknown_run(tmp_path) -> None:
 def test_dispatch_run_submits_only_the_persisted_run_id(tmp_path) -> None:
     repository = SQLiteRepository(tmp_path / "dispatch-run.db")
     ensure_demo_dataset(repository)
-    management = RunManagement(repository, EVALUATORS)
+    management = RunManagement(repository, DEFAULT_EVALUATOR_MANAGEMENT)
     run = management.create_run(target(), dataset_id=LOAN_DATASET.id)
     dispatcher = RecordingDispatcher()
 
@@ -133,7 +134,7 @@ def test_dispatch_run_submits_only_the_persisted_run_id(tmp_path) -> None:
 def test_dispatch_failure_is_persisted_without_exception_details(tmp_path) -> None:
     repository = SQLiteRepository(tmp_path / "dispatch-failure.db")
     ensure_demo_dataset(repository)
-    management = RunManagement(repository, EVALUATORS)
+    management = RunManagement(repository, DEFAULT_EVALUATOR_MANAGEMENT)
     run = management.create_run(target(), dataset_id=LOAN_DATASET.id)
     dispatcher = RecordingDispatcher(
         ConnectionError("redis://user:secret@example.invalid")
@@ -151,7 +152,7 @@ def test_dispatch_failure_is_persisted_without_exception_details(tmp_path) -> No
 def test_fail_stale_runs_preserves_active_and_pending_runs(tmp_path) -> None:
     repository = SQLiteRepository(tmp_path / "stale-runs.db")
     ensure_demo_dataset(repository)
-    management = RunManagement(repository, EVALUATORS)
+    management = RunManagement(repository, DEFAULT_EVALUATOR_MANAGEMENT)
     stale = management.create_run(
         target(), dataset_id=LOAN_DATASET.id, timeout_seconds=10
     )
@@ -175,7 +176,7 @@ def test_fail_stale_runs_preserves_active_and_pending_runs(tmp_path) -> None:
 
 def test_fail_stale_runs_rejects_negative_grace_period(tmp_path) -> None:
     repository = SQLiteRepository(tmp_path / "invalid-grace.db")
-    management = RunManagement(repository, EVALUATORS)
+    management = RunManagement(repository, DEFAULT_EVALUATOR_MANAGEMENT)
 
     with pytest.raises(ValueError, match="must not be negative"):
         management.fail_stale_runs(grace_seconds=-1)

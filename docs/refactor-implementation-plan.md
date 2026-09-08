@@ -142,13 +142,37 @@ result.
 | `evaluator/operators/` | Move | `evaluator/rule/operators.py` |
 | `evaluator/rules/*.py` | Move | `evaluator/rule/*.py` |
 | `evaluator/registry.py` | Remove after adaptation | Explicit composition in `application/evaluator_management.py` |
-| `evaluator/validation.py` | Split | Spec invariants in domain; selected-plan preflight in application |
+| `evaluator/validation.py` | Split | Spec invariants in domain; selected-plan and configured JSON Schema preflight in application |
 | `evaluator/hybrid/README.md` | Replace when implemented | `evaluator/hybrid.py` |
-| `evaluator/llm_judge/README.md` | Replace when implemented | `evaluator/judge/` |
-| empty `evaluator/external/` | Remove | Real external adapters belong in `integrations/` |
+| `evaluator/llm_judge/README.md` | Replace | `evaluator/judge/` for case-scoped semantic answer-quality evaluation |
+| empty `evaluator/external/` | Remove | Real provider adapters belong in `integrations/model_providers/` |
+| none | Add | `evaluator/rule/json_schema.py` for safe Draft 2020-12 validation |
+| none | Add | `integrations/model_providers/openai_compatible.py` for preconfigured Chat Completions transport |
+| none | Add | `integrations/model_providers/environment.py` for one optional POC Judge connection |
 
 Preserve per-turn checks, dependency resolution, memoization, evaluator version checks,
 sanitized errors, and independent error Results while removing global registration.
+
+Rule and Hybrid evaluators remain turn-scoped. LLM Judge evaluators execute once per
+complete Case, receive redacted bounded evidence, use provider-neutral model contracts,
+and return strict verdicts with request provenance. The OpenAI-compatible adapter accepts
+only deployment-configured endpoints and already-resolved credentials. The POC environment
+loader requires provider ID, HTTPS base URL, API key, and model ID together; all four absent
+preserves the Rule-only catalog. The API uses that configuration to include the immutable
+`answer-quality` specification in a Run manifest, and Celery reconstructs its runtime
+implementation from identical worker configuration. API and task lifecycles close their
+own model clients. Plaintext credentials never enter `EvaluatorSpec` or persisted manifests.
+
+Persistent provider records, managed production credential resolution, provider-management
+APIs, tenant isolation, and Web provider settings remain separate unfinished capabilities.
+
+`MatchesJsonSchema` resolves through the explicit `matches_json_schema@1` Rule operator.
+`evaluator/rule/json_schema.py` owns schema and structured-instance validation, while
+`application/evaluator_management.py` rejects invalid schemas before Run persistence. A
+missing `$schema` selects Draft 2020-12. Only `#` and local JSON Pointer references are
+accepted; remote, file, relative-document, anchor, and dynamic references are rejected.
+Runtime violation reasons identify only the instance path and failing keyword, never the
+actual value.
 
 ### Trace And Run
 
@@ -227,11 +251,13 @@ The seven planned POC routes remain those defined in [`web/README.md`](web/READM
 Current phase status:
 
 - Phases 0-2: complete.
-- Phase 3: Result behavior is aligned; Evaluator structure remains pending.
-- Phase 4: core Trace, Target, Run, incremental Result persistence, and asynchronous
-  dispatch work; redaction and legacy cleanup remain pending.
-- Phase 5: FastAPI uses Application services and asynchronous Run endpoints; CLI migration
-  and legacy Control Plane removal remain pending.
+- Phase 3: complete; Evaluator structure, Result behavior, Draft 2020-12 JSON Schema Rules,
+  case-level Judge execution, and the OpenAI-compatible provider transport are aligned.
+- Phase 4: complete; Trace protection, Target and Run boundaries, persistence,
+  asynchronous dispatch, and legacy cleanup are aligned.
+- Phase 5: complete; FastAPI, CLI, and workers use Application services, API/worker Judge
+  composition and model-client lifecycles are wired, and the legacy Control Plane is
+  removed.
 - Phase 6: the asynchronous Run vertical slice and desktop/mobile workflow are complete;
   final Router/layout and remaining planned pages are pending.
 - Phase 7: pending.
