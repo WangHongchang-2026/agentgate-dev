@@ -172,8 +172,8 @@ def _validate_compatible(
         raise ValueError("reports reference different Datasets")
     if baseline_dataset.content_sha256 != candidate_dataset.content_sha256:
         raise ValueError("reports use different Dataset content")
-    baseline_cases = tuple(item.id for item in baseline_dataset.cases)
-    candidate_cases = tuple(item.id for item in candidate_dataset.cases)
+    baseline_cases = tuple(item.id for item in baseline_manifest.execution_cases)
+    candidate_cases = tuple(item.id for item in candidate_manifest.execution_cases)
     if baseline_cases != candidate_cases:
         raise ValueError("reports use different ordered Case identities")
 
@@ -241,7 +241,7 @@ def _compare_cases(
     }
     manifest = baseline.run.manifest
     deltas: list[CaseDelta] = []
-    for case in manifest.dataset.cases:
+    for case in manifest.execution_cases:
         for evaluator_id in manifest.primary_evaluator_ids:
             key = (case.id, evaluator_id)
             before = baseline_results.get(key)

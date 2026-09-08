@@ -1080,7 +1080,7 @@ class SQLiteRepository:
                 str(dataset.version),
                 content_sha256(case),
             )
-            for case in dataset.cases
+            for case in manifest.execution_cases
         )
 
         target = manifest.target

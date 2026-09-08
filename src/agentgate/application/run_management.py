@@ -6,7 +6,6 @@ from collections.abc import Sequence
 from datetime import datetime, timedelta
 
 from agentgate.domain import (
-    DatasetVersion,
     EvaluationRun,
     EvaluatorRef,
     MetricPlan,
@@ -66,8 +65,6 @@ class RunManagement:
             if dataset_version is not None
             else self.dataset_management.latest_published(dataset_id)
         )
-        if case_ids is not None:
-            dataset = select_dataset_cases(dataset, case_ids)
         if evaluator_ids is not None and evaluator_refs is not None:
             raise ValueError("use evaluator_ids or evaluator_refs, not both")
         selected = (
@@ -79,6 +76,7 @@ class RunManagement:
         run = EvaluationRun(
             manifest=RunManifest(
                 dataset=dataset,
+                selected_case_ids=tuple(case_ids) if case_ids is not None else None,
                 target=target,
                 evaluator_specs=selected,
                 primary_evaluator_ids=tuple(spec.id for spec in selected),
@@ -151,7 +149,7 @@ class RunManagement:
         current_time = normalize_utc(now or utcnow(), "stale Run check time")
         failed_runs: list[EvaluationRun] = []
         for run in self.repository.list_runs_by_status(RunStatus.RUNNING):
-            case_count = len(run.manifest.dataset.cases)
+            case_count = len(run.manifest.execution_cases)
             batch_count = (
                 case_count + run.manifest.max_parallel_cases - 1
             ) // run.manifest.max_parallel_cases
@@ -177,40 +175,3 @@ class RunManagement:
                 continue
             failed_runs.append(failed)
         return failed_runs
-
-def select_dataset_cases(
-    dataset: DatasetVersion,
-    case_ids: Sequence[str],
-) -> DatasetVersion:
-    """Return a published DatasetVersion containing an explicit Case subset."""
-
-    if not case_ids:
-        raise ValueError("case_ids must contain at least one Case id")
-    if len(set(case_ids)) != len(case_ids):
-        raise ValueError("case_ids must not contain duplicates")
-
-    cases_by_id = {case.id: case for case in dataset.cases}
-    unknown = tuple(case_id for case_id in case_ids if case_id not in cases_by_id)
-    if unknown:
-        raise ValueError(
-            "case_ids reference unknown Cases: " + ", ".join(sorted(unknown))
-        )
-    if (
-        len(case_ids) == len(dataset.cases)
-        and tuple(case.id for case in dataset.cases) == tuple(case_ids)
-    ):
-        return dataset
-    return DatasetVersion.model_validate(
-        {
-            **dataset.model_dump(mode="json"),
-            "id": f"{dataset.id}:subset:{len(case_ids)}",
-            "cases": [
-                cases_by_id[case_id].model_dump(mode="json")
-                for case_id in case_ids
-            ],
-            "notes": (f"{dataset.notes}\n" if dataset.notes else "")
-            + "Run case subset: "
-            + ", ".join(case_ids),
-            "content_sha256": "",
-        }
-    )

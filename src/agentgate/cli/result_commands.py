@@ -75,7 +75,7 @@ def list_badcases(
             "case": case.model_dump(mode="json"),
             "results": results_by_case[case.id],
         }
-        for case in report.run.manifest.dataset.cases
+        for case in report.run.manifest.execution_cases
         if case.id in results_by_case
     ]
     _emit_json(

@@ -16,6 +16,7 @@ from .base import (
     require_sha256,
     utcnow,
 )
+from .case import Case
 from .dataset import DatasetVersion, DatasetVersionStatus
 from .evaluator import EvaluatorSpec
 from .gate import ReleaseGateSpec
@@ -37,6 +38,7 @@ class RunManifest(DomainModel):
     """Exact immutable inputs and effective configuration for one Evaluation Run."""
 
     dataset: DatasetVersion
+    selected_case_ids: tuple[str, ...] | None = None
     target: TargetSnapshot
     evaluator_specs: tuple[EvaluatorSpec, ...] = Field(min_length=1)
     primary_evaluator_ids: tuple[str, ...] = Field(min_length=1)
@@ -72,6 +74,21 @@ class RunManifest(DomainModel):
         if self.dataset.status != DatasetVersionStatus.PUBLISHED:
             raise ValueError("RunManifest requires a published DatasetVersion")
 
+        if self.selected_case_ids is not None:
+            if not self.selected_case_ids:
+                raise ValueError("selected_case_ids must contain at least one Case id")
+            if any(not case_id.strip() for case_id in self.selected_case_ids):
+                raise ValueError("selected_case_ids must not contain blank values")
+            if len(set(self.selected_case_ids)) != len(self.selected_case_ids):
+                raise ValueError("selected_case_ids must not contain duplicates")
+            known_case_ids = {case.id for case in self.dataset.cases}
+            unknown = set(self.selected_case_ids).difference(known_case_ids)
+            if unknown:
+                raise ValueError(
+                    "selected_case_ids reference unknown Cases: "
+                    + ", ".join(sorted(unknown))
+                )
+
         evaluator_ids = tuple(item.id for item in self.evaluator_specs)
         if len(set(evaluator_ids)) != len(evaluator_ids):
             raise ValueError("Evaluator ids must be unique within a RunManifest")
@@ -89,6 +106,7 @@ class RunManifest(DomainModel):
                 "version": self.dataset.version,
                 "content_sha256": self.dataset.content_sha256,
             },
+            "selected_case_ids": self.selected_case_ids,
             "target": {
                 "ref": self.target.ref.model_dump(mode="json"),
                 "content_sha256": self.target.content_sha256,
@@ -113,6 +131,15 @@ class RunManifest(DomainModel):
         if not self.manifest_sha256:
             object.__setattr__(self, "manifest_sha256", expected)
         return self
+
+    @property
+    def execution_cases(self) -> tuple[Case, ...]:
+        """Return the ordered Cases selected for this Run."""
+
+        if self.selected_case_ids is None:
+            return self.dataset.cases
+        cases_by_id = {case.id: case for case in self.dataset.cases}
+        return tuple(cases_by_id[case_id] for case_id in self.selected_case_ids)
 
 
 class EvaluationRun(DomainModel):

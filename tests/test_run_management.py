@@ -450,12 +450,18 @@ def test_create_run_can_freeze_reproducible_case_subset(tmp_path) -> None:
     )
 
     manifest_dataset = run.manifest.dataset
-    assert tuple(case.id for case in manifest_dataset.cases) == selected_ids
-    assert manifest_dataset.dataset_id == full_dataset.dataset_id
-    assert manifest_dataset.version == full_dataset.version
-    assert manifest_dataset.status == full_dataset.status
-    assert manifest_dataset.content_sha256 != full_dataset.content_sha256
-    assert "Run case subset" in manifest_dataset.notes
+    assert manifest_dataset == full_dataset
+    assert run.manifest.selected_case_ids == selected_ids
+    assert tuple(case.id for case in run.manifest.execution_cases) == selected_ids
+    other_run = management.create_run(
+        target(),
+        dataset_id=dataset.id,
+        dataset_version=1,
+        case_ids=("first",),
+        evaluator_ids=("skill-routing", "final-state"),
+    )
+    assert other_run.manifest.dataset == full_dataset
+    assert other_run.manifest.manifest_sha256 != run.manifest.manifest_sha256
 
     capture = InMemoryTraceCapture()
     try:

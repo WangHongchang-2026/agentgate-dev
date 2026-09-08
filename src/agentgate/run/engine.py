@@ -86,7 +86,7 @@ class RunEngine:
         run: EvaluationRun,
         target_adapter: TargetAdapterProtocol,
     ) -> None:
-        pending_cases = iter(run.manifest.dataset.cases)
+        pending_cases = iter(run.manifest.execution_cases)
         active: deque[ActiveCase] = deque()
         exhausted = False
 

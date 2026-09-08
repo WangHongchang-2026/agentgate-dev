@@ -79,6 +79,7 @@ Last updated: 2026-09-08
 | Status | Capability | Function | Code location |
 |---|---|---|---|
 | [x] | Run Engine | Execute every Case and invoke selected Evaluators | `src/agentgate/run/engine.py` |
+| [x] | Reproducible Case subset | Pin ordered Case IDs in the RunManifest and execute only that selection without changing the Dataset version | `src/agentgate/domain/run.py`, `src/agentgate/run/engine.py` |
 | [x] | Worker claiming | Prevent two workers from executing the same Run | `src/agentgate/storage/sqlite.py` |
 | [x] | Incremental persistence | Save each Case's Results as soon as evaluation finishes | `src/agentgate/run/engine.py` |
 | [x] | Dispatcher protocol | Define whole-Run submission through `submit(run_id)` | `src/agentgate/integrations/job_dispatchers/protocol.py` |

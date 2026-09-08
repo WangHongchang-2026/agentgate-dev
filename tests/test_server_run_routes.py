@@ -223,10 +223,8 @@ def test_run_route_accepts_reproducible_case_subset(tmp_path) -> None:
 
     assert response.status_code == 202
     assert dispatcher.run_ids == [run_id]
-    assert [case["id"] for case in run["manifest"]["dataset"]["cases"]] == [
-        "second"
-    ]
-    assert "Run case subset" in run["manifest"]["dataset"]["notes"]
+    assert len(run["manifest"]["dataset"]["cases"]) == 2
+    assert run["manifest"]["selected_case_ids"] == ["second"]
 
 
 def test_run_route_rejects_unknown_case_subset(tmp_path) -> None:
@@ -244,6 +242,8 @@ def test_run_route_rejects_unknown_case_subset(tmp_path) -> None:
         runs = client.get("/api/runs")
 
     assert response.status_code == 422
-    assert response.json()["detail"] == "case_ids reference unknown Cases: missing-case"
+    assert "selected_case_ids reference unknown Cases: missing-case" in (
+        response.json()["detail"]
+    )
     assert dispatcher.run_ids == []
     assert runs.json() == []

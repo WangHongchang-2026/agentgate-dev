@@ -21,7 +21,11 @@ from agentgate.domain import RunStatus, TargetType, content_sha256, transition_r
 from agentgate.storage.sqlite import SQLiteRepository
 
 
-def create_demo_run(repository: SQLiteRepository, version: str):
+def create_demo_run(
+    repository: SQLiteRepository,
+    version: str,
+    case_ids: tuple[str, ...] | None = None,
+):
     ensure_demo_dataset(repository)
     ensure_demo_target_descriptors(TargetCatalog(repository))
     descriptor = get_demo_target_descriptor(version)
@@ -29,6 +33,7 @@ def create_demo_run(repository: SQLiteRepository, version: str):
     return RunManagement(repository, evaluators).create_run(
         build_demo_target_snapshot(descriptor),
         dataset_id=LOAN_DATASET.id,
+        case_ids=case_ids,
     )
 
 
@@ -97,6 +102,44 @@ def test_run_asset_references_are_created_once(tmp_path) -> None:
         + len(run.manifest.evaluator_specs)
     )
     assert initial_count == final_count == expected_count
+
+
+def test_run_asset_references_include_only_selected_cases(tmp_path) -> None:
+    repository = SQLiteRepository(tmp_path / "subset-lineage.db")
+    ensure_demo_dataset(repository)
+    ensure_demo_target_descriptors(TargetCatalog(repository))
+    management = RunManagement(
+        repository,
+        build_default_evaluator_management(repository),
+    )
+    dataset, draft = management.dataset_management.copy_dataset(
+        LOAN_DATASET.id,
+        "Lineage subset",
+    )
+    selected = draft.cases[0]
+    management.dataset_management.copy_case(dataset.id, selected.id)
+    published = management.dataset_management.publish_draft(dataset.id)
+    excluded = published.cases[1]
+    run = management.create_run(
+        build_demo_target_snapshot(
+            get_demo_target_descriptor("loan-agent-v2-fixed")
+        ),
+        dataset_id=dataset.id,
+        case_ids=(selected.id,),
+    )
+
+    assert repository.list_runs_by_case_content(
+        dataset.id,
+        1,
+        selected.id,
+        content_sha256(selected),
+    ) == [run]
+    assert repository.list_runs_by_case_content(
+        dataset.id,
+        1,
+        excluded.id,
+        content_sha256(excluded),
+    ) == []
 
 
 def test_reverse_queries_apply_limits_and_exact_versions(tmp_path) -> None:

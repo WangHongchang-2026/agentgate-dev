@@ -24,7 +24,7 @@ def build_evaluation_report(
     release_gate = decide_release_gate(
         result_list,
         metrics,
-        tuple(item.id for item in manifest.dataset.cases),
+        tuple(item.id for item in manifest.execution_cases),
         manifest.primary_evaluator_ids,
         manifest.gate_spec,
     )
