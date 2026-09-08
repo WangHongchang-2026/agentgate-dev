@@ -558,12 +558,15 @@ class SQLiteRepository:
         target_id: str,
         version: str,
         limit: int = 50,
+        *,
+        content_sha256: str | None = None,
     ) -> list[EvaluationRun]:
         return self._list_runs_by_asset(
             target_type.value,
             source_id,
             target_id,
             version,
+            content_sha256=content_sha256,
             limit=limit,
         )
 
@@ -573,9 +576,16 @@ class SQLiteRepository:
         skill_id: str,
         version: str,
         limit: int = 50,
+        *,
+        content_sha256: str | None = None,
     ) -> list[EvaluationRun]:
         return self._list_runs_by_asset(
-            "skill", source_id, skill_id, version, limit=limit
+            "skill",
+            source_id,
+            skill_id,
+            version,
+            content_sha256=content_sha256,
+            limit=limit,
         )
 
     def list_runs_by_evaluator_version(

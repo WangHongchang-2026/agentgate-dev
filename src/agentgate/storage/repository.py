@@ -71,6 +71,8 @@ class AgentGateRepository(Protocol):
         target_id: str,
         version: str,
         limit: int = 50,
+        *,
+        content_sha256: str | None = None,
     ) -> list[EvaluationRun]: ...
     def list_runs_by_skill_version(
         self,
@@ -78,6 +80,8 @@ class AgentGateRepository(Protocol):
         skill_id: str,
         version: str,
         limit: int = 50,
+        *,
+        content_sha256: str | None = None,
     ) -> list[EvaluationRun]: ...
     def list_runs_by_evaluator_version(
         self, evaluator_id: str, version: str, limit: int = 50

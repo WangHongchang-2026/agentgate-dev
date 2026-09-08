@@ -137,3 +137,98 @@ def test_lineage_graph_rejects_duplicate_or_unknown_relationships() -> None:
         LineageGraph(root_node_id=root.id, nodes=(root, root))
     with pytest.raises(ValidationError, match="unknown node"):
         LineageGraph(root_node_id=root.id, nodes=(root,), edges=(edge,))
+
+
+def test_reverse_lineage_expands_related_runs_from_each_asset(tmp_path) -> None:
+    repository = SQLiteRepository(tmp_path / "reverse-graphs.db")
+    baseline = demo_run(repository, "loan-agent-v1-risky")
+    candidate = demo_run(repository, "loan-agent-v2-fixed")
+    queries = LineageQueries(repository)
+    dataset = candidate.manifest.dataset
+    case = dataset.cases[0]
+    evaluator = candidate.manifest.evaluator_specs[0]
+
+    dataset_graph = queries.get_dataset_lineage(
+        dataset.dataset_id, dataset.version
+    )
+    case_graph = queries.get_case_lineage(
+        dataset.dataset_id, dataset.version, case.id
+    )
+    target_graph = queries.get_target_lineage(candidate.manifest.target.ref)
+    skill_graph = queries.get_skill_lineage(
+        "agentgate-demo", "repayment_plan", "repayment-plan-v1"
+    )
+    evaluator_graph = queries.get_evaluator_lineage(
+        evaluator.id, evaluator.version
+    )
+
+    assert dataset_graph.root_node_id.startswith("dataset:")
+    assert case_graph.root_node_id.startswith("case:")
+    assert target_graph.root_node_id.startswith("agent:")
+    assert skill_graph.root_node_id.startswith("skill:")
+    assert evaluator_graph.root_node_id.startswith("evaluator:")
+    assert _run_ids(dataset_graph) == {baseline.id, candidate.id}
+    assert _run_ids(case_graph) == {baseline.id, candidate.id}
+    assert _run_ids(target_graph) == {candidate.id}
+    assert _run_ids(skill_graph) == {baseline.id, candidate.id}
+    assert _run_ids(evaluator_graph) == {baseline.id, candidate.id}
+
+
+def test_dataset_lineage_without_runs_contains_only_its_root(tmp_path) -> None:
+    repository = SQLiteRepository(tmp_path / "empty-reverse-graph.db")
+    ensure_demo_dataset(repository)
+
+    graph = LineageQueries(repository).get_dataset_lineage(
+        LOAN_DATASET.id, 1
+    )
+
+    assert len(graph.nodes) == 1
+    assert graph.nodes[0].kind == "dataset"
+    assert graph.edges == ()
+
+
+def test_reverse_lineage_rejects_unknown_assets(tmp_path) -> None:
+    repository = SQLiteRepository(tmp_path / "unknown-reverse-graph.db")
+    queries = LineageQueries(repository)
+
+    with pytest.raises(LookupError, match="unknown published DatasetVersion"):
+        queries.get_dataset_lineage("missing", 1)
+    ensure_demo_dataset(repository)
+    with pytest.raises(LookupError, match="unknown Case"):
+        queries.get_case_lineage(LOAN_DATASET.id, 1, "missing")
+    with pytest.raises(LookupError, match="unknown Skill version"):
+        queries.get_skill_lineage("source", "missing", "v1")
+    with pytest.raises(LookupError, match="unknown Evaluator version"):
+        queries.get_evaluator_lineage("missing", "v1")
+
+
+def test_target_lineage_requires_hash_for_ambiguous_external_version(tmp_path) -> None:
+    repository = SQLiteRepository(tmp_path / "ambiguous-target.db")
+    run = demo_run(repository, "loan-agent-v2-fixed")
+    catalog = TargetCatalog(repository)
+    original = get_demo_target_descriptor("loan-agent-v2-fixed")
+    mutated_payload = original.model_dump(
+        mode="json", exclude={"content_sha256", "prompt_sha256"}
+    )
+    mutated_payload["prompt"] = "Mutated in place by the external platform."
+    mutated = TargetDescriptor.model_validate(mutated_payload)
+    catalog.register_descriptor(mutated)
+    queries = LineageQueries(repository)
+
+    with pytest.raises(ValueError, match="multiple content hashes"):
+        queries.get_target_lineage(original.ref)
+
+    graph = queries.get_target_lineage(
+        original.ref, content_hash=original.content_sha256
+    )
+
+    assert graph.root_node_id.startswith("agent:")
+    assert _run_ids(graph) == {run.id}
+
+
+def _run_ids(graph: LineageGraph) -> set[str]:
+    return {
+        node.external_id
+        for node in graph.nodes
+        if node.kind == "run"
+    }
