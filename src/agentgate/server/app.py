@@ -10,7 +10,15 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from agentgate.integrations.job_dispatchers import JobDispatcher
 from agentgate.server.dependencies import build_dependencies
-from agentgate.server.routes import catalogs, datasets, results, runs, system, telemetry
+from agentgate.server.routes import (
+    catalogs,
+    comparisons,
+    datasets,
+    results,
+    runs,
+    system,
+    telemetry,
+)
 
 
 def create_app(
@@ -46,6 +54,7 @@ def create_app(
     application.include_router(catalogs.router)
     application.include_router(runs.router)
     application.include_router(results.router)
+    application.include_router(comparisons.router)
     application.include_router(telemetry.router)
     return application
 
