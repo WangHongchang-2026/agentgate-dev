@@ -12,11 +12,21 @@ from agentgate.domain import (
     EvaluationResult,
     EvaluationRun,
     RunStatus,
+    TargetDescriptor,
+    TargetRef,
     Trace,
 )
 
 
 class AgentGateRepository(Protocol):
+    def save_target_descriptor(self, descriptor: TargetDescriptor) -> None: ...
+    def get_target_descriptor(
+        self, content_sha256: str
+    ) -> TargetDescriptor | None: ...
+    def list_target_descriptors(
+        self, ref: TargetRef | None = None
+    ) -> list[TargetDescriptor]: ...
+
     def save_dataset(self, dataset: Dataset) -> None: ...
     def save_dataset_with_version(
         self, dataset: Dataset, version: DatasetVersion

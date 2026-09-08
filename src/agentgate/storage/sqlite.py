@@ -13,6 +13,8 @@ from agentgate.domain import (
     EvaluationResult,
     EvaluationRun,
     RunStatus,
+    TargetDescriptor,
+    TargetRef,
     Trace,
     canonical_json,
     transition_run,
@@ -20,6 +22,22 @@ from agentgate.domain import (
 
 
 _SCHEMA = """
+CREATE TABLE IF NOT EXISTS target_descriptors (
+    content_sha256 TEXT PRIMARY KEY,
+    source_id TEXT NOT NULL,
+    target_type TEXT NOT NULL CHECK(target_type IN ('agent', 'skill')),
+    external_target_id TEXT NOT NULL,
+    external_version_id TEXT NOT NULL,
+    fetched_at TEXT NOT NULL,
+    payload TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_target_descriptor_ref
+    ON target_descriptors(
+        source_id,
+        target_type,
+        external_target_id,
+        external_version_id
+    );
 CREATE TABLE IF NOT EXISTS datasets (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
@@ -115,6 +133,77 @@ class SQLiteRepository:
         with self._connect() as db:
             db.execute("PRAGMA journal_mode = WAL")
             db.executescript(_SCHEMA)
+
+    def save_target_descriptor(self, descriptor: TargetDescriptor) -> None:
+        with self._connect() as db:
+            existing = db.execute(
+                "SELECT payload FROM target_descriptors WHERE content_sha256 = ?",
+                (descriptor.content_sha256,),
+            ).fetchone()
+            if existing is not None:
+                stored = TargetDescriptor.model_validate_json(existing[0])
+                stored_content = stored.model_dump(
+                    mode="json", exclude={"fetched_at"}
+                )
+                incoming_content = descriptor.model_dump(
+                    mode="json", exclude={"fetched_at"}
+                )
+                if stored_content != incoming_content:
+                    raise ValueError("TargetDescriptor content hash collision")
+                return
+            db.execute(
+                """
+                INSERT INTO target_descriptors(
+                    content_sha256,
+                    source_id,
+                    target_type,
+                    external_target_id,
+                    external_version_id,
+                    fetched_at,
+                    payload
+                ) VALUES(?,?,?,?,?,?,?)
+                """,
+                (
+                    descriptor.content_sha256,
+                    descriptor.ref.source_id,
+                    descriptor.ref.target_type.value,
+                    descriptor.ref.external_target_id,
+                    descriptor.ref.external_version_id,
+                    descriptor.fetched_at.isoformat(),
+                    canonical_json(descriptor),
+                ),
+            )
+
+    def get_target_descriptor(
+        self, content_sha256: str
+    ) -> TargetDescriptor | None:
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT payload FROM target_descriptors WHERE content_sha256 = ?",
+                (content_sha256,),
+            ).fetchone()
+        return TargetDescriptor.model_validate_json(row[0]) if row else None
+
+    def list_target_descriptors(
+        self, ref: TargetRef | None = None
+    ) -> list[TargetDescriptor]:
+        query = "SELECT payload FROM target_descriptors"
+        parameters: tuple[object, ...] = ()
+        if ref is not None:
+            query += (
+                " WHERE source_id=? AND target_type=?"
+                " AND external_target_id=? AND external_version_id=?"
+            )
+            parameters = (
+                ref.source_id,
+                ref.target_type.value,
+                ref.external_target_id,
+                ref.external_version_id,
+            )
+        query += " ORDER BY fetched_at DESC, content_sha256"
+        with self._connect() as db:
+            rows = db.execute(query, parameters).fetchall()
+        return [TargetDescriptor.model_validate_json(row[0]) for row in rows]
 
     def save_dataset(self, dataset: Dataset) -> None:
         with self._connect() as db:
