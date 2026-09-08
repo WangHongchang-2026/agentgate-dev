@@ -136,9 +136,17 @@ Request:
   "candidate_version": "loan-agent-v2-fixed",
   "dataset_id": "loan-risk-policy",
   "dataset_version": 1,
-  "evaluator_ids": ["skill-routing", "final-state"]
+  "evaluators": [
+    {"id": "skill-routing", "version": "1"},
+    {"id": "final-state", "version": "1"}
+  ]
 }
 ```
+
+Every Evaluator selection identifies one exact published version. Both Runs receive the
+same resolved specifications, and the controlled-pair invariant compares each Evaluator's
+ID, version, and content hash. Unknown or duplicate selections are rejected before either
+Run is persisted.
 
 Only canonical demo version IDs and shared evaluation selections are accepted. Extra
 fields are forbidden, so the browser cannot submit raw Target snapshots, adapter settings,

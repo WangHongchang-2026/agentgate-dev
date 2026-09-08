@@ -5,7 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, ConfigDict, Field
 
-from agentgate.domain import RunStatus
+from agentgate.domain import EvaluatorRef, RunStatus
 from agentgate.result import EvaluationComparison
 from agentgate.server.dependencies import ServerDependencies, get_dependencies
 from agentgate.server.errors import (
@@ -20,6 +20,13 @@ router = APIRouter(prefix="/api", tags=["comparisons"])
 Dependencies = Annotated[ServerDependencies, Depends(get_dependencies)]
 
 
+class EvaluatorVersionSelection(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(min_length=1)
+    version: str = Field(min_length=1)
+
+
 class RunComparisonLaunchRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -27,7 +34,7 @@ class RunComparisonLaunchRequest(BaseModel):
     candidate_version: str = Field(min_length=1)
     dataset_id: str = Field(min_length=1)
     dataset_version: int = Field(ge=1)
-    evaluator_ids: list[str] | None = None
+    evaluators: list[EvaluatorVersionSelection] | None = None
 
 
 class RunComparisonVariant(BaseModel):
@@ -55,7 +62,17 @@ def launch_run_comparison(
             request.candidate_version,
             dataset_id=request.dataset_id,
             dataset_version=request.dataset_version,
-            evaluator_ids=request.evaluator_ids,
+            evaluator_refs=(
+                [
+                    EvaluatorRef(
+                        evaluator_id=item.id,
+                        evaluator_version=item.version,
+                    )
+                    for item in request.evaluators
+                ]
+                if request.evaluators is not None
+                else None
+            ),
         )
     except RuntimeError as error:
         raise_service_unavailable(error)

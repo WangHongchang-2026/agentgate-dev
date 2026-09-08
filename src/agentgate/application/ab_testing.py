@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, model_validator
 
 from agentgate.domain import (
     EvaluationRun,
+    EvaluatorRef,
     MetricPlan,
     ReleaseGateSpec,
     RunStatus,
@@ -116,7 +117,7 @@ def create_ab_runs(
     *,
     dataset_id: str,
     dataset_version: int | None = None,
-    evaluator_ids: Sequence[str] | None = None,
+    evaluator_refs: Sequence[EvaluatorRef] | None = None,
     metric_plan: MetricPlan | None = None,
     gate_spec: ReleaseGateSpec | None = None,
     timeout_seconds: float = 300,
@@ -133,7 +134,7 @@ def create_ab_runs(
     run_arguments = {
         "dataset_id": dataset_id,
         "dataset_version": dataset_version,
-        "evaluator_ids": evaluator_ids,
+        "evaluator_refs": evaluator_refs,
         "metric_plan": metric_plan,
         "gate_spec": gate_spec,
         "timeout_seconds": timeout_seconds,

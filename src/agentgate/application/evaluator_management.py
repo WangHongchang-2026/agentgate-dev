@@ -358,6 +358,27 @@ class EvaluatorManagement:
             self._add_selectable(evaluator_id, selected)
         return tuple(selected.values())
 
+    def select_versions(
+        self,
+        evaluator_refs: Sequence[EvaluatorRef],
+    ) -> tuple[EvaluatorSpec, ...]:
+        """Resolve an explicit set of published Evaluator versions."""
+
+        requested = tuple(evaluator_refs)
+        if not requested:
+            raise ValueError("at least one Evaluator is required")
+        evaluator_ids = tuple(ref.evaluator_id for ref in requested)
+        if len(set(evaluator_ids)) != len(evaluator_ids):
+            raise DuplicateEvaluatorId("Evaluator references must be unique")
+        selected: dict[str, EvaluatorSpec] = {}
+        for ref in requested:
+            self._add_selectable(
+                ref.evaluator_id,
+                selected,
+                exact_version=ref.evaluator_version,
+            )
+        return tuple(selected.values())
+
     def validate_plan(
         self,
         dataset: DatasetVersion,

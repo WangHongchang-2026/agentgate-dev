@@ -21,6 +21,7 @@ from agentgate.demo.targets import (
 )
 from agentgate.domain import (
     EvaluatorKind,
+    EvaluatorRef,
     EvaluatorSeverity,
     RunStatus,
     TargetSnapshot,
@@ -177,6 +178,50 @@ def test_create_run_snapshots_latest_enabled_user_evaluator_version(tmp_path) ->
     assert second_run.manifest.evaluator_specs == (second,)
 
 
+def test_create_run_selects_an_exact_historical_evaluator_version(tmp_path) -> None:
+    repository = SQLiteRepository(tmp_path / "exact-evaluator-run.db")
+    seed_demo(repository)
+    runs, evaluators = run_management(repository)
+    evaluator, _ = evaluators.create_evaluator(
+        "Versioned output",
+        kind=EvaluatorKind.RULE,
+        dimension="answer",
+        metric="versioned_output_v1",
+        implementation_id="final_output",
+        config={},
+    )
+    first = evaluators.publish_draft(evaluator.id)
+    evaluators.update_evaluator(evaluator.id, enabled=True)
+    evaluators.create_draft(evaluator.id)
+    evaluators.replace_draft(
+        evaluator.id,
+        kind=EvaluatorKind.RULE,
+        dimension="answer",
+        metric="versioned_output_v2",
+        severity=EvaluatorSeverity.BLOCKING,
+        implementation_id="final_output",
+        implementation_version="1",
+        config={},
+        children=(),
+        combination=None,
+    )
+    second = evaluators.publish_draft(evaluator.id)
+
+    run = runs.create_run(
+        target(),
+        dataset_id=LOAN_DATASET.id,
+        evaluator_refs=(
+            EvaluatorRef(
+                evaluator_id=evaluator.id,
+                evaluator_version=first.version,
+            ),
+        ),
+    )
+
+    assert second.version == "2"
+    assert run.manifest.evaluator_specs == (first,)
+
+
 def test_execute_run_uses_engine_adapter_and_trace_resolver(tmp_path) -> None:
     repository = SQLiteRepository(tmp_path / "execute-run.db")
     seed_demo(repository)
@@ -210,6 +255,21 @@ def test_create_run_rejects_unknown_or_duplicate_evaluators(tmp_path) -> None:
             target(),
             dataset_id=LOAN_DATASET.id,
             evaluator_ids=("final-state", "final-state"),
+        )
+    with pytest.raises(DuplicateEvaluatorId, match="must be unique"):
+        management.create_run(
+            target(),
+            dataset_id=LOAN_DATASET.id,
+            evaluator_refs=(
+                EvaluatorRef(
+                    evaluator_id="final-state",
+                    evaluator_version="1",
+                ),
+                EvaluatorRef(
+                    evaluator_id="final-state",
+                    evaluator_version="1",
+                ),
+            ),
         )
 
 
