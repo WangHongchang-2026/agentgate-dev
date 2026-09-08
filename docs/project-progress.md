@@ -151,15 +151,16 @@ and comments remain English.
 
 | Status | Capability | Function | Code location |
 |---|---|---|---|
-| [ ] | A/B definition | Bind two Target versions to one Dataset and evaluation configuration | `src/agentgate/application/ab_testing.py` **new** |
-| [ ] | A/B execution | Create two ordinary EvaluationRuns through RunManagement | `src/agentgate/application/ab_testing.py` **new** |
+| [x] | A/B definition | Bind two versions of one Agent to the same Dataset and Evaluator configuration | `src/agentgate/application/ab_testing.py` |
+| [x] | A/B execution | Create and independently dispatch two ordinary EvaluationRuns | `src/agentgate/application/ab_testing.py` |
 | [x] | Two-Run comparison foundation | Compare compatible Runs by metrics, Cases, and failure movement | `src/agentgate/result/comparison.py`, `src/agentgate/server/routes/comparisons.py` |
 | [ ] | Significance | Calculate confidence and statistical significance | `src/agentgate/result/statistics.py` **new** |
-| [ ] | A/B orchestration API | Create both variant Runs and retrieve their comparison as one workflow | Extend `src/agentgate/application/ab_testing.py` and `src/agentgate/server/routes/comparisons.py` |
+| [x] | Controlled A/B API | Create the pair and compare it later using the two returned Run IDs | `src/agentgate/server/routes/comparisons.py` |
 | [ ] | A/B Web page | Display variants, differences, confidence, and winner | `web/src/pages/ComparisonPage.vue` **new** |
 
 A/B testing composes ordinary Runs. It does not require a broad top-level
-`experiment/` package for the POC.
+`experiment/` package for the POC. The POC persists two ordinary Runs, not an A/B
+entity, and does not provide A/B history, experiment identity, or A/B lineage.
 
 ## Skill Analysis And Optimizer
 
@@ -184,7 +185,7 @@ plan before implementation.
 
 | Status | Capability | Function | Code location |
 |---|---|---|---|
-| [x] | Current backend regression | Verify the refactor, Evaluator Catalog, and Static Skill Analysis behavior | `tests/` - 629 passing |
+| [x] | Current backend regression | Verify Evaluator Catalog, Static Skill Analysis, and controlled A/B Run creation | `tests/` - 640 passing |
 | [x] | Redis/Celery integration | Verify broker, worker, state, queue visibility, and progress end to end | `tests/test_celery_dispatcher.py`, `web/tests/`, operational smoke |
 | [x] | Browser verification | Verify all currently implemented desktop and mobile workflows | `web/tests/` - 8 passing |
 | [x] | Documentation | Explain setup, APIs, Redis, Celery, and demo operation | `README.md`, `web/README.md`, `docs/` |

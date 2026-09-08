@@ -1,5 +1,6 @@
 """AgentGate application use cases."""
 
+from .ab_testing import ABRunPair, create_ab_runs
 from .dataset_management import DatasetManagement
 from .evaluator_management import (
     BuiltinEvaluatorMutation,
@@ -30,6 +31,7 @@ from .skill_analysis import (
 from .target_catalog import TargetCatalog
 
 __all__ = [
+    "ABRunPair",
     "BuiltinEvaluatorMutation",
     "DatasetManagement",
     "EvaluatorCatalogConflict",
@@ -54,4 +56,5 @@ __all__ = [
     "SkillAnalysisUnavailable",
     "SkillAnalyzer",
     "TargetCatalog",
+    "create_ab_runs",
 ]
