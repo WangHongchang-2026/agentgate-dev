@@ -188,6 +188,8 @@ plan before implementation.
 
 - PostgreSQL migration and high-availability Redis.
 - Authentication, authorization, tenant isolation, quotas, and audit integration.
+- Dependency-based evaluator short-circuiting with explicit blocked/skipped Results and
+  `blocked_by_evaluator_id` provenance.
 - Priority queues, tenant fairness, multiple worker pools, and resource-aware routing.
 - Time-based reservations and recurring schedules.
 - Cooperative cancellation of active local and remote Agent executions.
