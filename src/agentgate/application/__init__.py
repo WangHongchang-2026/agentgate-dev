@@ -1,5 +1,6 @@
 """AgentGate application use cases."""
 
+from .ab_testing import ABRunPair, create_ab_runs
 from .dataset_management import DatasetManagement
 from .evaluator_management import (
     BuiltinEvaluatorMutation,
@@ -19,9 +20,18 @@ from .lineage_queries import (
 )
 from .result_reader import ResultReader, RunActivity, RunProgress
 from .run_management import RunManagement
+from .skill_analysis import (
+    SkillAnalysis,
+    SkillAnalysisFindingNotFound,
+    SkillAnalysisReportNotFound,
+    SkillAnalysisTargetNotFound,
+    SkillAnalysisUnavailable,
+    SkillAnalyzer,
+)
 from .target_catalog import TargetCatalog
 
 __all__ = [
+    "ABRunPair",
     "BuiltinEvaluatorMutation",
     "DatasetManagement",
     "EvaluatorCatalogConflict",
@@ -39,5 +49,12 @@ __all__ = [
     "RunActivity",
     "RunManagement",
     "RunProgress",
+    "SkillAnalysis",
+    "SkillAnalysisFindingNotFound",
+    "SkillAnalysisReportNotFound",
+    "SkillAnalysisTargetNotFound",
+    "SkillAnalysisUnavailable",
+    "SkillAnalyzer",
     "TargetCatalog",
+    "create_ab_runs",
 ]

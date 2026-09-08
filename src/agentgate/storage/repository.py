@@ -15,6 +15,8 @@ from agentgate.domain import (
     EvaluatorDraft,
     EvaluatorSpec,
     RunStatus,
+    SkillAnalysisReport,
+    SkillAnalysisReview,
     TargetDescriptor,
     TargetRef,
     TargetType,
@@ -30,6 +32,20 @@ class AgentGateRepository(Protocol):
     def list_target_descriptors(
         self, ref: TargetRef | None = None
     ) -> list[TargetDescriptor]: ...
+
+    def save_skill_analysis_report(self, report: SkillAnalysisReport) -> None: ...
+    def get_skill_analysis_report(
+        self, report_id: str
+    ) -> SkillAnalysisReport | None: ...
+    def list_skill_analysis_reports(
+        self, target_descriptor_sha256: str, limit: int = 50
+    ) -> list[SkillAnalysisReport]: ...
+    def save_skill_analysis_review(
+        self, report_id: str, review: SkillAnalysisReview
+    ) -> None: ...
+    def list_skill_analysis_reviews(
+        self, report_id: str
+    ) -> list[SkillAnalysisReview]: ...
 
     def save_evaluator(self, evaluator: Evaluator) -> None: ...
     def save_evaluator_with_draft(

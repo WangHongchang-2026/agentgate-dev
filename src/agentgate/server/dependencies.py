@@ -4,17 +4,21 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+from functools import partial
 from pathlib import Path
 from typing import Any
 
 from fastapi import Request
 
 from agentgate.application import (
+    ABRunPair,
     DatasetManagement,
     LineageQueries,
     ResultReader,
     RunManagement,
+    SkillAnalysis,
     TargetCatalog,
+    create_ab_runs,
 )
 from agentgate.application.evaluator_management import (
     EvaluatorManagement,
@@ -29,7 +33,7 @@ from agentgate.demo.targets import (
     build_demo_target_snapshot,
     get_demo_target_descriptor,
 )
-from agentgate.domain import EvaluationRun
+from agentgate.domain import EvaluationRun, TargetSnapshot
 from agentgate.integrations.job_dispatchers import JobDispatcher
 from agentgate.integrations.job_dispatchers.celery import CeleryJobDispatcher
 from agentgate.integrations.model_providers.environment import (
@@ -43,6 +47,7 @@ from agentgate.integrations.observability import (
     ingest_otlp_http_json,
 )
 from agentgate.integrations.targets import DemoLoanTargetAdapter
+from agentgate.skill_analysis import analyze_skill_relationships
 from agentgate.storage.sqlite import SQLiteRepository
 
 
@@ -57,6 +62,7 @@ class ServerDependencies:
     runs: RunManagement
     results: ResultReader
     lineage: LineageQueries
+    skill_analysis: SkillAnalysis
     dispatcher: JobDispatcher
     demo_state: dict[str, dict]
     _judge_client: OpenAICompatibleModelClient | None = field(
@@ -95,6 +101,27 @@ class ServerDependencies:
         )
         return self.runs.dispatch_run(run.id, self.dispatcher)
 
+    def submit_ab_runs(
+        self,
+        baseline_version: str,
+        candidate_version: str,
+        *,
+        dataset_id: str = LOAN_DATASET.id,
+        dataset_version: int | None = None,
+        evaluator_ids: list[str] | None = None,
+    ) -> ABRunPair:
+        """Create and dispatch one controlled pair of POC Loan Agent Runs."""
+
+        return create_ab_runs(
+            self.runs,
+            self.dispatcher,
+            self._resolve_demo_target(baseline_version),
+            self._resolve_demo_target(candidate_version),
+            dataset_id=dataset_id,
+            dataset_version=dataset_version,
+            evaluator_ids=evaluator_ids,
+        )
+
     def execute_demo_run(
         self,
         version: str,
@@ -128,6 +155,15 @@ class ServerDependencies:
         dataset_version: int | None,
         evaluator_ids: list[str] | None,
     ) -> EvaluationRun:
+        target = self._resolve_demo_target(version)
+        return self.runs.create_run(
+            target,
+            dataset_id=dataset_id,
+            dataset_version=dataset_version,
+            evaluator_ids=evaluator_ids,
+        )
+
+    def _resolve_demo_target(self, version: str) -> TargetSnapshot:
         if version not in LoanAgent.versions:
             raise ValueError(f"unknown demo Target version: {version}")
         descriptor = get_demo_target_descriptor(version)
@@ -135,12 +171,7 @@ class ServerDependencies:
             descriptor.ref,
             descriptor.content_sha256,
         )
-        return self.runs.create_run(
-            build_demo_target_snapshot(resolved),
-            dataset_id=dataset_id,
-            dataset_version=dataset_version,
-            evaluator_ids=evaluator_ids,
-        )
+        return build_demo_target_snapshot(resolved)
 
 
 def get_dependencies(request: Request) -> ServerDependencies:
@@ -175,6 +206,15 @@ def build_dependencies(
                 judge_credential_ref=configured_judge.credential_ref,
             )
         )
+        skill_analyzer = (
+            None
+            if configured_judge is None
+            else partial(
+                analyze_skill_relationships,
+                model_client=configured_judge.client,
+                model_id=configured_judge.model_id,
+            )
+        )
         return ServerDependencies(
             repository=repository,
             datasets=DatasetManagement(repository),
@@ -183,6 +223,7 @@ def build_dependencies(
             runs=RunManagement(repository, evaluator_management),
             results=ResultReader(repository),
             lineage=LineageQueries(repository),
+            skill_analysis=SkillAnalysis(repository, skill_analyzer),
             dispatcher=dispatcher or CeleryJobDispatcher(),
             demo_state={},
             _judge_client=(

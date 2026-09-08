@@ -10,6 +10,14 @@ Last updated: 2026-09-08
 - This checklist tracks the complete POC direction. Deferred production work is
   listed separately and is not required to finish the initial demo.
 
+## Work Ownership
+
+| Tag | Scope | Status |
+|---|---|---|
+| `[CODEX-EVALUATOR]` | Persistent Evaluator Catalog | Complete and merged into the backend integration branch |
+| `[CODEX-SKILL]` | Static Skill Analysis backend and API | Complete; commit and integration pending |
+| `[UNASSIGNED]` | A/B orchestration, Web pages, and Optimizer | Not started |
+
 ## Core Foundation
 
 | Status | Capability | Function | Code location |
@@ -48,7 +56,7 @@ Last updated: 2026-09-08
 | [x] | POC Judge environment configuration | Build one optional process-level model connection from four environment variables, remain Rule-only when absent, and reject partial configuration | `src/agentgate/integrations/model_providers/environment.py` |
 | [ ] | Persistent model provider configuration | Store allowlisted endpoints, managed secrets, and production credential resolution for application use | Design required before implementation |
 | [ ] | Multimodal evaluation | Evaluate files, images, and other Artifacts | `src/agentgate/evaluator/judge/multimodal.py` **new**; planned after 2026-09-15 |
-| [ ] | Result comparison | Compare two compatible EvaluationRuns | `src/agentgate/result/comparison.py` **new** |
+| [x] | Result comparison | Compare two compatible EvaluationRuns and expose the comparison API | `src/agentgate/result/comparison.py`, `src/agentgate/server/routes/comparisons.py` |
 
 ## Trace And Target Execution
 
@@ -93,13 +101,14 @@ Last updated: 2026-09-08
 | [x] | Run application service | Coordinate Run creation, dispatch, and execution | `src/agentgate/application/run_management.py` |
 | [x] | Result reader foundation | Read persisted Runs, Results, Traces, and reports | `src/agentgate/application/result_reader.py` |
 | [x] | FastAPI foundation | Expose current Dataset, Run, Result, and Trace APIs | `src/agentgate/server/` |
-| [ ] | Target catalog | Read external Agent and Skill metadata from Dify, Coze, or customer platforms | `src/agentgate/application/target_catalog.py` **new**; planned after POC |
+| [x] | Target catalog | Register, list, and resolve exact immutable Target descriptors | `src/agentgate/application/target_catalog.py` |
+| [ ] | External Target metadata adapters | Read Agent and Skill metadata from Dify, Coze, or customer platforms | `src/agentgate/integrations/targets/`; planned after POC |
 | [x] | Evaluator management | Persist user identities and drafts, publish immutable versions, control availability, select exact specifications, and compose supported implementations | `src/agentgate/application/evaluator_management.py`, `src/agentgate/evaluator/versioning.py`, `src/agentgate/storage/sqlite.py` |
 | [x] | Evaluator Catalog API | Expose built-in and user identities, drafts, publication, exact versions, enable state, and constrained deletion | `src/agentgate/server/routes/evaluators.py` |
 | [x] | Judge API/worker wiring | Create API manifests and reconstruct worker execution from identical optional Judge configuration with process/task lifecycle cleanup | `src/agentgate/application/evaluator_management.py`, `src/agentgate/server/`, `src/agentgate/integrations/job_dispatchers/celery.py` |
 | [ ] | Model provider management API | Configure provider endpoints, model options, and secret references without exposing credentials | Design required before implementation |
-| [ ] | Skill analysis service | Coordinate static Skill analysis | `src/agentgate/application/skill_analysis.py` **new** |
-| [ ] | Lineage queries | Find Runs by Dataset, Target, Evaluator, Prompt, or model version | `src/agentgate/application/lineage_queries.py` **new** |
+| [x] | Skill analysis workflow and API | Resolve exact Targets, run static analysis, persist reports, review findings, and expose HTTP endpoints | `src/agentgate/application/skill_analysis.py`, `src/agentgate/server/routes/skill_analysis.py` |
+| [x] | Lineage queries | Find Runs by Dataset, Case, Target, Skill, or Evaluator version and construct relationship graphs | `src/agentgate/application/lineage_queries.py`, `src/agentgate/server/routes/lineage.py` |
 | [x] | Asynchronous Run API | Create a Run, dispatch it, and return `202 Accepted` | `src/agentgate/server/routes/runs.py` |
 | [x] | Run activity API | Expose queue, running status, progress, and history | `src/agentgate/server/routes/runs.py` |
 | [ ] | API contract review | Finalize response models and sanitized error behavior | `src/agentgate/server/` |
@@ -142,27 +151,27 @@ and comments remain English.
 
 | Status | Capability | Function | Code location |
 |---|---|---|---|
-| [ ] | A/B definition | Bind two Target versions to one Dataset and evaluation configuration | `src/agentgate/application/ab_testing.py` **new** |
-| [ ] | A/B execution | Create two ordinary EvaluationRuns through RunManagement | `src/agentgate/application/ab_testing.py` **new** |
-| [ ] | A/B comparison | Compare scores, pass rates, latency, and failure categories | `src/agentgate/result/comparison.py` **new** |
+| [x] | A/B definition | Bind two versions of one Agent to the same Dataset and Evaluator configuration | `src/agentgate/application/ab_testing.py` |
+| [x] | A/B execution | Create and independently dispatch two ordinary EvaluationRuns | `src/agentgate/application/ab_testing.py` |
+| [x] | Two-Run comparison foundation | Compare compatible Runs by metrics, Cases, and failure movement | `src/agentgate/result/comparison.py`, `src/agentgate/server/routes/comparisons.py` |
 | [ ] | Significance | Calculate confidence and statistical significance | `src/agentgate/result/statistics.py` **new** |
-| [ ] | A/B API | Start and retrieve A/B comparisons | `src/agentgate/server/routes/comparisons.py` **new** |
+| [x] | Controlled A/B API | Create the pair and compare it later using the two returned Run IDs | `src/agentgate/server/routes/comparisons.py` |
 | [ ] | A/B Web page | Display variants, differences, confidence, and winner | `web/src/pages/ComparisonPage.vue` **new** |
 
 A/B testing composes ordinary Runs. It does not require a broad top-level
-`experiment/` package for the POC.
+`experiment/` package for the POC. The POC persists two ordinary Runs, not an A/B
+entity, and does not provide A/B history, experiment identity, or A/B lineage.
 
 ## Skill Analysis And Optimizer
 
 | Status | Capability | Function | Code location |
 |---|---|---|---|
 | [x] | Skill analysis domain | Define static analysis findings and reports | `src/agentgate/domain/skill_analysis.py` |
-| [ ] | Analyzer contract | Define the common static analyzer input/output boundary | `src/agentgate/skill_analysis/analyzer_protocol.py` **new** |
-| [ ] | Description checks | Check clarity, completeness, and routability | `src/agentgate/skill_analysis/description_quality.py` **new** |
-| [ ] | Skill relationships | Detect overlap, conflict, and confusion among Skills | `src/agentgate/skill_analysis/skill_relationships.py` **new** |
-| [ ] | Prompt alignment | Compare Agent Prompt, Skill Prompt, description, Tools, and capability | `src/agentgate/skill_analysis/prompt_alignment.py` **new** |
-| [ ] | Semantic Skill checks | Run bounded LLM-assisted definition analysis | `src/agentgate/skill_analysis/llm_semantic.py` **new** |
-| [ ] | Skill analysis pipeline | Compose analyzers and build the static risk matrix | `src/agentgate/skill_analysis/pipeline.py` **new** |
+| [x] | `[CODEX-SKILL]` Skill relationships | Detect overlap, conflict, duplication, and routing ambiguity through bounded pairwise LLM checks | `src/agentgate/skill_analysis/relationships.py` |
+| [x] | `[CODEX-SKILL]` Persistence and review | Store immutable reports and one current human review per finding | `src/agentgate/storage/repository.py`, `src/agentgate/storage/sqlite.py` |
+| [x] | `[CODEX-SKILL]` Application and API | Run analysis for exact Target descriptors and expose report and review workflows | `src/agentgate/application/skill_analysis.py`, `src/agentgate/server/routes/skill_analysis.py` |
+| [ ] | Automatic invocation | Optionally run static checks during Agent creation or evaluation setup | Deferred until external Target integration is designed |
+| [ ] | Prompt alignment and deterministic description checks | Compare Agent Prompt, Skill descriptions, Tools, and capability boundaries | Deferred after the simple POC |
 | [ ] | Failure clustering | Group similar badcases | `src/agentgate/optimizer/clustering.py` |
 | [ ] | Confusion matrix | Measure expected versus actual Skill routing | `src/agentgate/optimizer/clustering.py` |
 | [ ] | Root-cause analysis | Explain common failure causes | `src/agentgate/optimizer/root_cause.py` |
@@ -176,7 +185,7 @@ plan before implementation.
 
 | Status | Capability | Function | Code location |
 |---|---|---|---|
-| [x] | Current backend regression | Verify current refactor and persistent Evaluator Catalog behavior | `tests/` - 592 passing |
+| [x] | Current backend regression | Verify Evaluator Catalog, Static Skill Analysis, and controlled A/B Run creation | `tests/` - 640 passing |
 | [x] | Redis/Celery integration | Verify broker, worker, state, queue visibility, and progress end to end | `tests/test_celery_dispatcher.py`, `web/tests/`, operational smoke |
 | [x] | Browser verification | Verify all currently implemented desktop and mobile workflows | `web/tests/` - 8 passing |
 | [x] | Documentation | Explain setup, APIs, Redis, Celery, and demo operation | `README.md`, `web/README.md`, `docs/` |
@@ -197,3 +206,4 @@ plan before implementation.
 - Customer-specific Java scheduler and Agent-platform adapters.
 - Production observability platform integrations and external Result callbacks.
 - Automated resume or retry of partially completed Runs.
+- Persisted A/B identity, pair history, and A/B-specific lineage after the POC.

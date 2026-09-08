@@ -3,14 +3,74 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel, ConfigDict, Field
 
+from agentgate.domain import RunStatus
 from agentgate.result import EvaluationComparison
 from agentgate.server.dependencies import ServerDependencies, get_dependencies
-from agentgate.server.errors import raise_conflict, raise_not_found
+from agentgate.server.errors import (
+    raise_conflict,
+    raise_not_found,
+    raise_service_unavailable,
+    raise_unprocessable,
+)
 
 
 router = APIRouter(prefix="/api", tags=["comparisons"])
 Dependencies = Annotated[ServerDependencies, Depends(get_dependencies)]
+
+
+class RunComparisonLaunchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    baseline_version: str = Field(min_length=1)
+    candidate_version: str = Field(min_length=1)
+    dataset_id: str = Field(min_length=1)
+    dataset_version: int = Field(ge=1)
+    evaluator_ids: list[str] | None = None
+
+
+class RunComparisonVariant(BaseModel):
+    run_id: str
+    status: RunStatus
+
+
+class RunComparisonSubmission(BaseModel):
+    baseline: RunComparisonVariant
+    candidate: RunComparisonVariant
+
+
+@router.post(
+    "/run-comparisons",
+    status_code=202,
+    response_model=RunComparisonSubmission,
+)
+def launch_run_comparison(
+    request: RunComparisonLaunchRequest,
+    dependencies: Dependencies,
+) -> RunComparisonSubmission:
+    try:
+        pair = dependencies.submit_ab_runs(
+            request.baseline_version,
+            request.candidate_version,
+            dataset_id=request.dataset_id,
+            dataset_version=request.dataset_version,
+            evaluator_ids=request.evaluator_ids,
+        )
+    except RuntimeError as error:
+        raise_service_unavailable(error)
+    except (LookupError, ValueError) as error:
+        raise_unprocessable(error)
+    return RunComparisonSubmission(
+        baseline=RunComparisonVariant(
+            run_id=pair.baseline_run.id,
+            status=pair.baseline_run.status,
+        ),
+        candidate=RunComparisonVariant(
+            run_id=pair.candidate_run.id,
+            status=pair.candidate_run.status,
+        ),
+    )
 
 
 @router.get("/run-comparisons")
