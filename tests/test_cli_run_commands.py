@@ -6,15 +6,19 @@ from types import SimpleNamespace
 import typer
 from typer.testing import CliRunner
 
-from agentgate.application import ResultReader, RunManagement
+from agentgate.application import ResultReader, RunManagement, TargetCatalog
 from agentgate.application.evaluator_management import DEFAULT_EVALUATOR_MANAGEMENT
 from agentgate.cli import run_commands
-from agentgate.demo.bootstrap import ensure_demo_dataset
+from agentgate.demo.bootstrap import (
+    ensure_demo_dataset,
+    ensure_demo_target_descriptors,
+)
 from agentgate.demo.loan import LOAN_DATASET
 from agentgate.storage.sqlite import SQLiteRepository
 
 
 def cli_for(repository: SQLiteRepository, runs: RunManagement | None = None):
+    ensure_demo_target_descriptors(TargetCatalog(repository))
     management = runs or RunManagement(repository, DEFAULT_EVALUATOR_MANAGEMENT)
     reader = ResultReader(repository)
     app = typer.Typer()

@@ -23,6 +23,7 @@ from agentgate.storage.repository import AgentGateRepository
 
 from .dataset_management import DatasetManagement
 from .evaluator_management import EvaluatorManagement
+from .target_catalog import TargetCatalog
 
 
 class RunManagement:
@@ -36,6 +37,7 @@ class RunManagement:
         self.repository = repository
         self.dataset_management = DatasetManagement(repository)
         self.evaluator_management = evaluator_management
+        self.target_catalog = TargetCatalog(repository)
 
     def create_run(
         self,
@@ -50,6 +52,10 @@ class RunManagement:
     ) -> EvaluationRun:
         """Resolve exact inputs, persist a pending Run, and return it."""
 
+        self.target_catalog.resolve_descriptor(
+            target.ref,
+            target.descriptor_sha256,
+        )
         dataset = (
             self.dataset_management.get_version(dataset_id, dataset_version)
             if dataset_version is not None

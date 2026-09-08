@@ -4,14 +4,21 @@ import json
 
 import pytest
 
-from agentgate.application import RunManagement
+from agentgate.application import RunManagement, TargetCatalog
 from agentgate.application.evaluator_management import (
     DEFAULT_EVALUATOR_MANAGEMENT,
     build_default_evaluator_management,
 )
-from agentgate.demo.bootstrap import ensure_demo_dataset
+from agentgate.demo.bootstrap import (
+    ensure_demo_dataset,
+    ensure_demo_target_descriptors,
+)
 from agentgate.demo.loan import LOAN_DATASET, LOAN_DATASET_VERSION
-from agentgate.domain import RunStatus, TargetRef, TargetSnapshot, TargetType
+from agentgate.demo.targets import (
+    build_demo_target_snapshot,
+    get_demo_target_descriptor,
+)
+from agentgate.domain import RunStatus, TargetSnapshot
 from agentgate.evaluator.judge import JudgeRequest, JudgeResponse
 from agentgate.integrations.job_dispatchers.celery import (
     CeleryJobDispatcher,
@@ -68,18 +75,14 @@ def configured_judge(client: RecordingJudgeClient) -> ConfiguredJudgeModel:
 
 
 def target() -> TargetSnapshot:
-    return TargetSnapshot(
-        ref=TargetRef(
-            source_id="agentgate-demo",
-            target_type=TargetType.AGENT,
-            external_target_id="loan-agent",
-            external_version_id="loan-agent-v2-fixed",
-        ),
-        display_name="Loan Agent",
-        adapter_type=DemoLoanTargetAdapter.adapter_type,
-        adapter_version=DemoLoanTargetAdapter.adapter_version,
-        descriptor_sha256="a" * 64,
+    return build_demo_target_snapshot(
+        get_demo_target_descriptor("loan-agent-v2-fixed")
     )
+
+
+def seed_demo(repository: SQLiteRepository) -> None:
+    ensure_demo_dataset(repository)
+    ensure_demo_target_descriptors(TargetCatalog(repository))
 
 
 def test_dispatcher_sends_only_run_id_with_correlated_task_id() -> None:
@@ -117,7 +120,7 @@ def test_worker_executes_persisted_run_and_duplicate_is_noop(
     database_path = tmp_path / "worker.db"
     monkeypatch.setenv("AGENTGATE_DB", str(database_path))
     repository = SQLiteRepository(database_path)
-    ensure_demo_dataset(repository)
+    seed_demo(repository)
     run = RunManagement(repository, DEFAULT_EVALUATOR_MANAGEMENT).create_run(
         target(), dataset_id=LOAN_DATASET.id
     )
@@ -139,7 +142,7 @@ def test_worker_executes_configured_judge_and_closes_client(
     database_path = tmp_path / "judge-worker.db"
     monkeypatch.setenv("AGENTGATE_DB", str(database_path))
     repository = SQLiteRepository(database_path)
-    ensure_demo_dataset(repository)
+    seed_demo(repository)
     client = RecordingJudgeClient()
     configuration = configured_judge(client)
     management = build_default_evaluator_management(
@@ -169,7 +172,7 @@ def test_worker_closes_judge_client_when_composition_fails(
     database_path = tmp_path / "judge-composition-failure.db"
     monkeypatch.setenv("AGENTGATE_DB", str(database_path))
     repository = SQLiteRepository(database_path)
-    ensure_demo_dataset(repository)
+    seed_demo(repository)
     run = RunManagement(repository, DEFAULT_EVALUATOR_MANAGEMENT).create_run(
         target(), dataset_id=LOAN_DATASET.id
     )

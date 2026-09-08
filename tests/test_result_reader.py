@@ -5,18 +5,23 @@ from uuid import uuid4
 
 import pytest
 
-from agentgate.application import ResultReader, RunManagement
+from agentgate.application import ResultReader, RunManagement, TargetCatalog
 from agentgate.application.evaluator_management import (
     DEFAULT_EVALUATOR_MANAGEMENT,
 )
-from agentgate.demo.bootstrap import ensure_demo_dataset
+from agentgate.demo.bootstrap import (
+    ensure_demo_dataset,
+    ensure_demo_target_descriptors,
+)
 from agentgate.demo.loan import LOAN_DATASET
+from agentgate.demo.targets import (
+    build_demo_target_snapshot,
+    get_demo_target_descriptor,
+)
 from agentgate.domain import (
     FrozenJsonObject,
     RunStatus,
-    TargetRef,
     TargetSnapshot,
-    TargetType,
 )
 from agentgate.integrations.observability import InMemoryTraceCapture
 from agentgate.integrations.targets import DemoLoanTargetAdapter
@@ -24,22 +29,18 @@ from agentgate.storage.sqlite import SQLiteRepository
 
 
 def target() -> TargetSnapshot:
-    return TargetSnapshot(
-        ref=TargetRef(
-            source_id="agentgate-demo",
-            target_type=TargetType.AGENT,
-            external_target_id="loan-agent",
-            external_version_id="loan-agent-v2-fixed",
-        ),
-        display_name="Loan Agent",
-        adapter_type="demo_loan",
-        adapter_version="1",
-        descriptor_sha256="a" * 64,
+    return build_demo_target_snapshot(
+        get_demo_target_descriptor("loan-agent-v2-fixed")
     )
 
 
-def completed_run(repository: SQLiteRepository):
+def seed_demo(repository: SQLiteRepository) -> None:
     ensure_demo_dataset(repository)
+    ensure_demo_target_descriptors(TargetCatalog(repository))
+
+
+def completed_run(repository: SQLiteRepository):
+    seed_demo(repository)
     runs = RunManagement(repository, DEFAULT_EVALUATOR_MANAGEMENT)
     run = runs.create_run(target(), dataset_id=LOAN_DATASET.id)
     capture = InMemoryTraceCapture()
@@ -81,7 +82,7 @@ def test_reader_builds_report_and_returns_trace(tmp_path) -> None:
 
 def test_reader_rejects_unknown_and_non_completed_runs(tmp_path) -> None:
     repository = SQLiteRepository(tmp_path / "reader-errors.db")
-    ensure_demo_dataset(repository)
+    seed_demo(repository)
     reader = ResultReader(repository)
 
     with pytest.raises(LookupError, match="unknown EvaluationRun"):
@@ -196,7 +197,7 @@ def test_progress_tolerates_worker_claim_during_queue_lookup(
     tmp_path, monkeypatch
 ) -> None:
     repository = SQLiteRepository(tmp_path / "claim-race.db")
-    ensure_demo_dataset(repository)
+    seed_demo(repository)
     management = RunManagement(repository, DEFAULT_EVALUATOR_MANAGEMENT)
     pending = management.create_run(target(), dataset_id=LOAN_DATASET.id)
     original_list = repository.list_runs_by_status
@@ -218,7 +219,7 @@ def test_progress_tolerates_worker_claim_during_queue_lookup(
 
 def test_overview_counts_all_runs_beyond_history_page(tmp_path) -> None:
     repository = SQLiteRepository(tmp_path / "uncapped-overview.db")
-    ensure_demo_dataset(repository)
+    seed_demo(repository)
     management = RunManagement(repository, DEFAULT_EVALUATOR_MANAGEMENT)
     for _ in range(51):
         management.create_run(target(), dataset_id=LOAN_DATASET.id)

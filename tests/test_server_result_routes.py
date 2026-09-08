@@ -2,11 +2,11 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from agentgate.demo.loan import LOAN_DATASET
-from agentgate.domain import (
-    TargetRef,
-    TargetSnapshot,
-    TargetType,
+from agentgate.demo.targets import (
+    build_demo_target_snapshot,
+    get_demo_target_descriptor,
 )
+from agentgate.domain import TargetSnapshot
 from agentgate.server.dependencies import ServerDependencies, build_dependencies
 from agentgate.server.routes.results import router
 
@@ -19,17 +19,8 @@ def _client(dependencies: ServerDependencies) -> TestClient:
 
 
 def _target() -> TargetSnapshot:
-    return TargetSnapshot(
-        ref=TargetRef(
-            source_id="agentgate-demo",
-            target_type=TargetType.AGENT,
-            external_target_id="loan-agent",
-            external_version_id="loan-agent-v2-fixed",
-        ),
-        display_name="Loan Agent",
-        adapter_type="demo_loan",
-        adapter_version="1",
-        descriptor_sha256="a" * 64,
+    return build_demo_target_snapshot(
+        get_demo_target_descriptor("loan-agent-v2-fixed")
     )
 
 

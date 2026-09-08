@@ -7,9 +7,17 @@ from pathlib import Path
 
 import typer
 
-from agentgate.application import DatasetManagement, ResultReader, RunManagement
+from agentgate.application import (
+    DatasetManagement,
+    ResultReader,
+    RunManagement,
+    TargetCatalog,
+)
 from agentgate.application.evaluator_management import DEFAULT_EVALUATOR_MANAGEMENT
-from agentgate.demo.bootstrap import ensure_demo_dataset
+from agentgate.demo.bootstrap import (
+    ensure_demo_dataset,
+    ensure_demo_target_descriptors,
+)
 from agentgate.storage.sqlite import SQLiteRepository
 
 from . import dataset_commands, result_commands, run_commands
@@ -41,6 +49,7 @@ def configure(
 
     repository = SQLiteRepository(database or Path("agentgate.db"))
     ensure_demo_dataset(repository)
+    ensure_demo_target_descriptors(TargetCatalog(repository))
     context.obj = CliDependencies(
         datasets=DatasetManagement(repository),
         runs=RunManagement(repository, DEFAULT_EVALUATOR_MANAGEMENT),

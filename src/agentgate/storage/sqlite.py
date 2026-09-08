@@ -13,13 +13,33 @@ from agentgate.domain import (
     EvaluationResult,
     EvaluationRun,
     RunStatus,
+    TargetDescriptor,
+    TargetRef,
+    TargetType,
     Trace,
     canonical_json,
+    content_sha256,
     transition_run,
 )
 
 
 _SCHEMA = """
+CREATE TABLE IF NOT EXISTS target_descriptors (
+    content_sha256 TEXT PRIMARY KEY,
+    source_id TEXT NOT NULL,
+    target_type TEXT NOT NULL CHECK(target_type IN ('agent', 'skill')),
+    external_target_id TEXT NOT NULL,
+    external_version_id TEXT NOT NULL,
+    fetched_at TEXT NOT NULL,
+    payload TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_target_descriptor_ref
+    ON target_descriptors(
+        source_id,
+        target_type,
+        external_target_id,
+        external_version_id
+    );
 CREATE TABLE IF NOT EXISTS datasets (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
@@ -58,6 +78,33 @@ CREATE TABLE IF NOT EXISTS runs (
 );
 CREATE INDEX IF NOT EXISTS idx_runs_status_created
     ON runs(status, created_at, id);
+CREATE TABLE IF NOT EXISTS run_asset_refs (
+    run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+    asset_kind TEXT NOT NULL CHECK(
+        asset_kind IN ('dataset', 'case', 'agent', 'skill', 'evaluator')
+    ),
+    source_id TEXT NOT NULL,
+    asset_id TEXT NOT NULL,
+    version TEXT NOT NULL,
+    content_sha256 TEXT NOT NULL,
+    PRIMARY KEY(
+        run_id,
+        asset_kind,
+        source_id,
+        asset_id,
+        version,
+        content_sha256
+    )
+);
+CREATE INDEX IF NOT EXISTS idx_run_asset_lookup
+    ON run_asset_refs(
+        asset_kind,
+        source_id,
+        asset_id,
+        version,
+        content_sha256,
+        run_id
+    );
 CREATE TABLE IF NOT EXISTS traces (
     id TEXT PRIMARY KEY,
     run_id TEXT NOT NULL,
@@ -115,6 +162,77 @@ class SQLiteRepository:
         with self._connect() as db:
             db.execute("PRAGMA journal_mode = WAL")
             db.executescript(_SCHEMA)
+
+    def save_target_descriptor(self, descriptor: TargetDescriptor) -> None:
+        with self._connect() as db:
+            existing = db.execute(
+                "SELECT payload FROM target_descriptors WHERE content_sha256 = ?",
+                (descriptor.content_sha256,),
+            ).fetchone()
+            if existing is not None:
+                stored = TargetDescriptor.model_validate_json(existing[0])
+                stored_content = stored.model_dump(
+                    mode="json", exclude={"fetched_at"}
+                )
+                incoming_content = descriptor.model_dump(
+                    mode="json", exclude={"fetched_at"}
+                )
+                if stored_content != incoming_content:
+                    raise ValueError("TargetDescriptor content hash collision")
+                return
+            db.execute(
+                """
+                INSERT INTO target_descriptors(
+                    content_sha256,
+                    source_id,
+                    target_type,
+                    external_target_id,
+                    external_version_id,
+                    fetched_at,
+                    payload
+                ) VALUES(?,?,?,?,?,?,?)
+                """,
+                (
+                    descriptor.content_sha256,
+                    descriptor.ref.source_id,
+                    descriptor.ref.target_type.value,
+                    descriptor.ref.external_target_id,
+                    descriptor.ref.external_version_id,
+                    descriptor.fetched_at.isoformat(),
+                    canonical_json(descriptor),
+                ),
+            )
+
+    def get_target_descriptor(
+        self, content_sha256: str
+    ) -> TargetDescriptor | None:
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT payload FROM target_descriptors WHERE content_sha256 = ?",
+                (content_sha256,),
+            ).fetchone()
+        return TargetDescriptor.model_validate_json(row[0]) if row else None
+
+    def list_target_descriptors(
+        self, ref: TargetRef | None = None
+    ) -> list[TargetDescriptor]:
+        query = "SELECT payload FROM target_descriptors"
+        parameters: tuple[object, ...] = ()
+        if ref is not None:
+            query += (
+                " WHERE source_id=? AND target_type=?"
+                " AND external_target_id=? AND external_version_id=?"
+            )
+            parameters = (
+                ref.source_id,
+                ref.target_type.value,
+                ref.external_target_id,
+                ref.external_version_id,
+            )
+        query += " ORDER BY fetched_at DESC, content_sha256"
+        with self._connect() as db:
+            rows = db.execute(query, parameters).fetchall()
+        return [TargetDescriptor.model_validate_json(row[0]) for row in rows]
 
     def save_dataset(self, dataset: Dataset) -> None:
         with self._connect() as db:
@@ -364,9 +482,18 @@ class SQLiteRepository:
                 "SELECT payload FROM runs WHERE id = ?", (run.id,)
             ).fetchone()
             if existing is None:
+                references = self._run_asset_references(db, run)
                 db.execute(
                     "INSERT INTO runs(id,status,created_at,payload) VALUES(?,?,?,?)",
                     (run.id, run.status, run.created_at.isoformat(), canonical_json(run)),
+                )
+                db.executemany(
+                    """
+                    INSERT INTO run_asset_refs(
+                        run_id,asset_kind,source_id,asset_id,version,content_sha256
+                    ) VALUES(?,?,?,?,?,?)
+                    """,
+                    references,
                 )
                 return
 
@@ -398,6 +525,182 @@ class SQLiteRepository:
             rows = db.execute(
                 "SELECT payload FROM runs ORDER BY created_at DESC, id LIMIT ?", (limit,)
             ).fetchall()
+        return [EvaluationRun.model_validate_json(row[0]) for row in rows]
+
+    def list_runs_by_dataset_version(
+        self, dataset_id: str, version: int, limit: int = 50
+    ) -> list[EvaluationRun]:
+        return self._list_runs_by_asset(
+            "dataset", "", dataset_id, str(version), limit=limit
+        )
+
+    def list_runs_by_case_content(
+        self,
+        dataset_id: str,
+        version: int,
+        case_id: str,
+        content_sha256: str,
+        limit: int = 50,
+    ) -> list[EvaluationRun]:
+        return self._list_runs_by_asset(
+            "case",
+            dataset_id,
+            case_id,
+            str(version),
+            content_sha256=content_sha256,
+            limit=limit,
+        )
+
+    def list_runs_by_target_version(
+        self,
+        source_id: str,
+        target_type: TargetType,
+        target_id: str,
+        version: str,
+        limit: int = 50,
+        *,
+        content_sha256: str | None = None,
+    ) -> list[EvaluationRun]:
+        return self._list_runs_by_asset(
+            target_type.value,
+            source_id,
+            target_id,
+            version,
+            content_sha256=content_sha256,
+            limit=limit,
+        )
+
+    def list_runs_by_skill_version(
+        self,
+        source_id: str,
+        skill_id: str,
+        version: str,
+        limit: int = 50,
+        *,
+        content_sha256: str | None = None,
+    ) -> list[EvaluationRun]:
+        return self._list_runs_by_asset(
+            "skill",
+            source_id,
+            skill_id,
+            version,
+            content_sha256=content_sha256,
+            limit=limit,
+        )
+
+    def list_runs_by_evaluator_version(
+        self, evaluator_id: str, version: str, limit: int = 50
+    ) -> list[EvaluationRun]:
+        return self._list_runs_by_asset(
+            "evaluator", "", evaluator_id, version, limit=limit
+        )
+
+    def _run_asset_references(
+        self,
+        db: sqlite3.Connection,
+        run: EvaluationRun,
+    ) -> list[tuple[str, str, str, str, str, str]]:
+        manifest = run.manifest
+        dataset = manifest.dataset
+        references = [
+            (
+                run.id,
+                "dataset",
+                "",
+                dataset.dataset_id,
+                str(dataset.version),
+                dataset.content_sha256,
+            )
+        ]
+        references.extend(
+            (
+                run.id,
+                "case",
+                dataset.dataset_id,
+                case.id,
+                str(dataset.version),
+                content_sha256(case),
+            )
+            for case in dataset.cases
+        )
+
+        target = manifest.target
+        references.append(
+            (
+                run.id,
+                target.ref.target_type.value,
+                target.ref.source_id,
+                target.ref.external_target_id,
+                target.ref.external_version_id,
+                target.descriptor_sha256,
+            )
+        )
+        descriptor_row = db.execute(
+            "SELECT payload FROM target_descriptors WHERE content_sha256=?",
+            (target.descriptor_sha256,),
+        ).fetchone()
+        if descriptor_row is not None:
+            descriptor = TargetDescriptor.model_validate_json(descriptor_row[0])
+            if descriptor.ref != target.ref:
+                raise ValueError(
+                    "TargetDescriptor reference does not match TargetSnapshot"
+                )
+            references.extend(
+                (
+                    run.id,
+                    "skill",
+                    descriptor.ref.source_id,
+                    skill.external_skill_id,
+                    skill.external_version_id,
+                    content_sha256(skill),
+                )
+                for skill in descriptor.skills
+            )
+
+        references.extend(
+            (
+                run.id,
+                "evaluator",
+                "",
+                evaluator.id,
+                evaluator.version,
+                evaluator.content_sha256,
+            )
+            for evaluator in manifest.evaluator_specs
+        )
+        return references
+
+    def _list_runs_by_asset(
+        self,
+        asset_kind: str,
+        source_id: str,
+        asset_id: str,
+        version: str,
+        *,
+        content_sha256: str | None = None,
+        limit: int,
+    ) -> list[EvaluationRun]:
+        if limit < 1:
+            raise ValueError("Run list limit must be at least 1")
+        query = """
+            SELECT runs.payload
+            FROM run_asset_refs
+            JOIN runs ON runs.id=run_asset_refs.run_id
+            WHERE asset_kind=? AND source_id=? AND asset_id=? AND version=?
+        """
+        parameters: tuple[object, ...] = (
+            asset_kind,
+            source_id,
+            asset_id,
+            version,
+        )
+        if content_sha256 is not None:
+            query += " AND content_sha256=?"
+            parameters += (content_sha256,)
+        query += " ORDER BY runs.created_at DESC, runs.id LIMIT ?"
+        parameters += (limit,)
+        with self._connect() as db:
+            rows = db.execute(query, parameters).fetchall()
         return [EvaluationRun.model_validate_json(row[0]) for row in rows]
 
     def claim_pending_run(

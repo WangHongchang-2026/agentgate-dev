@@ -4,16 +4,18 @@ from datetime import timedelta
 
 import pytest
 
-from agentgate.application import RunManagement
+from agentgate.application import RunManagement, TargetCatalog
 from agentgate.application.evaluator_management import DEFAULT_EVALUATOR_MANAGEMENT
-from agentgate.demo.bootstrap import ensure_demo_dataset
-from agentgate.demo.loan import LOAN_DATASET
-from agentgate.domain import (
-    RunStatus,
-    TargetRef,
-    TargetSnapshot,
-    TargetType,
+from agentgate.demo.bootstrap import (
+    ensure_demo_dataset,
+    ensure_demo_target_descriptors,
 )
+from agentgate.demo.loan import LOAN_DATASET
+from agentgate.demo.targets import (
+    build_demo_target_snapshot,
+    get_demo_target_descriptor,
+)
+from agentgate.domain import RunStatus, TargetSnapshot
 from agentgate.evaluator.models import DuplicateEvaluatorId, UnknownEvaluator
 from agentgate.integrations.observability import InMemoryTraceCapture
 from agentgate.integrations.targets import DemoLoanTargetAdapter
@@ -32,24 +34,19 @@ class RecordingDispatcher:
 
 
 def target(version: str = "loan-agent-v2-fixed") -> TargetSnapshot:
-    return TargetSnapshot(
-        ref=TargetRef(
-            source_id="agentgate-demo",
-            target_type=TargetType.AGENT,
-            external_target_id="loan-agent",
-            external_version_id=version,
-        ),
-        display_name="Loan Agent",
-        adapter_type="demo_loan",
-        adapter_version="1",
-        descriptor_sha256="a" * 64,
-        invocation_config={"provider": "deterministic"},
+    return build_demo_target_snapshot(
+        get_demo_target_descriptor(version)
     )
+
+
+def seed_demo(repository: SQLiteRepository) -> None:
+    ensure_demo_dataset(repository)
+    ensure_demo_target_descriptors(TargetCatalog(repository))
 
 
 def test_create_run_persists_exact_pending_manifest(tmp_path) -> None:
     repository = SQLiteRepository(tmp_path / "create-run.db")
-    ensure_demo_dataset(repository)
+    seed_demo(repository)
     management = RunManagement(repository, DEFAULT_EVALUATOR_MANAGEMENT)
 
     run = management.create_run(
@@ -71,7 +68,7 @@ def test_create_run_persists_exact_pending_manifest(tmp_path) -> None:
 
 def test_execute_run_uses_engine_adapter_and_trace_resolver(tmp_path) -> None:
     repository = SQLiteRepository(tmp_path / "execute-run.db")
-    ensure_demo_dataset(repository)
+    seed_demo(repository)
     management = RunManagement(repository, DEFAULT_EVALUATOR_MANAGEMENT)
     run = management.create_run(target(), dataset_id=LOAN_DATASET.id)
     capture = InMemoryTraceCapture()
@@ -90,7 +87,7 @@ def test_execute_run_uses_engine_adapter_and_trace_resolver(tmp_path) -> None:
 
 def test_create_run_rejects_unknown_or_duplicate_evaluators(tmp_path) -> None:
     repository = SQLiteRepository(tmp_path / "invalid-run.db")
-    ensure_demo_dataset(repository)
+    seed_demo(repository)
     management = RunManagement(repository, DEFAULT_EVALUATOR_MANAGEMENT)
 
     with pytest.raises(UnknownEvaluator, match="unknown Evaluators"):
@@ -117,9 +114,35 @@ def test_execute_run_rejects_unknown_run(tmp_path) -> None:
     capture.shutdown()
 
 
+def test_create_run_requires_persisted_matching_target_descriptor(tmp_path) -> None:
+    repository = SQLiteRepository(tmp_path / "missing-target-descriptor.db")
+    ensure_demo_dataset(repository)
+    management = RunManagement(repository, DEFAULT_EVALUATOR_MANAGEMENT)
+    fixed = target()
+
+    with pytest.raises(LookupError, match="unknown TargetDescriptor"):
+        management.create_run(fixed, dataset_id=LOAN_DATASET.id)
+
+    fixed_descriptor = get_demo_target_descriptor("loan-agent-v2-fixed")
+    TargetCatalog(repository).register_descriptor(fixed_descriptor)
+    risky_ref = get_demo_target_descriptor("loan-agent-v1-risky").ref
+    mismatched = TargetSnapshot(
+        ref=risky_ref,
+        display_name=fixed.display_name,
+        adapter_type=fixed.adapter_type,
+        adapter_version=fixed.adapter_version,
+        descriptor_sha256=fixed.descriptor_sha256,
+        invocation_config=fixed.invocation_config,
+    )
+    with pytest.raises(ValueError, match="does not match TargetSnapshot"):
+        management.create_run(mismatched, dataset_id=LOAN_DATASET.id)
+
+    assert repository.list_runs() == []
+
+
 def test_dispatch_run_submits_only_the_persisted_run_id(tmp_path) -> None:
     repository = SQLiteRepository(tmp_path / "dispatch-run.db")
-    ensure_demo_dataset(repository)
+    seed_demo(repository)
     management = RunManagement(repository, DEFAULT_EVALUATOR_MANAGEMENT)
     run = management.create_run(target(), dataset_id=LOAN_DATASET.id)
     dispatcher = RecordingDispatcher()
@@ -133,7 +156,7 @@ def test_dispatch_run_submits_only_the_persisted_run_id(tmp_path) -> None:
 
 def test_dispatch_failure_is_persisted_without_exception_details(tmp_path) -> None:
     repository = SQLiteRepository(tmp_path / "dispatch-failure.db")
-    ensure_demo_dataset(repository)
+    seed_demo(repository)
     management = RunManagement(repository, DEFAULT_EVALUATOR_MANAGEMENT)
     run = management.create_run(target(), dataset_id=LOAN_DATASET.id)
     dispatcher = RecordingDispatcher(
@@ -151,7 +174,7 @@ def test_dispatch_failure_is_persisted_without_exception_details(tmp_path) -> No
 
 def test_fail_stale_runs_preserves_active_and_pending_runs(tmp_path) -> None:
     repository = SQLiteRepository(tmp_path / "stale-runs.db")
-    ensure_demo_dataset(repository)
+    seed_demo(repository)
     management = RunManagement(repository, DEFAULT_EVALUATOR_MANAGEMENT)
     stale = management.create_run(
         target(), dataset_id=LOAN_DATASET.id, timeout_seconds=10

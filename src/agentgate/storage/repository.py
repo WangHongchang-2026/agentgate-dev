@@ -12,11 +12,22 @@ from agentgate.domain import (
     EvaluationResult,
     EvaluationRun,
     RunStatus,
+    TargetDescriptor,
+    TargetRef,
+    TargetType,
     Trace,
 )
 
 
 class AgentGateRepository(Protocol):
+    def save_target_descriptor(self, descriptor: TargetDescriptor) -> None: ...
+    def get_target_descriptor(
+        self, content_sha256: str
+    ) -> TargetDescriptor | None: ...
+    def list_target_descriptors(
+        self, ref: TargetRef | None = None
+    ) -> list[TargetDescriptor]: ...
+
     def save_dataset(self, dataset: Dataset) -> None: ...
     def save_dataset_with_version(
         self, dataset: Dataset, version: DatasetVersion
@@ -42,6 +53,39 @@ class AgentGateRepository(Protocol):
     def save_run(self, run: EvaluationRun) -> None: ...
     def get_run(self, run_id: str) -> EvaluationRun | None: ...
     def list_runs(self, limit: int = 50) -> list[EvaluationRun]: ...
+    def list_runs_by_dataset_version(
+        self, dataset_id: str, version: int, limit: int = 50
+    ) -> list[EvaluationRun]: ...
+    def list_runs_by_case_content(
+        self,
+        dataset_id: str,
+        version: int,
+        case_id: str,
+        content_sha256: str,
+        limit: int = 50,
+    ) -> list[EvaluationRun]: ...
+    def list_runs_by_target_version(
+        self,
+        source_id: str,
+        target_type: TargetType,
+        target_id: str,
+        version: str,
+        limit: int = 50,
+        *,
+        content_sha256: str | None = None,
+    ) -> list[EvaluationRun]: ...
+    def list_runs_by_skill_version(
+        self,
+        source_id: str,
+        skill_id: str,
+        version: str,
+        limit: int = 50,
+        *,
+        content_sha256: str | None = None,
+    ) -> list[EvaluationRun]: ...
+    def list_runs_by_evaluator_version(
+        self, evaluator_id: str, version: str, limit: int = 50
+    ) -> list[EvaluationRun]: ...
     def claim_pending_run(
         self, run_id: str, started_at: datetime
     ) -> EvaluationRun | None: ...

@@ -5,18 +5,18 @@ from typing import Any
 
 import pytest
 
-from agentgate.application import ResultReader, RunManagement
+from agentgate.application import ResultReader, RunManagement, TargetCatalog
 from agentgate.application.evaluator_management import DEFAULT_EVALUATOR_MANAGEMENT
-from agentgate.demo.bootstrap import ensure_demo_dataset
-from agentgate.demo.loan import LOAN_DATASET, LoanAgent
-from agentgate.domain import (
-    EvaluationReport,
-    EvaluationRun,
-    TargetRef,
-    TargetSnapshot,
-    TargetType,
-    content_sha256,
+from agentgate.demo.bootstrap import (
+    ensure_demo_dataset,
+    ensure_demo_target_descriptors,
 )
+from agentgate.demo.loan import LOAN_DATASET
+from agentgate.demo.targets import (
+    build_demo_target_snapshot,
+    get_demo_target_descriptor,
+)
+from agentgate.domain import EvaluationReport, EvaluationRun
 from agentgate.integrations.observability import InMemoryTraceCapture
 from agentgate.integrations.targets import DemoLoanTargetAdapter
 from agentgate.storage.sqlite import SQLiteRepository
@@ -39,20 +39,10 @@ def execute_demo() -> DemoExecution:
         state_store: dict[str, dict[str, Any]] | None = None,
     ) -> tuple[EvaluationRun, EvaluationReport]:
         ensure_demo_dataset(repository)
-        target = TargetSnapshot(
-            ref=TargetRef(
-                source_id="agentgate-demo",
-                target_type=TargetType.AGENT,
-                external_target_id="loan-agent",
-                external_version_id=version,
-            ),
-            display_name="Loan Agent",
-            adapter_type=DemoLoanTargetAdapter.adapter_type,
-            adapter_version=DemoLoanTargetAdapter.adapter_version,
-            descriptor_sha256=content_sha256(
-                {"name": "loan-agent", "versions": LoanAgent.versions}
-            ),
-            invocation_config={"provider": "deterministic"},
+        target_catalog = TargetCatalog(repository)
+        ensure_demo_target_descriptors(target_catalog)
+        target = build_demo_target_snapshot(
+            get_demo_target_descriptor(version)
         )
         runs = RunManagement(repository, DEFAULT_EVALUATOR_MANAGEMENT)
         run = runs.create_run(

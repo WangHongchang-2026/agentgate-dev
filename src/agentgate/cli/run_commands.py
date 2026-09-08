@@ -8,14 +8,12 @@ from typing import Any, NoReturn
 import typer
 
 from agentgate.application import ResultReader, RunManagement
-from agentgate.demo.loan import LOAN_DATASET, LoanAgent
-from agentgate.domain import (
-    RunStatus,
-    TargetRef,
-    TargetSnapshot,
-    TargetType,
-    content_sha256,
+from agentgate.demo.loan import LOAN_DATASET
+from agentgate.demo.targets import (
+    build_demo_target_snapshot,
+    get_demo_target_descriptor,
 )
+from agentgate.domain import RunStatus, TargetSnapshot
 from agentgate.integrations.observability import InMemoryTraceCapture
 from agentgate.integrations.targets import DemoLoanTargetAdapter
 
@@ -38,25 +36,8 @@ def _result_reader(context: typer.Context) -> ResultReader:
 
 
 def _demo_target(version: str) -> TargetSnapshot:
-    if version not in LoanAgent.versions:
-        raise ValueError(f"unknown demo Target version: {version}")
-    return TargetSnapshot(
-        ref=TargetRef(
-            source_id="agentgate-demo",
-            target_type=TargetType.AGENT,
-            external_target_id="loan-agent",
-            external_version_id=version,
-        ),
-        display_name="Loan Agent",
-        adapter_type=DemoLoanTargetAdapter.adapter_type,
-        adapter_version=DemoLoanTargetAdapter.adapter_version,
-        descriptor_sha256=content_sha256(
-            {
-                "name": "loan-agent",
-                "versions": LoanAgent.versions,
-            }
-        ),
-        invocation_config={"provider": "deterministic"},
+    return build_demo_target_snapshot(
+        get_demo_target_descriptor(version)
     )
 
 

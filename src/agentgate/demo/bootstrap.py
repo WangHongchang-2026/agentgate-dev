@@ -1,6 +1,8 @@
 """Idempotent bootstrap for the deterministic loan demonstration."""
 
+from agentgate.application.target_catalog import TargetCatalog
 from agentgate.demo.loan import LOAN_DATASET, LOAN_DATASET_VERSION
+from agentgate.demo.targets import LOAN_AGENT_DESCRIPTORS
 from agentgate.storage.repository import AgentGateRepository
 
 
@@ -16,3 +18,9 @@ def ensure_demo_dataset(repository: AgentGateRepository) -> None:
     elif version is None:
         repository.save_dataset_version(LOAN_DATASET_VERSION)
 
+
+def ensure_demo_target_descriptors(catalog: TargetCatalog) -> None:
+    """Store every immutable Loan Agent descriptor idempotently."""
+
+    for descriptor in LOAN_AGENT_DESCRIPTORS:
+        catalog.register_descriptor(descriptor)
