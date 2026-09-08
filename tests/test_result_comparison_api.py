@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 
 from agentgate.demo.loan import LOAN_DATASET
+from agentgate.domain import EvaluatorKind, EvaluatorSeverity
 from agentgate.server.app import create_app
 
 
@@ -21,7 +22,10 @@ def _launch_payload() -> dict[str, object]:
         "candidate_version": "loan-agent-v2-fixed",
         "dataset_id": LOAN_DATASET.id,
         "dataset_version": 1,
-        "evaluator_ids": ["skill-routing", "final-state"],
+        "evaluators": [
+            {"id": "skill-routing", "version": "1"},
+            {"id": "final-state", "version": "1"},
+        ],
     }
 
 
@@ -53,6 +57,71 @@ def test_launch_run_comparison_creates_and_dispatches_controlled_pair(
     assert candidate is not None
     assert baseline.manifest.dataset == candidate.manifest.dataset
     assert baseline.manifest.evaluator_specs == candidate.manifest.evaluator_specs
+
+
+def test_launch_run_comparison_selects_exact_historical_evaluator_version(
+    tmp_path,
+) -> None:
+    dispatcher = RecordingDispatcher()
+    application = create_app(tmp_path / "comparison-exact-evaluator.db", dispatcher)
+    evaluators = application.state.dependencies.evaluators
+    evaluator, _ = evaluators.create_evaluator(
+        "Versioned comparison output",
+        kind=EvaluatorKind.RULE,
+        dimension="answer",
+        metric="comparison_output_v1",
+        implementation_id="final_output",
+        config={},
+    )
+    first = evaluators.publish_draft(evaluator.id)
+    evaluators.update_evaluator(evaluator.id, enabled=True)
+    evaluators.create_draft(evaluator.id)
+    evaluators.replace_draft(
+        evaluator.id,
+        kind=EvaluatorKind.RULE,
+        dimension="answer",
+        metric="comparison_output_v2",
+        severity=EvaluatorSeverity.BLOCKING,
+        implementation_id="final_output",
+        implementation_version="1",
+        config={},
+        children=(),
+        combination=None,
+    )
+    second = evaluators.publish_draft(evaluator.id)
+    payload = _launch_payload()
+    payload["evaluators"] = [{"id": evaluator.id, "version": first.version}]
+
+    with TestClient(application) as client:
+        response = client.post("/api/run-comparisons", json=payload)
+
+    assert response.status_code == 202
+    assert second.version == "2"
+    baseline = application.state.dependencies.repository.get_run(
+        response.json()["baseline"]["run_id"]
+    )
+    candidate = application.state.dependencies.repository.get_run(
+        response.json()["candidate"]["run_id"]
+    )
+    assert baseline is not None
+    assert candidate is not None
+    assert baseline.manifest.evaluator_specs == (first,)
+    assert candidate.manifest.evaluator_specs == (first,)
+
+
+def test_launch_run_comparison_rejects_unknown_evaluator_version(tmp_path) -> None:
+    application = create_app(tmp_path / "comparison-unknown-evaluator.db")
+    payload = _launch_payload()
+    payload["evaluators"] = [{"id": "final-state", "version": "999"}]
+
+    with TestClient(application) as client:
+        response = client.post("/api/run-comparisons", json=payload)
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == (
+        "unknown Evaluator version: final-state@999"
+    )
+    assert application.state.dependencies.repository.list_runs() == []
 
 
 def test_launch_run_comparison_rejects_identical_versions(tmp_path) -> None:

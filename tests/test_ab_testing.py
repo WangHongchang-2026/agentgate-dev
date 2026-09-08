@@ -17,7 +17,7 @@ from agentgate.demo.targets import (
     build_demo_target_snapshot,
     get_demo_target_descriptor,
 )
-from agentgate.domain import RunStatus, TargetRef, TargetSnapshot
+from agentgate.domain import EvaluatorRef, RunStatus, TargetRef, TargetSnapshot
 from agentgate.storage.sqlite import SQLiteRepository
 
 
@@ -57,7 +57,10 @@ def test_create_ab_runs_persists_and_dispatches_one_controlled_pair(tmp_path) ->
         _target("loan-agent-v2-fixed"),
         dataset_id=LOAN_DATASET.id,
         dataset_version=1,
-        evaluator_ids=("skill-routing", "final-state"),
+        evaluator_refs=(
+            EvaluatorRef(evaluator_id="skill-routing", evaluator_version="1"),
+            EvaluatorRef(evaluator_id="final-state", evaluator_version="1"),
+        ),
         timeout_seconds=30,
     )
 

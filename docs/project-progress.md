@@ -156,7 +156,7 @@ and comments remain English.
 | [x] | A/B execution | Create and independently dispatch two ordinary EvaluationRuns | `src/agentgate/application/ab_testing.py` |
 | [x] | Two-Run comparison foundation | Compare compatible Runs by metrics, Cases, and failure movement | `src/agentgate/result/comparison.py`, `src/agentgate/server/routes/comparisons.py` |
 | [ ] | Significance | Calculate confidence and statistical significance | `src/agentgate/result/statistics.py` **new** |
-| [x] | Controlled A/B API | Create the pair and compare it later using the two returned Run IDs | `src/agentgate/server/routes/comparisons.py` |
+| [x] | Controlled A/B API | Select exact Evaluator versions, create the pair, and compare it later using the two returned Run IDs | `src/agentgate/server/routes/comparisons.py` |
 | [ ] | A/B Web page | Display variants, differences, confidence, and winner | `web/src/pages/ComparisonPage.vue` **new** |
 
 A/B testing composes ordinary Runs. It does not require a broad top-level

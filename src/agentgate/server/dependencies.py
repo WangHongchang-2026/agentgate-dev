@@ -34,7 +34,7 @@ from agentgate.demo.targets import (
     build_demo_target_snapshot,
     get_demo_target_descriptor,
 )
-from agentgate.domain import EvaluationRun, TargetSnapshot
+from agentgate.domain import EvaluationRun, EvaluatorRef, TargetSnapshot
 from agentgate.integrations.job_dispatchers import JobDispatcher
 from agentgate.integrations.job_dispatchers.celery import CeleryJobDispatcher
 from agentgate.integrations.model_providers.environment import (
@@ -110,7 +110,7 @@ class ServerDependencies:
         *,
         dataset_id: str = LOAN_DATASET.id,
         dataset_version: int | None = None,
-        evaluator_ids: list[str] | None = None,
+        evaluator_refs: list[EvaluatorRef] | None = None,
     ) -> ABRunPair:
         """Create and dispatch one controlled pair of POC Loan Agent Runs."""
 
@@ -121,7 +121,7 @@ class ServerDependencies:
             self._resolve_demo_target(candidate_version),
             dataset_id=dataset_id,
             dataset_version=dataset_version,
-            evaluator_ids=evaluator_ids,
+            evaluator_refs=evaluator_refs,
         )
 
     def execute_demo_run(

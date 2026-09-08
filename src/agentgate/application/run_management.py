@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 
 from agentgate.domain import (
     EvaluationRun,
+    EvaluatorRef,
     MetricPlan,
     ReleaseGateSpec,
     RunManifest,
@@ -46,6 +47,7 @@ class RunManagement:
         dataset_id: str,
         dataset_version: int | None = None,
         evaluator_ids: Sequence[str] | None = None,
+        evaluator_refs: Sequence[EvaluatorRef] | None = None,
         metric_plan: MetricPlan | None = None,
         gate_spec: ReleaseGateSpec | None = None,
         timeout_seconds: float = 300,
@@ -61,7 +63,13 @@ class RunManagement:
             if dataset_version is not None
             else self.dataset_management.latest_published(dataset_id)
         )
-        selected = self.evaluator_management.select(evaluator_ids)
+        if evaluator_ids is not None and evaluator_refs is not None:
+            raise ValueError("use evaluator_ids or evaluator_refs, not both")
+        selected = (
+            self.evaluator_management.select_versions(evaluator_refs)
+            if evaluator_refs is not None
+            else self.evaluator_management.select(evaluator_ids)
+        )
         self.evaluator_management.validate_plan(dataset, selected)
         run = EvaluationRun(
             manifest=RunManifest(
