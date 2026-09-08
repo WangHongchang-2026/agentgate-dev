@@ -84,6 +84,7 @@ def test_application_factory_registers_dependencies_and_routes(tmp_path) -> None
         "/api/evaluations",
         "/api/runs/{run_id}/status",
         "/api/runs/{run_id}",
+        "/api/runs/{run_id}/optimization",
         "/api/runs/{run_id}/traces/{case_id}",
         "/api/skill-analysis/reports",
         "/api/skill-analysis/reports/{report_id}",

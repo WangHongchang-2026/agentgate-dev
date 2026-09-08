@@ -14,9 +14,10 @@ Last updated: 2026-09-08
 
 | Tag | Scope | Status |
 |---|---|---|
-| `[CODEX-EVALUATOR]` | Persistent Evaluator Catalog | Complete and merged into the backend integration branch |
-| `[CODEX-SKILL]` | Static Skill Analysis backend and API | Complete; commit and integration pending |
-| `[UNASSIGNED]` | A/B orchestration, Web pages, and Optimizer | Not started |
+| `[CODEX-EVALUATOR]` | Persistent Evaluator Catalog | Complete and integrated into `refactor-1` |
+| `[CODEX-SKILL]` | Static Skill Analysis backend and API | Complete and integrated into `refactor-1` |
+| `[CODEX-OPTIMIZER]` | Optimizer backend and API | Complete on `feature/optimizer`; full regression passed |
+| `[UNASSIGNED]` | Web pages | Not started |
 
 ## Core Foundation
 
@@ -172,20 +173,24 @@ entity, and does not provide A/B history, experiment identity, or A/B lineage.
 | [x] | `[CODEX-SKILL]` Application and API | Run analysis for exact Target descriptors and expose report and review workflows | `src/agentgate/application/skill_analysis.py`, `src/agentgate/server/routes/skill_analysis.py` |
 | [ ] | Automatic invocation | Optionally run static checks during Agent creation or evaluation setup | Deferred until external Target integration is designed |
 | [ ] | Prompt alignment and deterministic description checks | Compare Agent Prompt, Skill descriptions, Tools, and capability boundaries | Deferred after the simple POC |
-| [ ] | Failure clustering | Group similar badcases | `src/agentgate/optimizer/clustering.py` |
-| [ ] | Confusion matrix | Measure expected versus actual Skill routing | `src/agentgate/optimizer/clustering.py` |
-| [ ] | Root-cause analysis | Explain common failure causes | `src/agentgate/optimizer/root_cause.py` |
-| [ ] | Suggestions | Produce reviewable optimization recommendations | `src/agentgate/optimizer/suggestions.py` |
+| [x] | Optimization domain contracts | Define immutable evidence, clusters, matrix, hypotheses, suggestions, and reports | `src/agentgate/domain/optimization.py` |
+| [x] | Failure clustering | Deterministically group failed Results by stable evaluation dimensions | `src/agentgate/optimizer/clustering.py` |
+| [x] | Observed routing confusion matrix | Measure expected versus actual Skill routing with explicit exclusions | `src/agentgate/optimizer/confusion_matrix.py` |
+| [x] | Root-cause hypotheses | Rank possible causes with exact dynamic and static evidence references | `src/agentgate/optimizer/root_cause.py` |
+| [x] | Reviewable suggestions | Produce deterministic targeted recommendations that require human review | `src/agentgate/optimizer/suggestions.py` |
+| [x] | Pure optimizer pipeline | Compose clustering, routing analysis, hypotheses, and suggestions | `src/agentgate/optimizer/pipeline.py` |
+| [x] | Optimizer application and API | Analyze completed persisted Runs through a read-only HTTP endpoint | `src/agentgate/application/optimization_analysis.py`, `src/agentgate/server/routes/optimizer.py` |
 | [x] | Optimizer cleanup | Remove the rejected generic service wrapper | `src/agentgate/optimizer/service.py` |
 
-Optimizer work is the final POC feature group and will receive a separate detailed
-plan before implementation.
+Optimizer backend implementation is documented in
+`docs/optimizer/implementation-plan.md`. The full backend regression passes; final
+worktree audit and feature delivery remain.
 
 ## Verification And Delivery
 
 | Status | Capability | Function | Code location |
 |---|---|---|---|
-| [x] | Current backend regression | Verify Evaluator Catalog, Static Skill Analysis, and controlled A/B Run creation | `tests/` - 640 passing |
+| [x] | Current backend regression | Verify the integrated backend including Optimizer | `tests/` - 712 passing |
 | [x] | Redis/Celery integration | Verify broker, worker, state, queue visibility, and progress end to end | `tests/test_celery_dispatcher.py`, `web/tests/`, operational smoke |
 | [x] | Browser verification | Verify all currently implemented desktop and mobile workflows | `web/tests/` - 8 passing |
 | [x] | Documentation | Explain setup, APIs, Redis, Celery, and demo operation | `README.md`, `web/README.md`, `docs/` |
@@ -207,3 +212,7 @@ plan before implementation.
 - Production observability platform integrations and external Result callbacks.
 - Automated resume or retry of partially completed Runs.
 - Persisted A/B identity, pair history, and A/B-specific lineage after the POC.
+- Semantic or embedding-based failure clustering.
+- Persisted Optimization Reports and cross-Run history.
+- Suggestion review and application lifecycle.
+- Automatic regression Run creation from accepted suggestions.

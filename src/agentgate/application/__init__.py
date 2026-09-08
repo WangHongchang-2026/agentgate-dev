@@ -18,6 +18,14 @@ from .lineage_queries import (
     LineageQueries,
     LineageRelation,
 )
+from .optimization_analysis import (
+    OptimizationAnalysis,
+    OptimizationRunNotCompleted,
+    OptimizationRunNotFound,
+    OptimizationSkillAnalysisMismatch,
+    OptimizationSkillAnalysisNotUsable,
+    OptimizationSkillAnalysisReportNotFound,
+)
 from .result_reader import ResultReader, RunActivity, RunProgress
 from .run_management import RunManagement
 from .skill_analysis import (
@@ -45,6 +53,12 @@ __all__ = [
     "LineageNodeKind",
     "LineageQueries",
     "LineageRelation",
+    "OptimizationAnalysis",
+    "OptimizationRunNotCompleted",
+    "OptimizationRunNotFound",
+    "OptimizationSkillAnalysisMismatch",
+    "OptimizationSkillAnalysisNotUsable",
+    "OptimizationSkillAnalysisReportNotFound",
     "ResultReader",
     "RunActivity",
     "RunManagement",

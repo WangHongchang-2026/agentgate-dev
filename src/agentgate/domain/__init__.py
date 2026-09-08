@@ -29,6 +29,20 @@ from .gate import (
     classify_release_gate,
 )
 from .metric import MetricLevel, MetricPlan, MetricSummary
+from .optimization import (
+    FailedResultEvidence,
+    FailureCluster,
+    ObservedRoute,
+    ObservedRouteKind,
+    OptimizationReport,
+    OptimizationSuggestion,
+    RootCauseHypothesis,
+    RoutingConfusionCell,
+    RoutingConfusionMatrix,
+    RoutingExclusion,
+    RoutingObservation,
+    SuggestionPriority,
+)
 from .report import EvaluationReport
 from .result import (
     CheckResult, EvaluationResult, EvaluatorErrorDetail, FailureStage,

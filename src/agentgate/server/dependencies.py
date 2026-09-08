@@ -14,6 +14,7 @@ from agentgate.application import (
     ABRunPair,
     DatasetManagement,
     LineageQueries,
+    OptimizationAnalysis,
     ResultReader,
     RunManagement,
     SkillAnalysis,
@@ -63,6 +64,7 @@ class ServerDependencies:
     results: ResultReader
     lineage: LineageQueries
     skill_analysis: SkillAnalysis
+    optimization: OptimizationAnalysis
     dispatcher: JobDispatcher
     demo_state: dict[str, dict]
     _judge_client: OpenAICompatibleModelClient | None = field(
@@ -224,6 +226,7 @@ def build_dependencies(
             results=ResultReader(repository),
             lineage=LineageQueries(repository),
             skill_analysis=SkillAnalysis(repository, skill_analyzer),
+            optimization=OptimizationAnalysis(repository),
             dispatcher=dispatcher or CeleryJobDispatcher(),
             demo_state={},
             _judge_client=(

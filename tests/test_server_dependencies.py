@@ -28,6 +28,7 @@ def test_build_dependencies_seeds_isolated_demo_dataset(tmp_path) -> None:
         sorted(LOAN_AGENT_DESCRIPTORS, key=lambda item: item.content_sha256)
     )
     assert dependencies.results.list_runs() == []
+    assert dependencies.optimization.repository is dependencies.repository
 
 
 def test_submit_demo_run_persists_then_dispatches_pending_run(tmp_path) -> None:
