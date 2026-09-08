@@ -67,6 +67,12 @@ def test_application_factory_registers_dependencies_and_routes(tmp_path) -> None
         "/api/overview",
         "/api/versions",
         "/api/evaluators",
+        "/api/evaluators/{evaluator_id}",
+        "/api/evaluators/{evaluator_id}/versions",
+        "/api/evaluators/{evaluator_id}/versions/{version}",
+        "/api/evaluators/{evaluator_id}/drafts/current",
+        "/api/evaluators/{evaluator_id}/drafts",
+        "/api/evaluators/{evaluator_id}/drafts/publish",
         "/api/datasets",
         "/api/runs",
         "/api/runs/activity",
@@ -76,6 +82,14 @@ def test_application_factory_registers_dependencies_and_routes(tmp_path) -> None
         "/api/runs/{run_id}/traces/{case_id}",
         "/v1/traces",
     }.issubset(paths)
+    assert set(paths["/api/evaluators"]) == {"get", "post"}
+
+    with TestClient(application) as client:
+        evaluator_response = client.get("/api/evaluators")
+
+    assert evaluator_response.status_code == 200
+    assert len(evaluator_response.json()) == 7
+    assert {item["source"] for item in evaluator_response.json()} == {"builtin"}
 
 
 def test_dependencies_compose_configured_judge_and_close_it_once(
@@ -92,7 +106,7 @@ def test_dependencies_compose_configured_judge_and_close_it_once(
         RecordingDispatcher(),
     )
 
-    assert dependencies.evaluators.available_specs[-1].id == "answer-quality"
+    assert dependencies.evaluators.default_specs[-1].id == "answer-quality"
     assert dependencies.runs.evaluator_management is dependencies.evaluators
     assert "raw-secret" not in repr(dependencies)
     dependencies.close()
@@ -109,7 +123,8 @@ def test_dependencies_close_judge_when_composition_fails(
         lambda: judge_configuration(client),
     )
 
-    def fail_composition(**kwargs) -> None:
+    def fail_composition(*args, **kwargs) -> None:
+        del args
         del kwargs
         raise ValueError("composition failed")
 

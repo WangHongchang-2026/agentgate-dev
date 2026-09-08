@@ -166,9 +166,10 @@ def build_dependencies(
     configured_judge = load_judge_model_from_environment()
     try:
         evaluator_management = (
-            build_default_evaluator_management()
+            build_default_evaluator_management(repository)
             if configured_judge is None
             else build_default_evaluator_management(
+                repository,
                 judge_client=configured_judge.client,
                 judge_model_id=configured_judge.model_id,
                 judge_credential_ref=configured_judge.credential_ref,

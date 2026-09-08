@@ -7,7 +7,7 @@ import pytest
 
 from agentgate.application import ResultReader, RunManagement, TargetCatalog
 from agentgate.application.evaluator_management import (
-    DEFAULT_EVALUATOR_MANAGEMENT,
+    build_default_evaluator_management,
 )
 from agentgate.demo.bootstrap import (
     ensure_demo_dataset,
@@ -39,9 +39,14 @@ def seed_demo(repository: SQLiteRepository) -> None:
     ensure_demo_target_descriptors(TargetCatalog(repository))
 
 
+def run_management(repository: SQLiteRepository) -> RunManagement:
+    evaluators = build_default_evaluator_management(repository)
+    return RunManagement(repository, evaluators)
+
+
 def completed_run(repository: SQLiteRepository):
     seed_demo(repository)
-    runs = RunManagement(repository, DEFAULT_EVALUATOR_MANAGEMENT)
+    runs = run_management(repository)
     run = runs.create_run(target(), dataset_id=LOAN_DATASET.id)
     capture = InMemoryTraceCapture()
     completed = runs.execute_run(
@@ -90,7 +95,7 @@ def test_reader_rejects_unknown_and_non_completed_runs(tmp_path) -> None:
     with pytest.raises(LookupError, match="unknown EvaluationRun"):
         reader.get_trace("missing", "case")
 
-    pending = RunManagement(repository, DEFAULT_EVALUATOR_MANAGEMENT).create_run(
+    pending = run_management(repository).create_run(
         target(), dataset_id=LOAN_DATASET.id
     )
     with pytest.raises(ValueError, match="completed EvaluationRun"):
@@ -102,7 +107,7 @@ def test_reader_rejects_unknown_and_non_completed_runs(tmp_path) -> None:
 def test_overview_uses_persisted_status_and_dataset_data(tmp_path) -> None:
     repository = SQLiteRepository(tmp_path / "overview.db")
     completed_run(repository)
-    RunManagement(repository, DEFAULT_EVALUATOR_MANAGEMENT).create_run(
+    run_management(repository).create_run(
         target(), dataset_id=LOAN_DATASET.id
     )
 
@@ -119,7 +124,7 @@ def test_overview_uses_persisted_status_and_dataset_data(tmp_path) -> None:
 def test_reader_derives_complete_case_progress_from_result_sets(tmp_path) -> None:
     repository = SQLiteRepository(tmp_path / "progress.db")
     source = completed_run(repository)
-    management = RunManagement(repository, DEFAULT_EVALUATOR_MANAGEMENT)
+    management = run_management(repository)
     pending = management.create_run(target(), dataset_id=LOAN_DATASET.id)
     running = repository.claim_pending_run(
         pending.id, pending.created_at + timedelta(seconds=2)
@@ -169,7 +174,7 @@ def test_reader_derives_complete_case_progress_from_result_sets(tmp_path) -> Non
 def test_reader_projects_queue_activity_and_terminal_history(tmp_path) -> None:
     repository = SQLiteRepository(tmp_path / "activity.db")
     terminal = completed_run(repository)
-    management = RunManagement(repository, DEFAULT_EVALUATOR_MANAGEMENT)
+    management = run_management(repository)
     first = management.create_run(target(), dataset_id=LOAN_DATASET.id)
     second = management.create_run(target(), dataset_id=LOAN_DATASET.id)
     running = repository.claim_pending_run(
@@ -198,7 +203,7 @@ def test_progress_tolerates_worker_claim_during_queue_lookup(
 ) -> None:
     repository = SQLiteRepository(tmp_path / "claim-race.db")
     seed_demo(repository)
-    management = RunManagement(repository, DEFAULT_EVALUATOR_MANAGEMENT)
+    management = run_management(repository)
     pending = management.create_run(target(), dataset_id=LOAN_DATASET.id)
     original_list = repository.list_runs_by_status
 
@@ -220,7 +225,7 @@ def test_progress_tolerates_worker_claim_during_queue_lookup(
 def test_overview_counts_all_runs_beyond_history_page(tmp_path) -> None:
     repository = SQLiteRepository(tmp_path / "uncapped-overview.db")
     seed_demo(repository)
-    management = RunManagement(repository, DEFAULT_EVALUATOR_MANAGEMENT)
+    management = run_management(repository)
     for _ in range(51):
         management.create_run(target(), dataset_id=LOAN_DATASET.id)
 
