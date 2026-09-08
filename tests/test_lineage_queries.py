@@ -6,7 +6,9 @@ import pytest
 from pydantic import ValidationError
 
 from agentgate.application import RunManagement, TargetCatalog
-from agentgate.application.evaluator_management import DEFAULT_EVALUATOR_MANAGEMENT
+from agentgate.application.evaluator_management import (
+    build_default_evaluator_management,
+)
 from agentgate.application.lineage_queries import (
     LineageEdge,
     LineageGraph,
@@ -34,7 +36,8 @@ from agentgate.storage.sqlite import SQLiteRepository
 def demo_run(repository: SQLiteRepository, version: str = "loan-agent-v2-fixed"):
     ensure_demo_dataset(repository)
     ensure_demo_target_descriptors(TargetCatalog(repository))
-    return RunManagement(repository, DEFAULT_EVALUATOR_MANAGEMENT).create_run(
+    evaluators = build_default_evaluator_management(repository)
+    return RunManagement(repository, evaluators).create_run(
         build_demo_target_snapshot(get_demo_target_descriptor(version)),
         dataset_id=LOAN_DATASET.id,
     )
@@ -66,7 +69,7 @@ def test_run_lineage_contains_exact_manifest_and_descriptor_assets(tmp_path) -> 
         if node.kind == "skill"
     }["loan_approval"] == "loan-approval-v2-fixed"
     assert sum(edge.relation == "uses_evaluator" for edge in graph.edges) == len(
-        DEFAULT_EVALUATOR_MANAGEMENT.available_specs
+        run.manifest.evaluator_specs
     )
     assert sum(edge.relation == "includes_skill" for edge in graph.edges) == 4
 
@@ -89,7 +92,8 @@ def test_skill_target_lineage_has_no_nested_skill_relationship(tmp_path) -> None
         adapter_version="1",
         descriptor_sha256=descriptor.content_sha256,
     )
-    run = RunManagement(repository, DEFAULT_EVALUATOR_MANAGEMENT).create_run(
+    evaluators = build_default_evaluator_management(repository)
+    run = RunManagement(repository, evaluators).create_run(
         target,
         dataset_id=LOAN_DATASET.id,
     )

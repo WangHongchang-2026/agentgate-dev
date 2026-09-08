@@ -5,7 +5,9 @@ import sqlite3
 import pytest
 
 from agentgate.application import RunManagement, TargetCatalog
-from agentgate.application.evaluator_management import DEFAULT_EVALUATOR_MANAGEMENT
+from agentgate.application.evaluator_management import (
+    build_default_evaluator_management,
+)
 from agentgate.demo.bootstrap import (
     ensure_demo_dataset,
     ensure_demo_target_descriptors,
@@ -23,7 +25,8 @@ def create_demo_run(repository: SQLiteRepository, version: str):
     ensure_demo_dataset(repository)
     ensure_demo_target_descriptors(TargetCatalog(repository))
     descriptor = get_demo_target_descriptor(version)
-    return RunManagement(repository, DEFAULT_EVALUATOR_MANAGEMENT).create_run(
+    evaluators = build_default_evaluator_management(repository)
+    return RunManagement(repository, evaluators).create_run(
         build_demo_target_snapshot(descriptor),
         dataset_id=LOAN_DATASET.id,
     )

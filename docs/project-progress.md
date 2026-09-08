@@ -94,7 +94,8 @@ Last updated: 2026-09-08
 | [x] | Result reader foundation | Read persisted Runs, Results, Traces, and reports | `src/agentgate/application/result_reader.py` |
 | [x] | FastAPI foundation | Expose current Dataset, Run, Result, and Trace APIs | `src/agentgate/server/` |
 | [ ] | Target catalog | Read external Agent and Skill metadata from Dify, Coze, or customer platforms | `src/agentgate/application/target_catalog.py` **new**; planned after POC |
-| [x] | Evaluator management | Catalog, select, validate, and compose Evaluator specifications and implementations | `src/agentgate/application/evaluator_management.py` |
+| [x] | Evaluator management | Persist user identities and drafts, publish immutable versions, control availability, select exact specifications, and compose supported implementations | `src/agentgate/application/evaluator_management.py`, `src/agentgate/evaluator/versioning.py`, `src/agentgate/storage/sqlite.py` |
+| [x] | Evaluator Catalog API | Expose built-in and user identities, drafts, publication, exact versions, enable state, and constrained deletion | `src/agentgate/server/routes/evaluators.py` |
 | [x] | Judge API/worker wiring | Create API manifests and reconstruct worker execution from identical optional Judge configuration with process/task lifecycle cleanup | `src/agentgate/application/evaluator_management.py`, `src/agentgate/server/`, `src/agentgate/integrations/job_dispatchers/celery.py` |
 | [ ] | Model provider management API | Configure provider endpoints, model options, and secret references without exposing credentials | Design required before implementation |
 | [ ] | Skill analysis service | Coordinate static Skill analysis | `src/agentgate/application/skill_analysis.py` **new** |
@@ -175,7 +176,7 @@ plan before implementation.
 
 | Status | Capability | Function | Code location |
 |---|---|---|---|
-| [x] | Current backend regression | Verify current refactor, Rule, and LLM Judge behavior | `tests/` - 508 passing |
+| [x] | Current backend regression | Verify current refactor and persistent Evaluator Catalog behavior | `tests/` - 592 passing |
 | [x] | Redis/Celery integration | Verify broker, worker, state, queue visibility, and progress end to end | `tests/test_celery_dispatcher.py`, `web/tests/`, operational smoke |
 | [x] | Browser verification | Verify all currently implemented desktop and mobile workflows | `web/tests/` - 8 passing |
 | [x] | Documentation | Explain setup, APIs, Redis, Celery, and demo operation | `README.md`, `web/README.md`, `docs/` |

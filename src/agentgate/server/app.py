@@ -14,6 +14,7 @@ from agentgate.server.routes import (
     catalogs,
     comparisons,
     datasets,
+    evaluators,
     lineage,
     results,
     runs,
@@ -53,6 +54,7 @@ def create_app(
     application.include_router(system.router)
     application.include_router(datasets.router)
     application.include_router(catalogs.router)
+    application.include_router(evaluators.router)
     application.include_router(runs.router)
     application.include_router(results.router)
     application.include_router(comparisons.router)

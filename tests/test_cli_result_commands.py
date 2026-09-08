@@ -7,7 +7,9 @@ import typer
 from typer.testing import CliRunner
 
 from agentgate.application import ResultReader, RunManagement, TargetCatalog
-from agentgate.application.evaluator_management import DEFAULT_EVALUATOR_MANAGEMENT
+from agentgate.application.evaluator_management import (
+    build_default_evaluator_management,
+)
 from agentgate.cli import result_commands, run_commands
 from agentgate.demo.bootstrap import (
     ensure_demo_dataset,
@@ -19,7 +21,10 @@ from agentgate.storage.sqlite import SQLiteRepository
 
 def cli_for(repository: SQLiteRepository):
     ensure_demo_target_descriptors(TargetCatalog(repository))
-    runs = RunManagement(repository, DEFAULT_EVALUATOR_MANAGEMENT)
+    runs = RunManagement(
+        repository,
+        build_default_evaluator_management(repository),
+    )
     results = ResultReader(repository)
     app = typer.Typer()
 

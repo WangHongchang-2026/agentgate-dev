@@ -15,7 +15,8 @@ from .base import (
 from .case import Case, CaseCategory, CaseDifficulty, CaseTurn
 from .dataset import Dataset, DatasetVersion, DatasetVersionStatus
 from .evaluator import (
-    CombinationPolicy, EvaluatorKind, EvaluatorRef, EvaluatorSeverity, EvaluatorSpec,
+    CombinationPolicy, Evaluator, EvaluatorDraft, EvaluatorKind, EvaluatorRef,
+    EvaluatorSeverity, EvaluatorSource, EvaluatorSpec,
 )
 from .expectation import (
     Condition, Equals, Expectation, MatchesJsonSchema, MatchesPattern, MustBeMissing,
