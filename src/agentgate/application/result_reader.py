@@ -7,7 +7,13 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from agentgate.domain import EvaluationReport, EvaluationRun, RunStatus, Trace
+from agentgate.domain import (
+    EvaluationReport,
+    EvaluationRun,
+    RunManifest,
+    RunStatus,
+    Trace,
+)
 from agentgate.domain.base import normalize_utc, utcnow
 from agentgate.result.comparison import EvaluationComparison, compare_reports
 from agentgate.result.report import build_evaluation_report
@@ -61,6 +67,11 @@ class ResultReader:
         if status is not None:
             return self.repository.list_runs_by_status(status, limit=limit)
         return self.repository.list_runs(limit=limit)
+
+    def get_run_manifest(self, run_id: str) -> RunManifest:
+        """Return the immutable execution manifest persisted for one Run."""
+
+        return self._get_run(run_id).manifest
 
     def get_run_progress(
         self,

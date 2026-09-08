@@ -7,7 +7,12 @@ from pydantic import BaseModel, Field
 
 from agentgate.application import RunActivity, RunProgress
 from agentgate.application.skill_analysis import SkillAnalysisUnavailable
-from agentgate.domain import EvaluationRun, RunStatus, SkillAnalysisReport
+from agentgate.domain import (
+    EvaluationRun,
+    RunManifest,
+    RunStatus,
+    SkillAnalysisReport,
+)
 from agentgate.server.dependencies import ServerDependencies, get_dependencies
 from agentgate.server.errors import (
     raise_not_found,
@@ -94,5 +99,13 @@ def run_status(run_id: str, dependencies: Dependencies) -> RunProgress:
     try:
         dependencies.runs.fail_stale_runs()
         return dependencies.results.get_run_progress(run_id)
+    except LookupError as error:
+        raise_not_found(error)
+
+
+@router.get("/runs/{run_id}/manifest")
+def run_manifest(run_id: str, dependencies: Dependencies) -> RunManifest:
+    try:
+        return dependencies.results.get_run_manifest(run_id)
     except LookupError as error:
         raise_not_found(error)

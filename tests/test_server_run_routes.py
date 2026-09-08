@@ -295,6 +295,44 @@ def test_run_status_returns_not_found(tmp_path) -> None:
     assert response.status_code == 404
     assert response.json()["detail"] == "unknown EvaluationRun: missing"
 
+
+def test_run_manifest_returns_exact_pending_execution_provenance(tmp_path) -> None:
+    client, dispatcher = _client(tmp_path)
+
+    with client:
+        launched = client.post(
+            "/api/evaluations",
+            json={
+                "version": "loan-agent-v2-fixed",
+                "dataset_id": LOAN_DATASET.id,
+                "dataset_version": 1,
+                "case_ids": ["high-risk-approval"],
+                "evaluator_ids": ["skill-routing", "final-state"],
+                "timeout_seconds": 60,
+                "max_parallel_cases": 4,
+            },
+        )
+        run_id = launched.json()["run_id"]
+        response = client.get(f"/api/runs/{run_id}/manifest")
+
+    stored = client.app.state.dependencies.repository.get_run(run_id)
+    assert stored is not None
+    assert launched.status_code == 202
+    assert response.status_code == 200
+    assert response.json() == stored.manifest.model_dump(mode="json")
+    assert stored.status.value == "pending"
+    assert dispatcher.run_ids == [run_id]
+
+
+def test_run_manifest_returns_not_found(tmp_path) -> None:
+    client, _ = _client(tmp_path)
+
+    with client:
+        response = client.get("/api/runs/missing/manifest")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "unknown EvaluationRun: missing"
+
 def test_run_route_accepts_reproducible_case_subset(tmp_path) -> None:
     client, dispatcher = _client(tmp_path)
     datasets = client.app.state.dependencies.datasets

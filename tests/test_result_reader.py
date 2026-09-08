@@ -94,6 +94,8 @@ def test_reader_rejects_unknown_and_non_completed_runs(tmp_path) -> None:
         reader.get_report("missing")
     with pytest.raises(LookupError, match="unknown EvaluationRun"):
         reader.get_trace("missing", "case")
+    with pytest.raises(LookupError, match="unknown EvaluationRun"):
+        reader.get_run_manifest("missing")
 
     pending = run_management(repository).create_run(
         target(), dataset_id=LOAN_DATASET.id
@@ -102,6 +104,33 @@ def test_reader_rejects_unknown_and_non_completed_runs(tmp_path) -> None:
         reader.get_report(pending.id)
     with pytest.raises(LookupError, match="unknown Trace"):
         reader.get_trace(pending.id, "missing")
+
+
+def test_reader_returns_exact_manifest_for_pending_and_completed_runs(
+    tmp_path,
+) -> None:
+    repository = SQLiteRepository(tmp_path / "manifest-reader.db")
+    seed_demo(repository)
+    management = run_management(repository)
+    pending = management.create_run(
+        target(),
+        dataset_id=LOAN_DATASET.id,
+        timeout_seconds=45,
+        max_parallel_cases=3,
+    )
+    reader = ResultReader(repository)
+
+    assert reader.get_run_manifest(pending.id) == pending.manifest
+
+    capture = InMemoryTraceCapture()
+    completed = management.execute_run(
+        pending.id,
+        DemoLoanTargetAdapter(capture),
+        capture.resolve,
+    )
+    capture.shutdown()
+
+    assert reader.get_run_manifest(completed.id) == pending.manifest
 
 
 def test_overview_uses_persisted_status_and_dataset_data(tmp_path) -> None:
