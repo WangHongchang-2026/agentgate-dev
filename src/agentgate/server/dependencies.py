@@ -11,6 +11,7 @@ from fastapi import Request
 
 from agentgate.application import (
     DatasetManagement,
+    LineageQueries,
     ResultReader,
     RunManagement,
     TargetCatalog,
@@ -45,6 +46,7 @@ class ServerDependencies:
     targets: TargetCatalog
     runs: RunManagement
     results: ResultReader
+    lineage: LineageQueries
     dispatcher: JobDispatcher
     demo_state: dict[str, dict]
 
@@ -145,6 +147,7 @@ def build_dependencies(
         targets=target_catalog,
         runs=RunManagement(repository, EVALUATORS),
         results=ResultReader(repository),
+        lineage=LineageQueries(repository),
         dispatcher=dispatcher or CeleryJobDispatcher(),
         demo_state={},
     )
