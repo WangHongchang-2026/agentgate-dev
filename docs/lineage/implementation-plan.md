@@ -4,20 +4,16 @@ Last updated: 2026-09-08
 
 ## 1. Purpose
 
-AgentGate must show the exact version relationships behind an Evaluation Run and answer
-reverse questions such as which Runs used one Dataset version. The lineage view covers:
+AgentGate must preserve and visualize the exact version relationships behind an
+Evaluation Run. Users must be able to start from a Run, Dataset version, Case content
+version, Agent version, Skill version, Evaluator version, or A/B Test and see the related
+evaluation records.
 
-- Evaluation Runs;
-- A/B Tests;
-- Dataset versions and their Case content versions;
-- Agent or Skill Target versions;
-- Skill versions captured inside an Agent version;
-- Evaluator versions.
+The graph is evidence derived from immutable records. It is not an independently editable
+business object and must never be reconstructed from a customer's mutable `latest`
+metadata.
 
-Lineage is evidence derived from immutable execution records. It is not an independently
-editable graph and it must not fetch mutable `latest` metadata while displaying history.
-
-## 2. Relationship Model
+## 2. Required Relationships
 
 ```text
                              A/B Test
@@ -34,99 +30,94 @@ editable graph and it must not fetch mutable `latest` metadata while displaying 
      Case versions  Skill versions         Skill versions
 ```
 
-The Dataset-to-Agent relationship is indirect:
+The Dataset-to-Agent relationship is always mediated by a Run:
 
 ```text
 DatasetVersion <- used by - EvaluationRun - evaluates -> TargetVersion
 ```
-
-An A/B Test references two ordinary Runs. It does not duplicate their Dataset, Target,
-Skill, Case, or Evaluator snapshots.
-
-### Relationships
 
 | Source | Relationship | Target | Cardinality |
 |---|---|---|---|
 | A/B Test | `baseline_run` | Evaluation Run | exactly one |
 | A/B Test | `candidate_run` | Evaluation Run | exactly one |
 | Evaluation Run | `uses_dataset` | Dataset version | exactly one |
-| Dataset version | `contains_case` | Case content version | one or more for a published Dataset |
+| Dataset version | `contains_case` | Case content version | one or more when published |
 | Evaluation Run | `evaluates_agent` | Agent version | zero or one |
 | Evaluation Run | `evaluates_skill` | Skill version | zero or one |
-| Agent version | `includes_skill` | Skill version | zero or more |
+| Agent descriptor | `includes_skill` | Skill version | zero or more |
 | Evaluation Run | `uses_evaluator` | Evaluator version | one or more |
 
-Exactly one of `evaluates_agent` and `evaluates_skill` is present for a Run.
+Exactly one of `evaluates_agent` and `evaluates_skill` exists for each Run.
 
-## 3. Ownership And Code Structure
+## 3. Authoritative Records
 
-```text
-src/agentgate/
-├── domain/
-│   ├── target.py                 # immutable Agent and Skill snapshots
-│   └── ab_test.py                # persisted A/B Test identity and Run references
-├── application/
-│   ├── run_management.py         # captures exact RunManifest inputs
-│   ├── ab_testing.py             # creates and validates the two ordinary Runs
-│   └── lineage_queries.py        # lineage read models and graph construction
-├── storage/
-│   ├── repository.py             # reverse-query and A/B persistence contracts
-│   └── sqlite.py                 # SQLite implementation and query indexes
-└── server/routes/
-    └── lineage.py                # HTTP query endpoints
-
-web/src/
-└── pages/LineagePage.vue         # graph/tree visualization
-```
-
-Do not create a top-level `lineage/` package for this implementation. Graph construction
-is a read-only application use case. Extract a dedicated package only when persisted graph
-storage, arbitrary traversal, dependency-impact analysis, or reusable graph algorithms
-become real requirements.
-
-## 4. Source Of Truth
-
-### RunManifest
-
-`EvaluationRun.manifest` remains authoritative for Dataset, Case, Target, and Evaluator
-relationships. The manifest is immutable after Run creation and already pins:
-
-- one published `DatasetVersion` including ordered Cases;
-- one exact `TargetSnapshot`;
-- exact `EvaluatorSpec` versions and content hashes;
-- metric and release-gate configuration;
-- the complete manifest content hash.
-
-### Skill snapshot gap
-
-`TargetSnapshot` currently stores only the Target reference and descriptor hash. That is
-insufficient to reconstruct the Skill versions used by a historical Agent Run.
-
-Add the following field to `TargetSnapshot`:
-
-```python
-skills: tuple[SkillDescriptor, ...] = ()
-```
-
-The Target adapter/catalog captures these descriptors when the Run is created. Historical
-lineage reads the snapshot only; it never asks the external Agent platform for current
-Skill metadata. A Skill Target keeps this collection empty because the Target reference
-itself identifies the evaluated Skill version.
-
-### Case content versions
-
-`Case` has a stable ID but no independent numeric revision. In lineage, a Case version is
-identified by:
+Lineage is reconstructed from four durable records.
 
 ```text
-Case ID + content SHA-256 + containing DatasetVersion
+TargetDescriptor                  DatasetVersion
+├── Agent/Skill exact reference   ├── exact version and hash
+├── prompt hash                   └── immutable Cases
+├── Skill versions
+└── Tool/schema metadata
+          ^
+          | descriptor_sha256
+          |
+EvaluationRun / RunManifest       ABTest
+├── TargetSnapshot                ├── baseline_run_id
+├── DatasetVersion                └── candidate_run_id
+├── EvaluatorSpecs
+└── execution configuration
 ```
 
-Do not invent a second Case revision counter solely for visualization.
+### `TargetDescriptor`
 
-### A/B Test record
+`TargetDescriptor` already exists in `domain/target.py`. It describes the exact Agent or
+Skill version, including Agent Skills, Tools, schemas, prompt content/hash, and normalized
+metadata.
 
-The A/B capability must persist a focused record containing at least:
+It is currently only a tested model. Runtime code neither persists it nor uses it to
+construct `TargetSnapshot`. This plan makes it a real runtime record.
+
+### `TargetSnapshot`
+
+`TargetSnapshot` remains the small execution snapshot stored in `RunManifest`. It records
+the exact external Target version, adapter configuration, credential reference, and
+`descriptor_sha256`.
+
+Do not copy Skills into `TargetSnapshot`. Resolve them through its immutable descriptor
+hash:
+
+```text
+RunManifest.target.descriptor_sha256
+                   |
+                   v
+       persisted TargetDescriptor
+                   |
+                   v
+             Skill versions
+```
+
+### Dataset and Cases
+
+`RunManifest.dataset` embeds the complete published `DatasetVersion`, including ordered
+Cases. The same Dataset version also remains in Dataset storage.
+
+`Case` has no independent numeric revision. Its lineage version is:
+
+```text
+dataset_id + dataset_version + case_id + case_content_sha256
+```
+
+Do not add a second Case revision counter solely for lineage.
+
+### Evaluators
+
+`RunManifest.evaluator_specs` embeds each exact Evaluator version and content hash. No
+lookup of the current evaluator catalog is required to reconstruct Run history.
+
+### A/B Tests
+
+An A/B Test is a focused persisted record:
 
 ```text
 id
@@ -135,14 +126,148 @@ candidate_run_id
 created_at
 ```
 
-Creation validates that both Runs use compatible Dataset content, primary Evaluators,
-metric plans, and gate specifications. A/B execution and statistics remain owned by
-`application/ab_testing.py` and `result/`; lineage only reads the relationship.
+It references two ordinary Evaluation Runs and does not duplicate their Dataset, Target,
+Skill, Evaluator, metric, or gate data. A/B status is derived from its Runs; comparison
+results are produced by `result/comparison.py`.
 
-## 5. Application Read Models
+## 4. Code Ownership
 
-`application/lineage_queries.py` defines transport-neutral read models. They are not
-Domain entities and cannot be persisted as authoritative state.
+```text
+src/agentgate/
+├── domain/
+│   ├── target.py                 # existing descriptor and snapshot contracts
+│   └── ab_test.py                # focused immutable A/B Test record
+├── application/
+│   ├── target_catalog.py         # descriptor registration and exact resolution
+│   ├── run_management.py         # validates descriptor before Run creation
+│   ├── ab_testing.py             # creates/validates baseline and candidate Runs
+│   └── lineage_queries.py        # graph read models and graph construction
+├── storage/
+│   ├── repository.py             # descriptor, A/B, and reverse-query contracts
+│   └── sqlite.py                 # tables, transactions, and indexes
+└── server/routes/
+    └── lineage.py                # read-only lineage endpoints
+
+web/src/
+└── pages/LineagePage.vue         # graph/tree visualization
+```
+
+Do not create a top-level `lineage/` package. Current graph construction is a read-only
+application workflow. Extract a package only when persisted graph storage, arbitrary
+traversal, dependency-impact analysis, or reusable graph algorithms are required.
+
+## 5. TargetDescriptor Lifecycle
+
+### External mode
+
+```text
+Dify / Coze / customer platform
+          |
+          v
+Target platform integration
+          |
+          v
+normalized TargetDescriptor
+          |
+          v
+TargetCatalog.register_descriptor()
+          |
+          +--> persist by content_sha256
+          +--> resolve exact Agent/Skill version
+          |
+          v
+TargetSnapshot(descriptor_sha256=descriptor.content_sha256)
+```
+
+### Demo mode
+
+The demo bootstrap creates a real `TargetDescriptor` for each Loan Agent version,
+including its demo Skills. It persists the descriptor before creating the associated
+TargetSnapshot. CLI and FastAPI must stop hashing ad hoc dictionaries as fake descriptors.
+
+### Storage contract
+
+Add explicit repository operations:
+
+```python
+save_target_descriptor(descriptor: TargetDescriptor) -> None
+get_target_descriptor(content_sha256: str) -> TargetDescriptor | None
+list_target_descriptors(ref: TargetRef | None = None) -> list[TargetDescriptor]
+```
+
+Descriptors are content-addressed and immutable. Re-saving identical content is
+idempotent. The same external version may produce a different descriptor hash if a vendor
+mutates content in place; both records remain available so historical Runs stay valid.
+
+### SQLite table
+
+```sql
+CREATE TABLE target_descriptors (
+    content_sha256 TEXT PRIMARY KEY,
+    source_id TEXT NOT NULL,
+    target_type TEXT NOT NULL,
+    external_target_id TEXT NOT NULL,
+    external_version_id TEXT NOT NULL,
+    fetched_at TEXT NOT NULL,
+    payload TEXT NOT NULL
+);
+
+CREATE INDEX idx_target_descriptor_ref
+ON target_descriptors(
+    source_id, target_type, external_target_id, external_version_id
+);
+```
+
+Prompts and metadata may contain customer business information. APIs and lineage graphs do
+not return descriptor payloads unless a separately authorized Target-detail use case is
+implemented. Existing credential-like field rejection remains mandatory.
+
+## 6. Run Creation Contract
+
+The caller selects references:
+
+```json
+{
+  "target": {
+    "source_id": "customer-platform",
+    "target_type": "agent",
+    "external_target_id": "loan-agent",
+    "external_version_id": "v3"
+  },
+  "dataset_id": "loan-policy",
+  "dataset_version": 5,
+  "evaluator_ids": ["routing", "final-state"]
+}
+```
+
+Application composition resolves immutable records before creating the Run:
+
+```text
+request
+  -> exact DatasetVersion
+  -> exact TargetDescriptor
+  -> TargetSnapshot referencing descriptor hash
+  -> exact EvaluatorSpecs
+  -> immutable RunManifest
+  -> persisted EvaluationRun
+```
+
+`RunManagement.create_run()` must verify:
+
+- the descriptor exists in storage;
+- `TargetSnapshot.descriptor_sha256` equals its content hash;
+- descriptor and snapshot `TargetRef` values match exactly;
+- the Dataset version is published;
+- Evaluator versions are exact and valid.
+
+Descriptor persistence and initial Run persistence must not leave a Run with a dangling
+descriptor reference. Application orchestration should register the descriptor before Run
+creation; repository constraints or transactional composition enforce the final boundary.
+
+## 7. Lineage Read Models
+
+`application/lineage_queries.py` defines transport-neutral read models, not new Domain
+entities.
 
 ```python
 LineageNodeKind = Literal[
@@ -179,50 +304,23 @@ class LineageGraph(BaseModel):
     edges: tuple[LineageEdge, ...]
 ```
 
-Required invariants:
+Invariants:
 
-- node IDs are unique;
-- edge triples are unique;
-- every edge endpoint exists in `nodes`;
-- `root_node_id` identifies an existing node;
-- versioned executable assets contain exact versions;
-- hashes are present whenever the source snapshot provides them.
+- node IDs and edge triples are unique;
+- all edge endpoints exist;
+- the root node exists;
+- versioned executable assets expose exact versions;
+- content hashes are included whenever their source record provides one.
 
-Node metadata remains intentionally small. Full Dataset, Case, Target, or Evaluator data
-is retrieved through its owning API rather than copied into the graph response.
+Graph nodes deliberately omit prompts, Tool definitions, Case inputs, expectations,
+invocation configuration, credential references, Traces, and Results.
 
-## 6. Query API
+## 8. Graph Construction Algorithm
 
-Initial forward query:
+Relationships are captured in immutable records at write time. `LineageGraph` is assembled
+at query time and is never persisted.
 
-```http
-GET /api/runs/{run_id}/lineage
-```
-
-Expanded queries:
-
-```http
-GET /api/ab-tests/{ab_test_id}/lineage
-GET /api/datasets/{dataset_id}/versions/{version}/lineage
-GET /api/targets/{source_id}/{target_id}/versions/{version}/lineage
-GET /api/evaluators/{evaluator_id}/versions/{version}/lineage
-```
-
-Behavior:
-
-- unknown root resources return `404`;
-- a valid resource with no related Runs returns a graph containing only the root node;
-- malformed versions or limits return `422`;
-- graph responses never expose Target invocation configuration, credentials, prompts,
-  Case inputs, Tool arguments, or Trace payloads;
-- endpoints are read-only and deterministic for unchanged stored records.
-
-## 7. Graph Construction
-
-Graph construction occurs at query time. Immutable records are written at Run/A/B
-creation time; the rendered node-and-edge response is not stored.
-
-Use three local collections:
+Use:
 
 ```text
 nodes_by_id: dict[str, LineageNode]
@@ -230,171 +328,221 @@ edges: set[tuple[source_id, target_id, relation]]
 visited: set[str]
 ```
 
-Core private operations in `application/lineage_queries.py`:
+Private operations remain in `application/lineage_queries.py`:
 
 ```text
 _add_node()
 _add_edge()
 _expand_run()
 _expand_dataset()
-_expand_target()
+_expand_target_descriptor()
 _expand_ab_test()
 ```
 
-Traversal is deterministic:
+Algorithm:
 
-1. Load the requested root record.
-2. Add the root node.
-3. Expand only approved relationship types.
-4. Deduplicate shared nodes by stable node ID.
-5. Sort nodes and edges before constructing `LineageGraph`.
+1. Load the root resource.
+2. Add its node.
+3. Follow only typed, approved relationships.
+4. Resolve a Run's descriptor by `descriptor_sha256`.
+5. Add Dataset Cases, Target Skills, and Evaluators.
+6. For A/B, expand baseline and candidate Runs.
+7. Deduplicate shared nodes and edges.
+8. Sort output deterministically.
 
-The work is ordinary visited-set traversal with `O(V + E)` complexity. Do not add
-NetworkX or another graph library. PageRank, shortest path, cycle detection, and graph
-databases are not required.
+This is visited-set traversal with `O(V + E)` complexity. Do not add NetworkX, a graph
+database, PageRank, shortest-path logic, or cycle algorithms.
 
-### Stable node identities
-
-Node IDs are derived from immutable identities, not display names:
+### Stable node IDs
 
 ```text
 run:{run_id}
 ab_test:{ab_test_id}
 dataset:{dataset_id}:{version}:{content_sha256}
-case:{case_id}:{content_sha256}
-target:{source_id}:{target_type}:{external_target_id}:{external_version_id}
+case:{dataset_id}:{dataset_version}:{case_id}:{content_sha256}
+target:{source_id}:{target_type}:{external_target_id}:{external_version_id}:{descriptor_sha256}
 skill:{source_id}:{external_skill_id}:{external_version_id}:{content_sha256}
 evaluator:{evaluator_id}:{version}:{content_sha256}
 ```
 
-Use structured values as hash inputs and established canonical hashing helpers. Do not
-parse these IDs to recover business data.
+Use canonical hashing helpers for Case and Skill content. Never parse node IDs to recover
+business data.
 
-## 8. Reverse Lookup Storage
+## 9. Reverse Lookup Index
 
-Forward Run lineage needs only `repository.get_run(run_id)`. Reverse Dataset, Target, and
-Evaluator queries must not inspect only the latest 50 Runs or load all Runs indefinitely.
+Forward Run lineage needs `get_run()` and `get_target_descriptor()`. Reverse queries must
+not scan only the latest 50 Runs or load every Run indefinitely.
 
-Add explicit repository operations:
+Persist derived Run-to-asset references when a Run is first written:
+
+```text
+run_asset_refs
+├── run_id
+├── asset_kind
+├── source_id
+├── asset_id
+├── version
+└── content_sha256
+```
+
+References include the Run's Dataset, Cases, Target, descriptor Skills, and Evaluators.
+They are written transactionally and can be rebuilt from RunManifest plus
+TargetDescriptor. They accelerate queries but are not authoritative.
+
+Expose explicit repository methods rather than a free-form SQL/query language:
 
 ```python
 list_runs_by_dataset_version(dataset_id, version, limit)
-list_runs_by_target_version(source_id, target_id, version, limit)
+list_runs_by_case_content(dataset_id, version, case_id, content_sha256, limit)
+list_runs_by_target_version(source_id, target_type, target_id, version, limit)
+list_runs_by_skill_version(source_id, skill_id, version, limit)
 list_runs_by_evaluator_version(evaluator_id, version, limit)
 list_ab_tests_by_run_ids(run_ids)
 ```
 
-SQLite may maintain derived, indexed Run-asset reference rows when a pending Run is first
-persisted. These rows accelerate reverse lookup but are not a second source of truth. They
-must be written in the same transaction as the immutable Run and must be reproducible from
-its RunManifest.
+Storage-specific SQL stays in `storage/sqlite.py`.
 
-Do not query arbitrary JSON paths from application code. SQLite-specific indexing and SQL
-remain inside `storage/sqlite.py`.
+## 10. HTTP API
 
-## 9. Web Visualization
+Forward queries:
 
-`LineagePage.vue` renders the API graph without introducing lineage business rules.
+```http
+GET /api/runs/{run_id}/lineage
+GET /api/ab-tests/{ab_test_id}/lineage
+```
 
-Required views:
+Reverse queries:
+
+```http
+GET /api/datasets/{dataset_id}/versions/{version}/lineage
+GET /api/datasets/{dataset_id}/versions/{version}/cases/{case_id}/lineage
+GET /api/targets/{source_id}/{target_type}/{target_id}/versions/{version}/lineage
+GET /api/skills/{source_id}/{skill_id}/versions/{version}/lineage
+GET /api/evaluators/{evaluator_id}/versions/{version}/lineage
+```
+
+Behavior:
+
+- unknown root records return `404`;
+- a valid asset with no related Runs returns a graph containing only the root node;
+- malformed versions and limits return `422`;
+- graph construction failures caused by missing referenced immutable records return a
+  sanitized `409`, because stored lineage is inconsistent;
+- endpoints are read-only;
+- output ordering is deterministic.
+
+## 11. Web Visualization
+
+`LineagePage.vue` consumes `LineageGraph`; it does not infer relationships.
+
+Required interactions:
 
 - Run-centered dependency tree;
 - A/B baseline and candidate branches;
-- shared Dataset and Evaluator nodes shown once;
-- node details with ID, type, version, and hash;
-- navigation from a node to its owning Dataset, Run, Result, Evaluator, or Target page.
+- shared Dataset/Evaluator nodes displayed once;
+- filters by node kind;
+- node selection showing ID, version, type, and hash;
+- links to owning Run, Result, Dataset, Evaluator, or Target views;
+- clear empty, loading, and failed states;
+- usable desktop and mobile layouts.
 
-Use a proven graph/layout library already approved for the Web stack if free-form graph
-layout becomes necessary. A deterministic tree/DAG layout is sufficient initially. The
-frontend must not infer missing relationships from names or current external metadata.
+Start with a deterministic DAG/tree layout. Add a proven Vue graph library only after the
+plain layout cannot satisfy shared-node visualization and browser verification.
 
-## 10. Source Assessment
+## 12. Source Assessment
 
 ### `goal/p1-demo`
 
-- `lineage/` and `experiment/` contain only one-line placeholders.
-- There is no graph model, traversal, persistence, or API implementation to reuse.
-- Preserve only the concepts of reproducible snapshots and experiment relationships.
+- TargetDescriptor is not used by runtime code.
+- `lineage/` and `experiment/` are one-line placeholders.
+- No persistence, traversal, API, or visualization code is reusable.
 
 ### `team/integration-p1-new`
 
-- The single-Case rerun records parent/root Run IDs and demonstrates why explicit Run
-  relationships matter.
-- Its comparison and rerun behavior is coupled to the rejected broad Control Plane,
-  mutable dictionaries, and obsolete RunSnapshot contracts.
-- Reuse the parent-reference idea only when a current regression workflow is designed;
-  do not copy its lineage code.
+- Single-Case reruns record parent/root Run IDs, proving explicit Run relationships are
+  useful.
+- Its Target catalog uses mutable, untyped capability dictionaries and a separate model
+  hierarchy.
+- Its lineage, experiment, and comparison code is empty or coupled to the rejected broad
+  Control Plane and obsolete RunSnapshot contracts.
+- Reuse concepts only; do not copy code.
 
 ### Current refactor
 
 Reuse directly:
 
-- immutable `RunManifest`, `DatasetVersion`, `Case`, `TargetSnapshot`, and
+- `TargetDescriptor`, `TargetSnapshot`, `RunManifest`, `DatasetVersion`, `Case`, and
   `EvaluatorSpec`;
-- repository boundaries and SQLite transaction handling;
-- current FastAPI dependency and error conventions;
+- repository boundaries and SQLite transaction patterns;
+- FastAPI dependency/error conventions;
 - `result/comparison.py` for compatible Run comparison.
 
 Write from scratch:
 
-- Skill snapshot capture in the current Target contract;
-- A/B Test persistence and application orchestration;
-- lineage read models, deterministic graph construction, reverse query indexes, APIs,
-  and Web visualization.
+- TargetDescriptor storage and application catalog behavior;
+- Run-to-descriptor validation;
+- A/B Test persistence/application orchestration;
+- reverse lookup indexes;
+- graph read models, traversal, APIs, and Web visualization.
 
-Reuse means adapting validated behavior to current contracts, not copying old files.
+Reuse means adapting behavior to current contracts, not copying old files.
 
-## 11. Implementation Sequence And Approval Checkpoints
+## 13. Implementation Sequence
 
-Each file follows the project approval sequence: filename, responsibility, class/function
-design, source assessment, then implementation and tests.
+Each file follows the project checkpoints: filename, responsibility, class/function
+design, source assessment, explicit approval, implementation, and tests.
 
-1. Update `domain/target.py` to capture immutable Skill descriptors in TargetSnapshot.
-2. Add focused TargetSnapshot lineage tests and update demo Target construction.
-3. Implement forward Run graph read models and construction in
+1. Add TargetDescriptor repository methods and SQLite persistence.
+2. Implement the minimal local `application/target_catalog.py` registration and exact
+   descriptor resolution workflow.
+3. Replace ad hoc demo descriptor hashes with persisted Loan Agent TargetDescriptors.
+4. Make Run creation reject missing or mismatched TargetDescriptor references.
+5. Implement forward Run graph models and traversal in
    `application/lineage_queries.py`.
-4. Add `GET /api/runs/{run_id}/lineage` and API tests.
-5. Design and implement the focused A/B Test domain/application/storage capability.
-6. Expand lineage construction with A/B baseline/candidate relationships.
-7. Add indexed reverse Run-asset lookups to repository and SQLite adapters.
-8. Add Dataset, Target, Evaluator, and A/B root endpoints.
-9. Implement `LineagePage.vue` and desktop/mobile browser tests.
-10. Reconcile project progress and architecture documentation.
+6. Add `GET /api/runs/{run_id}/lineage` and focused API tests.
+7. Design and implement the A/B Test record, storage, and application workflow.
+8. Expand lineage with A/B baseline/candidate relationships.
+9. Add transactional Run-asset indexes and reverse repository queries.
+10. Add Dataset, Case, Target, Skill, Evaluator, and A/B lineage endpoints.
+11. Implement Web visualization and browser tests.
+12. Reconcile architecture, progress, and operational documentation.
 
-The first usable slice ends after step 4. It shows complete Run dependencies, including
-captured Agent Skill versions, without waiting for the A/B module.
+The first usable slice ends after step 6. It provides truthful Run lineage, including
+Agent Skill versions resolved through persisted TargetDescriptors.
 
-## 12. Coding Rules
+## 14. Coding And Security Rules
 
-- RunManifest and persisted A/B references are authoritative; graph output is derived.
-- Never fetch mutable external metadata to reconstruct historical lineage.
-- Never infer relationships from display names.
-- Do not duplicate Dataset, Target, Skill, or Evaluator content in an A/B record.
+- RunManifest, TargetDescriptor, DatasetVersion, EvaluatorSpec, and A/B Run references are
+  authoritative.
+- Do not copy TargetDescriptor content into TargetSnapshot.
+- Do not fetch mutable external metadata for historical lineage.
+- Do not infer relationships from names.
 - Do not persist rendered graph responses.
-- Do not expose prompts, credentials, invocation configuration, Case inputs, or Trace data.
+- Do not expose prompts, credentials, invocation configuration, Case inputs, Tool
+  arguments, Trace payloads, or Result details in lineage nodes.
 - Keep graph construction pure after records are loaded.
-- Use explicit relationship types; do not accept arbitrary free-form edge names.
-- Keep storage-specific SQL out of application modules.
-- Do not add a graph library or graph database for deterministic POC traversal.
-- Do not create compatibility aliases for deleted scaffolds.
-- Keep code, API fields, documentation, and tests in English; Web labels may be Chinese.
+- Use typed node and relationship values; reject arbitrary free-form edge names.
+- Keep SQL and indexing inside storage adapters.
+- Do not add a graph library or graph database for deterministic traversal.
+- Do not create a generic registry, factory, service wrapper, or compatibility facade.
+- Keep code, APIs, docs, and tests in English; visible Web labels may be Chinese.
 
-## 13. Verification
+## 15. Verification
 
 Backend tests must prove:
 
-- one Run expands to the exact Dataset, Cases, Target, Skills, and Evaluators pinned by
-  its manifest;
-- Agent and Skill Targets produce the correct mutually exclusive Target edge;
-- shared nodes and edges are deduplicated;
+- TargetDescriptors persist idempotently by hash and remain immutable;
+- multiple hashes for externally mutated content remain retrievable;
+- Run creation rejects missing or mismatched descriptors;
+- one Run expands to its exact Dataset, Cases, Target, descriptor Skills, and Evaluators;
+- Agent and Skill Targets produce mutually exclusive Target edges;
+- shared nodes and edge triples deduplicate;
 - graph ordering is deterministic;
-- Case content changes produce a different Case version identity;
-- unknown roots return `404`;
-- A/B graphs include two Run branches and deduplicate compatible shared assets;
-- reverse queries return all matching Runs within the requested limit, not merely the
-  latest global Run page;
-- graph responses omit protected execution data;
-- existing Run, Dataset, Result, and comparison tests remain green.
+- Case or Skill content changes produce new content identities;
+- A/B graphs contain baseline and candidate Runs and deduplicate shared assets;
+- every reverse query returns all matching Runs within its limit;
+- missing referenced records fail explicitly without leaking protected data;
+- existing Dataset, Run, Result, comparison, CLI, and server tests remain green.
 
-Web tests must verify readable layouts at desktop and mobile sizes, shared-node handling,
-node selection, navigation, empty relationships, and failed API states.
+Web tests must verify desktop/mobile layout, shared-node handling, filters, node selection,
+navigation, empty relationships, and failed API states.
