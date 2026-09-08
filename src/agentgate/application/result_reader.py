@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from agentgate.domain import EvaluationReport, EvaluationRun, RunStatus, Trace
 from agentgate.domain.base import normalize_utc, utcnow
+from agentgate.result.comparison import EvaluationComparison, compare_reports
 from agentgate.result.report import build_evaluation_report
 from agentgate.storage.repository import AgentGateRepository
 
@@ -135,6 +136,18 @@ class ResultReader:
         if run.status is not RunStatus.COMPLETED:
             raise ValueError("EvaluationReport requires a completed EvaluationRun")
         return build_evaluation_report(run, self.repository.list_results(run.id))
+
+    def compare_runs(
+        self,
+        baseline_run_id: str,
+        candidate_run_id: str,
+    ) -> EvaluationComparison:
+        """Compare two completed Runs using their persisted reports."""
+
+        return compare_reports(
+            self.get_report(baseline_run_id),
+            self.get_report(candidate_run_id),
+        )
 
     def get_trace(self, run_id: str, case_id: str) -> Trace:
         self._get_run(run_id)
