@@ -24,6 +24,7 @@ from agentgate.run.target_protocol import TargetAdapterProtocol
 from agentgate.storage.repository import AgentGateRepository
 
 from .dataset_management import DatasetManagement
+from .target_catalog import TargetCatalog
 
 
 class RunManagement:
@@ -36,6 +37,7 @@ class RunManagement:
     ) -> None:
         self.repository = repository
         self.dataset_management = DatasetManagement(repository)
+        self.target_catalog = TargetCatalog(repository)
         self.evaluator_specs = tuple(evaluator_specs)
         if not self.evaluator_specs:
             raise ValueError("at least one available Evaluator is required")
@@ -56,6 +58,10 @@ class RunManagement:
     ) -> EvaluationRun:
         """Resolve exact inputs, persist a pending Run, and return it."""
 
+        self.target_catalog.resolve_descriptor(
+            target.ref,
+            target.descriptor_sha256,
+        )
         dataset = (
             self.dataset_management.get_version(dataset_id, dataset_version)
             if dataset_version is not None

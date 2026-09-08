@@ -2,10 +2,21 @@
 
 from __future__ import annotations
 
-from agentgate.application import DatasetManagement, ResultReader, RunManagement
-from agentgate.demo.bootstrap import ensure_demo_dataset
+from agentgate.application import (
+    DatasetManagement,
+    ResultReader,
+    RunManagement,
+    TargetCatalog,
+)
+from agentgate.demo.bootstrap import (
+    ensure_demo_dataset,
+    ensure_demo_target_descriptors,
+)
 from agentgate.demo.loan import LOAN_DATASET, LoanAgent
-from agentgate.domain import TargetRef, TargetSnapshot, TargetType, content_sha256
+from agentgate.demo.targets import (
+    build_demo_target_snapshot,
+    get_demo_target_descriptor,
+)
 from agentgate.evaluator import EVALUATORS
 from agentgate.integrations.observability import InMemoryTraceCapture
 from agentgate.integrations.targets import DemoLoanTargetAdapter
@@ -21,27 +32,20 @@ class EvaluationService:
         self.dataset_management = DatasetManagement(repository)
         self.run_management = RunManagement(repository, EVALUATORS)
         self.result_reader = ResultReader(repository)
+        self.target_catalog = TargetCatalog(repository)
+        ensure_demo_target_descriptors(self.target_catalog)
         ensure_demo_dataset(repository)
 
     def launch(
         self, version: str, dataset_id: str | None = None,
         dataset_version: int | None = None, evaluator_ids: list[str] | None = None,
     ):
-        target = TargetSnapshot(
-            ref=TargetRef(
-                source_id="agentgate-demo",
-                target_type=TargetType.AGENT,
-                external_target_id="loan-agent",
-                external_version_id=version,
-            ),
-            display_name="Loan Agent",
-            adapter_type=DemoLoanTargetAdapter.adapter_type,
-            adapter_version=DemoLoanTargetAdapter.adapter_version,
-            descriptor_sha256=content_sha256({
-                "name": "loan-agent",
-                "versions": LoanAgent.versions,
-            }),
-            invocation_config={"provider": "deterministic"},
+        descriptor = get_demo_target_descriptor(version)
+        target = build_demo_target_snapshot(
+            self.target_catalog.resolve_descriptor(
+                descriptor.ref,
+                descriptor.content_sha256,
+            )
         )
         run = self.run_management.create_run(
             target,
