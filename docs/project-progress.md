@@ -206,3 +206,4 @@ plan before implementation.
 - Customer-specific Java scheduler and Agent-platform adapters.
 - Production observability platform integrations and external Result callbacks.
 - Automated resume or retry of partially completed Runs.
+- Persisted A/B identity, pair history, and A/B-specific lineage after the POC.
