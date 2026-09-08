@@ -2,11 +2,12 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from agentgate.application import RunActivity, RunProgress
-from agentgate.domain import EvaluationRun, RunStatus
+from agentgate.application.skill_analysis import SkillAnalysisUnavailable
+from agentgate.domain import EvaluationRun, RunStatus, SkillAnalysisReport
 from agentgate.server.dependencies import ServerDependencies, get_dependencies
 from agentgate.server.errors import (
     raise_not_found,
@@ -26,6 +27,10 @@ class LaunchRequest(BaseModel):
     evaluator_ids: list[str] | None = None
     max_parallel_cases: int = Field(default=1, ge=1, le=32)
     case_ids: list[str] | None = None
+
+
+class RunSetupSkillAnalysisRequest(BaseModel):
+    version: str
 
 
 @router.get("/runs")
@@ -62,6 +67,22 @@ def launch_evaluation(
         return dependencies.results.get_run_progress(run.id)
     except RuntimeError as error:
         raise_service_unavailable(error)
+    except ValueError as error:
+        raise_unprocessable(error)
+
+
+@router.post("/evaluations/skill-analysis", status_code=201)
+def analyze_evaluation_target(
+    request: RunSetupSkillAnalysisRequest,
+    dependencies: Dependencies,
+) -> SkillAnalysisReport:
+    try:
+        return dependencies.analyze_demo_target(request.version)
+    except SkillAnalysisUnavailable as error:
+        raise HTTPException(
+            status_code=503,
+            detail="Skill analysis is unavailable",
+        ) from error
     except ValueError as error:
         raise_unprocessable(error)
 

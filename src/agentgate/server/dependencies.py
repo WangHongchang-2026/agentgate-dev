@@ -34,7 +34,12 @@ from agentgate.demo.targets import (
     build_demo_target_snapshot,
     get_demo_target_descriptor,
 )
-from agentgate.domain import EvaluationRun, EvaluatorRef, TargetSnapshot
+from agentgate.domain import (
+    EvaluationRun,
+    EvaluatorRef,
+    SkillAnalysisReport,
+    TargetSnapshot,
+)
 from agentgate.integrations.job_dispatchers import JobDispatcher
 from agentgate.integrations.job_dispatchers.celery import CeleryJobDispatcher
 from agentgate.integrations.model_providers.environment import (
@@ -84,6 +89,12 @@ class ServerDependencies:
         """Normalize and persist one external OTLP/HTTP JSON payload."""
 
         return ingest_otlp_http_json(payload, self.repository)
+
+    def analyze_demo_target(self, version: str) -> SkillAnalysisReport:
+        """Analyze the exact demo Target selected during Run configuration."""
+
+        target = self._resolve_demo_target(version)
+        return self.skill_analysis.analyze_target(target.descriptor_sha256)
 
     def submit_demo_run(
         self,

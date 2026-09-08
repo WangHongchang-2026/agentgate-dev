@@ -1,8 +1,15 @@
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from agentgate.application import SkillAnalysis
 from agentgate.demo.loan import LOAN_DATASET
-from agentgate.domain import Case, CaseTurn
+from agentgate.domain import (
+    Case,
+    CaseTurn,
+    SkillAnalysisReport,
+    SkillAnalysisStatus,
+    TargetDescriptor,
+)
 from agentgate.server.dependencies import build_dependencies
 from agentgate.server.routes.runs import router
 
@@ -109,6 +116,76 @@ def test_run_route_rejects_unsafe_case_concurrency(tmp_path) -> None:
 
     assert below_minimum.status_code == 422
     assert above_maximum.status_code == 422
+    assert dispatcher.run_ids == []
+    assert runs.json() == []
+
+
+def test_run_setup_requests_skill_analysis_without_creating_run(tmp_path) -> None:
+    client, dispatcher = _client(tmp_path)
+    dependencies = client.app.state.dependencies
+
+    def analyze(target: TargetDescriptor) -> SkillAnalysisReport:
+        return SkillAnalysisReport(
+            id="run-setup-report",
+            target_ref=target.ref,
+            target_descriptor_sha256=target.content_sha256,
+            analyzer_version="1",
+            status=SkillAnalysisStatus.COMPLETED,
+        )
+
+    dependencies.skill_analysis = SkillAnalysis(dependencies.repository, analyze)
+
+    with client:
+        response = client.post(
+            "/api/evaluations/skill-analysis",
+            json={"version": "loan-agent-v2-fixed"},
+        )
+        runs = client.get("/api/runs")
+
+    assert response.status_code == 201
+    assert response.json()["id"] == "run-setup-report"
+    assert response.json()["target_ref"]["external_version_id"] == (
+        "loan-agent-v2-fixed"
+    )
+    assert dependencies.repository.get_skill_analysis_report(
+        "run-setup-report"
+    ) is not None
+    assert dispatcher.run_ids == []
+    assert runs.json() == []
+
+
+def test_run_setup_analysis_rejects_unknown_target_without_side_effects(
+    tmp_path,
+) -> None:
+    client, dispatcher = _client(tmp_path)
+
+    with client:
+        response = client.post(
+            "/api/evaluations/skill-analysis",
+            json={"version": "missing-version"},
+        )
+        runs = client.get("/api/runs")
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "unknown demo Target version: missing-version"
+    assert dispatcher.run_ids == []
+    assert runs.json() == []
+
+
+def test_run_setup_analysis_reports_unavailable_analyzer(tmp_path) -> None:
+    client, dispatcher = _client(tmp_path)
+    dependencies = client.app.state.dependencies
+    dependencies.skill_analysis = SkillAnalysis(dependencies.repository)
+
+    with client:
+        response = client.post(
+            "/api/evaluations/skill-analysis",
+            json={"version": "loan-agent-v2-fixed"},
+        )
+        runs = client.get("/api/runs")
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Skill analysis is unavailable"
     assert dispatcher.run_ids == []
     assert runs.json() == []
 
