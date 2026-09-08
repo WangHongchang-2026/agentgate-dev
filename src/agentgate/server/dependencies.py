@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,7 @@ from agentgate.application import (
     LineageQueries,
     ResultReader,
     RunManagement,
+    SkillAnalysis,
     TargetCatalog,
 )
 from agentgate.application.evaluator_management import (
@@ -43,6 +45,7 @@ from agentgate.integrations.observability import (
     ingest_otlp_http_json,
 )
 from agentgate.integrations.targets import DemoLoanTargetAdapter
+from agentgate.skill_analysis import analyze_skill_relationships
 from agentgate.storage.sqlite import SQLiteRepository
 
 
@@ -57,6 +60,7 @@ class ServerDependencies:
     runs: RunManagement
     results: ResultReader
     lineage: LineageQueries
+    skill_analysis: SkillAnalysis
     dispatcher: JobDispatcher
     demo_state: dict[str, dict]
     _judge_client: OpenAICompatibleModelClient | None = field(
@@ -175,6 +179,15 @@ def build_dependencies(
                 judge_credential_ref=configured_judge.credential_ref,
             )
         )
+        skill_analyzer = (
+            None
+            if configured_judge is None
+            else partial(
+                analyze_skill_relationships,
+                model_client=configured_judge.client,
+                model_id=configured_judge.model_id,
+            )
+        )
         return ServerDependencies(
             repository=repository,
             datasets=DatasetManagement(repository),
@@ -183,6 +196,7 @@ def build_dependencies(
             runs=RunManagement(repository, evaluator_management),
             results=ResultReader(repository),
             lineage=LineageQueries(repository),
+            skill_analysis=SkillAnalysis(repository, skill_analyzer),
             dispatcher=dispatcher or CeleryJobDispatcher(),
             demo_state={},
             _judge_client=(

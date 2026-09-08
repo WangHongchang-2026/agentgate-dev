@@ -17,6 +17,8 @@ from agentgate.domain import (
     EvaluatorSource,
     EvaluatorSpec,
     RunStatus,
+    SkillAnalysisReport,
+    SkillAnalysisReview,
     TargetDescriptor,
     TargetRef,
     TargetType,
@@ -47,6 +49,28 @@ CREATE INDEX IF NOT EXISTS idx_target_descriptor_ref
         external_target_id,
         external_version_id
     );
+CREATE TABLE IF NOT EXISTS skill_analysis_reports (
+    id TEXT PRIMARY KEY,
+    target_descriptor_sha256 TEXT NOT NULL
+        REFERENCES target_descriptors(content_sha256),
+    content_sha256 TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    payload TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_skill_analysis_reports_target
+    ON skill_analysis_reports(
+        target_descriptor_sha256,
+        created_at DESC,
+        id
+    );
+CREATE TABLE IF NOT EXISTS skill_analysis_reviews (
+    report_id TEXT NOT NULL
+        REFERENCES skill_analysis_reports(id) ON DELETE CASCADE,
+    finding_id TEXT NOT NULL,
+    reviewed_at TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    PRIMARY KEY(report_id, finding_id)
+);
 CREATE TABLE IF NOT EXISTS evaluators (
     id TEXT PRIMARY KEY,
     source TEXT NOT NULL CHECK(source = 'user'),
@@ -265,6 +289,97 @@ class SQLiteRepository:
         with self._connect() as db:
             rows = db.execute(query, parameters).fetchall()
         return [TargetDescriptor.model_validate_json(row[0]) for row in rows]
+
+    def save_skill_analysis_report(self, report: SkillAnalysisReport) -> None:
+        with self._connect() as db:
+            existing = db.execute(
+                "SELECT payload FROM skill_analysis_reports WHERE id=?",
+                (report.id,),
+            ).fetchone()
+            if existing is not None:
+                stored = SkillAnalysisReport.model_validate_json(existing[0])
+                if stored != report:
+                    raise ValueError("SkillAnalysisReport is immutable")
+                return
+            db.execute(
+                """
+                INSERT INTO skill_analysis_reports(
+                    id,
+                    target_descriptor_sha256,
+                    content_sha256,
+                    created_at,
+                    payload
+                ) VALUES(?,?,?,?,?)
+                """,
+                (
+                    report.id,
+                    report.target_descriptor_sha256,
+                    report.content_sha256,
+                    report.created_at.isoformat(),
+                    canonical_json(report),
+                ),
+            )
+
+    def get_skill_analysis_report(
+        self, report_id: str
+    ) -> SkillAnalysisReport | None:
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT payload FROM skill_analysis_reports WHERE id=?",
+                (report_id,),
+            ).fetchone()
+        return SkillAnalysisReport.model_validate_json(row[0]) if row else None
+
+    def list_skill_analysis_reports(
+        self, target_descriptor_sha256: str, limit: int = 50
+    ) -> list[SkillAnalysisReport]:
+        if limit < 1:
+            raise ValueError("SkillAnalysisReport list limit must be at least 1")
+        with self._connect() as db:
+            rows = db.execute(
+                """
+                SELECT payload FROM skill_analysis_reports
+                WHERE target_descriptor_sha256=?
+                ORDER BY created_at DESC,id
+                LIMIT ?
+                """,
+                (target_descriptor_sha256, limit),
+            ).fetchall()
+        return [SkillAnalysisReport.model_validate_json(row[0]) for row in rows]
+
+    def save_skill_analysis_review(
+        self, report_id: str, review: SkillAnalysisReview
+    ) -> None:
+        with self._connect() as db:
+            db.execute(
+                """
+                INSERT INTO skill_analysis_reviews(
+                    report_id,finding_id,reviewed_at,payload
+                ) VALUES(?,?,?,?)
+                ON CONFLICT(report_id,finding_id) DO UPDATE SET
+                    reviewed_at=excluded.reviewed_at,
+                    payload=excluded.payload
+                """,
+                (
+                    report_id,
+                    review.finding_id,
+                    review.reviewed_at.isoformat(),
+                    canonical_json(review),
+                ),
+            )
+
+    def list_skill_analysis_reviews(
+        self, report_id: str
+    ) -> list[SkillAnalysisReview]:
+        with self._connect() as db:
+            rows = db.execute(
+                """
+                SELECT payload FROM skill_analysis_reviews
+                WHERE report_id=? ORDER BY finding_id
+                """,
+                (report_id,),
+            ).fetchall()
+        return [SkillAnalysisReview.model_validate_json(row[0]) for row in rows]
 
     def save_evaluator(self, evaluator: Evaluator) -> None:
         _require_user_evaluator(evaluator)

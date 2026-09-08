@@ -19,6 +19,14 @@ from .lineage_queries import (
 )
 from .result_reader import ResultReader, RunActivity, RunProgress
 from .run_management import RunManagement
+from .skill_analysis import (
+    SkillAnalysis,
+    SkillAnalysisFindingNotFound,
+    SkillAnalysisReportNotFound,
+    SkillAnalysisTargetNotFound,
+    SkillAnalysisUnavailable,
+    SkillAnalyzer,
+)
 from .target_catalog import TargetCatalog
 
 __all__ = [
@@ -39,5 +47,11 @@ __all__ = [
     "RunActivity",
     "RunManagement",
     "RunProgress",
+    "SkillAnalysis",
+    "SkillAnalysisFindingNotFound",
+    "SkillAnalysisReportNotFound",
+    "SkillAnalysisTargetNotFound",
+    "SkillAnalysisUnavailable",
+    "SkillAnalyzer",
     "TargetCatalog",
 ]
