@@ -1,6 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
+from agentgate.application import SkillAnalysis
 from agentgate.application.evaluator_management import EvaluatorManagement
 from agentgate.demo.loan import LOAN_DATASET
 from agentgate.domain import FrozenJsonObject
@@ -58,6 +59,10 @@ def test_application_factory_registers_dependencies_and_routes(tmp_path) -> None
         application.state.dependencies.runs.evaluator_management
         is application.state.dependencies.evaluators
     )
+    assert isinstance(
+        application.state.dependencies.skill_analysis,
+        SkillAnalysis,
+    )
     assert not hasattr(application.state, "repository")
     assert not hasattr(application.state, "service")
 
@@ -80,6 +85,12 @@ def test_application_factory_registers_dependencies_and_routes(tmp_path) -> None
         "/api/runs/{run_id}/status",
         "/api/runs/{run_id}",
         "/api/runs/{run_id}/traces/{case_id}",
+        "/api/skill-analysis/reports",
+        "/api/skill-analysis/reports/{report_id}",
+        (
+            "/api/skill-analysis/reports/{report_id}/findings/"
+            "{finding_id}/review"
+        ),
         "/v1/traces",
     }.issubset(paths)
     assert set(paths["/api/evaluators"]) == {"get", "post"}
