@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from agentgate.demo.loan import LOAN_DATASET
+from agentgate.domain import Case, CaseTurn
 from agentgate.server.dependencies import build_dependencies
 from agentgate.server.routes.runs import router
 
@@ -183,3 +184,66 @@ def test_run_status_returns_not_found(tmp_path) -> None:
 
     assert response.status_code == 404
     assert response.json()["detail"] == "unknown EvaluationRun: missing"
+
+def test_run_route_accepts_reproducible_case_subset(tmp_path) -> None:
+    client, dispatcher = _client(tmp_path)
+    datasets = client.app.state.dependencies.datasets
+    dataset = datasets.create_dataset("Route Subset Dataset")
+    datasets.create_draft(dataset.id)
+    datasets.save_case(
+        dataset.id,
+        Case(
+            id="first",
+            name="First",
+            turns=(CaseTurn(id="first-turn", input={"risk": "high"}),),
+        ),
+    )
+    datasets.save_case(
+        dataset.id,
+        Case(
+            id="second",
+            name="Second",
+            turns=(CaseTurn(id="second-turn", input={"risk": "low"}),),
+        ),
+    )
+    datasets.publish_draft(dataset.id)
+    with client:
+        response = client.post(
+            "/api/evaluations",
+            json={
+                "version": "loan-agent-v2-fixed",
+                "dataset_id": dataset.id,
+                "dataset_version": 1,
+                "case_ids": ["second"],
+                "evaluator_ids": ["skill-routing"],
+            },
+        )
+        run_id = response.json()["run_id"]
+        run = client.get("/api/runs").json()[0]
+
+    assert response.status_code == 202
+    assert dispatcher.run_ids == [run_id]
+    assert [case["id"] for case in run["manifest"]["dataset"]["cases"]] == [
+        "second"
+    ]
+    assert "Run case subset" in run["manifest"]["dataset"]["notes"]
+
+
+def test_run_route_rejects_unknown_case_subset(tmp_path) -> None:
+    client, dispatcher = _client(tmp_path)
+    with client:
+        response = client.post(
+            "/api/evaluations",
+            json={
+                "version": "loan-agent-v2-fixed",
+                "dataset_id": LOAN_DATASET.id,
+                "dataset_version": 1,
+                "case_ids": ["missing-case"],
+            },
+        )
+        runs = client.get("/api/runs")
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "case_ids reference unknown Cases: missing-case"
+    assert dispatcher.run_ids == []
+    assert runs.json() == []

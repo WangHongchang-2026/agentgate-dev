@@ -294,9 +294,10 @@ async function importDataset(event: Event) {
   }
 }
 
-async function launchEvaluation() {
+async function launchEvaluation(caseIds?: string[]) {
   if (!activeVersion.value?.version) return ElMessage.warning('只能运行已发布版本')
   if (!selectedEvaluators.value.length) return ElMessage.warning('请至少选择一个评估器')
+  if (caseIds && caseIds.length === 0) return ElMessage.warning('请选择至少一个用例')
   busy.value = true
   try {
     const run = await runsApi.launch({
@@ -304,14 +305,19 @@ async function launchEvaluation() {
       datasetId: activeDatasetId.value,
       datasetVersion: activeVersion.value.version,
       evaluatorIds: selectedEvaluators.value,
+      caseIds,
     })
     emit('runCreated', run)
-    ElMessage.success('评估已进入队列')
+    ElMessage.success(caseIds ? '当前用例已进入队列' : '评估已进入队列')
   } catch (error) {
     showError(error, '运行评估失败')
   } finally {
     busy.value = false
   }
+}
+
+function launchSelectedCase() {
+  return launchEvaluation(activeCaseId.value ? [activeCaseId.value] : [])
 }
 
 function showError(error: unknown, fallback: string) {
@@ -410,7 +416,8 @@ onMounted(async () => {
       <el-select v-model="selectedEvaluators" multiple collapse-tags aria-label="运行评估器">
         <el-option v-for="item in evaluators" :key="item.id" :label="item.name" :value="item.id" />
       </el-select>
-      <el-button type="primary" :disabled="activeVersion?.status !== 'published'" :loading="busy" data-testid="run-dataset-version" @click="launchEvaluation">运行此版本 →</el-button>
+      <el-button :disabled="activeVersion?.status !== 'published' || !activeCaseId" :loading="busy" data-testid="run-selected-case" @click="launchSelectedCase">运行当前用例</el-button>
+      <el-button type="primary" :disabled="activeVersion?.status !== 'published'" :loading="busy" data-testid="run-dataset-version" @click="launchEvaluation()">运行此版本 →</el-button>
     </div>
 
     <input ref="importInput" class="hidden-file-input" type="file" accept="application/json,.json" @change="importDataset" />

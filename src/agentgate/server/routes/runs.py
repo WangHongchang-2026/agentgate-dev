@@ -25,6 +25,7 @@ class LaunchRequest(BaseModel):
     dataset_version: int = Field(ge=1)
     evaluator_ids: list[str] | None = None
     max_parallel_cases: int = Field(default=1, ge=1, le=32)
+    case_ids: list[str] | None = None
 
 
 @router.get("/runs")
@@ -54,6 +55,7 @@ def launch_evaluation(
             request.version,
             dataset_id=request.dataset_id,
             dataset_version=request.dataset_version,
+            case_ids=request.case_ids,
             evaluator_ids=request.evaluator_ids,
             max_parallel_cases=request.max_parallel_cases,
         )
