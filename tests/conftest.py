@@ -6,7 +6,9 @@ from typing import Any
 import pytest
 
 from agentgate.application import ResultReader, RunManagement, TargetCatalog
-from agentgate.application.evaluator_management import DEFAULT_EVALUATOR_MANAGEMENT
+from agentgate.application.evaluator_management import (
+    build_default_evaluator_management,
+)
 from agentgate.demo.bootstrap import (
     ensure_demo_dataset,
     ensure_demo_target_descriptors,
@@ -44,7 +46,8 @@ def execute_demo() -> DemoExecution:
         target = build_demo_target_snapshot(
             get_demo_target_descriptor(version)
         )
-        runs = RunManagement(repository, DEFAULT_EVALUATOR_MANAGEMENT)
+        evaluators = build_default_evaluator_management(repository)
+        runs = RunManagement(repository, evaluators)
         run = runs.create_run(
             target,
             dataset_id=dataset_id,

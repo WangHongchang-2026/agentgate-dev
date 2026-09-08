@@ -128,6 +128,58 @@ def execute(
     )[0]
 
 
+def test_validate_spec_accepts_valid_configuration_without_model_call() -> None:
+    model = RecordingModel()
+    judge = AnswerQualityJudge({"test-provider": model})
+
+    judge.validate_spec(judge_spec())
+
+    assert model.requests == []
+
+
+@pytest.mark.parametrize(
+    "config_override",
+    [
+        {"unexpected": True},
+        {"instruction": " "},
+        {"rubric": {}},
+    ],
+)
+def test_validate_spec_rejects_invalid_configuration(
+    config_override: dict[str, object],
+) -> None:
+    judge = AnswerQualityJudge({"test-provider": RecordingModel()})
+
+    with pytest.raises(ValueError):
+        judge.validate_spec(judge_spec(**config_override))
+
+
+def test_validate_spec_rejects_unknown_provider() -> None:
+    judge = AnswerQualityJudge({"test-provider": RecordingModel()})
+    spec = judge_spec(model={"provider_id": "missing", "model_id": "model"})
+
+    with pytest.raises(ValueError, match="no Judge model client configured"):
+        judge.validate_spec(spec)
+
+
+@pytest.mark.parametrize(
+    ("changes", "message"),
+    [
+        ({"kind": EvaluatorKind.RULE}, "requires kind"),
+        ({"implementation_id": "other"}, "requires implementation_id"),
+        ({"implementation_version": "2"}, "requires implementation_version"),
+    ],
+)
+def test_validate_spec_rejects_wrong_implementation_identity(
+    changes: dict[str, object],
+    message: str,
+) -> None:
+    judge = AnswerQualityJudge({"test-provider": RecordingModel()})
+
+    with pytest.raises(ValueError, match=message):
+        judge.validate_spec(judge_spec().model_copy(update=changes))
+
+
 def test_pass_verdict_maps_to_result_and_records_provenance() -> None:
     model = RecordingModel()
 

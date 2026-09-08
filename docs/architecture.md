@@ -163,6 +163,7 @@ evaluator/
 ├── evaluator_protocol.py
 ├── executor.py
 ├── models.py
+├── versioning.py
 ├── hybrid.py
 ├── rule/
 └── judge/
@@ -172,6 +173,9 @@ Rule evaluators perform deterministic checks such as JSON structure and field-va
 validation, required or forbidden Tools, Tool arguments, policy, state, and trajectory.
 Judge evaluators perform semantic checks. Hybrid evaluators combine explicitly defined
 Rule and Judge semantics. Runtime-only evaluator models may remain in `evaluator/models.py`.
+The domain owns stable `Evaluator` identities, editable `EvaluatorDraft` objects, and
+immutable content-addressed `EvaluatorSpec` publications. Pure draft and publication
+transformations live in `evaluator/versioning.py`.
 
 ### Result
 
@@ -252,6 +256,12 @@ The application layer coordinates complete use cases. It resolves versions, invo
 capabilities, controls transactions through repositories, and provides shared boundaries
 to FastAPI, CLI, Celery, and external control planes.
 
+`evaluator_management.py` merges source-controlled built-ins with user identities stored
+in SQLite. It coordinates drafts, publication, enable state, exact version reads, and new
+Run selection. Built-ins are always enabled and are never copied into SQLite. Every
+composition root supplies the repository explicitly; no process-global catalog owns a
+second view of persistence.
+
 ### Storage
 
 ```text
@@ -262,9 +272,11 @@ storage/
 └── artifacts.py
 ```
 
-SQLite is authoritative for POC Runs and Results. Redis and Celery state is operational
-only. Artifact metadata is stored in the database while large bytes use local Artifact
-storage. PostgreSQL and object storage are later adapters behind the same contracts.
+SQLite is authoritative for POC Runs, Results, user Evaluator identities, drafts, and
+published Evaluator versions. Draft publication is atomic and published specifications
+are immutable. Redis and Celery state is operational only. Artifact metadata is stored in
+the database while large bytes use local Artifact storage. PostgreSQL and object storage
+are later adapters behind the same contracts.
 
 ### CLI
 
@@ -294,6 +306,7 @@ server/
     ├── runs.py
     ├── datasets.py
     ├── catalogs.py
+    ├── evaluators.py
     ├── results.py
     ├── telemetry.py
     └── skill_analysis.py
@@ -347,6 +360,10 @@ Web/CLI/API
   -> result/ calculates Metrics, Gate, and Report
   -> persist and expose through result_reader.py
 ```
+
+New Runs resolve explicit user Evaluator IDs to the latest enabled publication and embed
+the exact specifications in `RunManifest`. Worker execution uses those embedded
+specifications even if an Evaluator is later disabled or a newer version is published.
 
 ### Static Skill Evaluation
 

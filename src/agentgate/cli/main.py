@@ -13,7 +13,9 @@ from agentgate.application import (
     RunManagement,
     TargetCatalog,
 )
-from agentgate.application.evaluator_management import DEFAULT_EVALUATOR_MANAGEMENT
+from agentgate.application.evaluator_management import (
+    build_default_evaluator_management,
+)
 from agentgate.demo.bootstrap import (
     ensure_demo_dataset,
     ensure_demo_target_descriptors,
@@ -50,9 +52,10 @@ def configure(
     repository = SQLiteRepository(database or Path("agentgate.db"))
     ensure_demo_dataset(repository)
     ensure_demo_target_descriptors(TargetCatalog(repository))
+    evaluator_management = build_default_evaluator_management(repository)
     context.obj = CliDependencies(
         datasets=DatasetManagement(repository),
-        runs=RunManagement(repository, DEFAULT_EVALUATOR_MANAGEMENT),
+        runs=RunManagement(repository, evaluator_management),
         results=ResultReader(repository),
     )
 
