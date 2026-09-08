@@ -9,16 +9,22 @@ from typing import Any
 
 from fastapi import Request
 
-from agentgate.application import DatasetManagement, ResultReader, RunManagement
-from agentgate.demo.bootstrap import ensure_demo_dataset
-from agentgate.demo.loan import LOAN_DATASET, LoanAgent
-from agentgate.domain import (
-    EvaluationRun,
-    TargetRef,
-    TargetSnapshot,
-    TargetType,
-    content_sha256,
+from agentgate.application import (
+    DatasetManagement,
+    ResultReader,
+    RunManagement,
+    TargetCatalog,
 )
+from agentgate.demo.bootstrap import (
+    ensure_demo_dataset,
+    ensure_demo_target_descriptors,
+)
+from agentgate.demo.loan import LOAN_DATASET, LoanAgent
+from agentgate.demo.targets import (
+    build_demo_target_snapshot,
+    get_demo_target_descriptor,
+)
+from agentgate.domain import EvaluationRun
 from agentgate.evaluator import EVALUATORS
 from agentgate.integrations.job_dispatchers import JobDispatcher
 from agentgate.integrations.job_dispatchers.celery import CeleryJobDispatcher
@@ -36,6 +42,7 @@ class ServerDependencies:
 
     repository: SQLiteRepository
     datasets: DatasetManagement
+    targets: TargetCatalog
     runs: RunManagement
     results: ResultReader
     dispatcher: JobDispatcher
@@ -99,8 +106,13 @@ class ServerDependencies:
     ) -> EvaluationRun:
         if version not in LoanAgent.versions:
             raise ValueError(f"unknown demo Target version: {version}")
+        descriptor = get_demo_target_descriptor(version)
+        resolved = self.targets.resolve_descriptor(
+            descriptor.ref,
+            descriptor.content_sha256,
+        )
         return self.runs.create_run(
-            _demo_target(version),
+            build_demo_target_snapshot(resolved),
             dataset_id=dataset_id,
             dataset_version=dataset_version,
             evaluator_ids=evaluator_ids,
@@ -124,31 +136,15 @@ def build_dependencies(
 
     path = database_path or os.getenv("AGENTGATE_DB", "agentgate.db")
     repository = SQLiteRepository(path)
+    target_catalog = TargetCatalog(repository)
+    ensure_demo_target_descriptors(target_catalog)
     ensure_demo_dataset(repository)
     return ServerDependencies(
         repository=repository,
         datasets=DatasetManagement(repository),
+        targets=target_catalog,
         runs=RunManagement(repository, EVALUATORS),
         results=ResultReader(repository),
         dispatcher=dispatcher or CeleryJobDispatcher(),
         demo_state={},
-    )
-
-
-def _demo_target(version: str) -> TargetSnapshot:
-    return TargetSnapshot(
-        ref=TargetRef(
-            source_id="agentgate-demo",
-            target_type=TargetType.AGENT,
-            external_target_id="loan-agent",
-            external_version_id=version,
-        ),
-        display_name="Loan Agent",
-        adapter_type=DemoLoanTargetAdapter.adapter_type,
-        adapter_version=DemoLoanTargetAdapter.adapter_version,
-        descriptor_sha256=content_sha256({
-            "name": "loan-agent",
-            "versions": LoanAgent.versions,
-        }),
-        invocation_config={"provider": "deterministic"},
     )

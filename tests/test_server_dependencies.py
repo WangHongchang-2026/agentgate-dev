@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from agentgate.demo.loan import LOAN_DATASET
+from agentgate.demo.targets import LOAN_AGENT_DESCRIPTORS
 from agentgate.domain import RunStatus
 from agentgate.server.dependencies import build_dependencies
 
@@ -23,6 +24,9 @@ def test_build_dependencies_seeds_isolated_demo_dataset(tmp_path) -> None:
 
     assert dataset == LOAN_DATASET
     assert version.version == 1
+    assert dependencies.targets.list_descriptors() == tuple(
+        sorted(LOAN_AGENT_DESCRIPTORS, key=lambda item: item.content_sha256)
+    )
     assert dependencies.results.list_runs() == []
 
 
@@ -40,6 +44,11 @@ def test_submit_demo_run_persists_then_dispatches_pending_run(tmp_path) -> None:
 
     assert run.status is RunStatus.PENDING
     assert dependencies.repository.get_run(run.id) == run
+    descriptor = dependencies.targets.resolve_descriptor(
+        run.manifest.target.ref,
+        run.manifest.target.descriptor_sha256,
+    )
+    assert descriptor.ref.external_version_id == "loan-agent-v2-fixed"
     assert dispatcher.run_ids == [run.id]
 
 
