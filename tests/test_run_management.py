@@ -108,6 +108,28 @@ def test_create_run_persists_case_concurrency_limit(tmp_path) -> None:
         )
 
 
+def test_create_run_persists_retry_limit(tmp_path) -> None:
+    repository = SQLiteRepository(tmp_path / "create-retry-run.db")
+    seed_demo(repository)
+    management, _ = run_management(repository)
+
+    run = management.create_run(
+        target(),
+        dataset_id=LOAN_DATASET.id,
+        max_retries=3,
+    )
+
+    assert run.manifest.max_retries == 3
+    assert repository.get_run(run.id) == run
+
+    with pytest.raises(ValueError, match="max_retries"):
+        management.create_run(
+            target(),
+            dataset_id=LOAN_DATASET.id,
+            max_retries=-1,
+        )
+
+
 def test_create_run_snapshots_latest_enabled_user_evaluator_version(tmp_path) -> None:
     repository = SQLiteRepository(tmp_path / "user-evaluator-run.db")
     seed_demo(repository)
@@ -407,6 +429,39 @@ def test_fail_stale_runs_accounts_for_parallel_case_batches(tmp_path) -> None:
     assert [run.id for run in failed] == [parallel.id]
     assert repository.get_run(sequential.id).status is RunStatus.RUNNING
     assert repository.get_run(parallel.id).status is RunStatus.FAILED
+
+
+def test_fail_stale_runs_accounts_for_retry_attempts_and_delays(tmp_path) -> None:
+    repository = SQLiteRepository(tmp_path / "retry-stale-runs.db")
+    seed_demo(repository)
+    management, _ = run_management(repository)
+    still_active = management.create_run(
+        target(),
+        dataset_id=LOAN_DATASET.id,
+        timeout_seconds=10,
+        max_retries=2,
+    )
+    stale = management.create_run(
+        target(),
+        dataset_id=LOAN_DATASET.id,
+        timeout_seconds=10,
+        max_retries=2,
+    )
+    now = max(still_active.created_at, stale.created_at) + timedelta(seconds=100)
+    repository.claim_pending_run(
+        still_active.id,
+        now - timedelta(seconds=37),
+    )
+    repository.claim_pending_run(
+        stale.id,
+        now - timedelta(seconds=39),
+    )
+
+    failed = management.fail_stale_runs(now=now, grace_seconds=5)
+
+    assert [run.id for run in failed] == [stale.id]
+    assert repository.get_run(still_active.id).status is RunStatus.RUNNING
+    assert repository.get_run(stale.id).status is RunStatus.FAILED
 
 
 def test_fail_stale_runs_rejects_negative_grace_period(tmp_path) -> None:

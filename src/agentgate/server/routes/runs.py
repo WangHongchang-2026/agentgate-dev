@@ -32,6 +32,7 @@ class LaunchRequest(BaseModel):
     evaluator_ids: list[str] | None = None
     timeout_seconds: float = Field(default=300, gt=0, le=3600)
     max_parallel_cases: int = Field(default=1, ge=1, le=32)
+    max_retries: int = Field(default=0, ge=0, le=5)
     case_ids: list[str] | None = None
 
 
@@ -70,6 +71,7 @@ def launch_evaluation(
             evaluator_ids=request.evaluator_ids,
             timeout_seconds=request.timeout_seconds,
             max_parallel_cases=request.max_parallel_cases,
+            max_retries=request.max_retries,
         )
         return dependencies.results.get_run_progress(run.id)
     except RuntimeError as error:

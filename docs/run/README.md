@@ -2,9 +2,10 @@
 
 The Run capability owns deterministic execution mechanics:
 
-The tree below is the target structure. `engine.py` and `target_protocol.py` are
-implemented; optional process, retry, and Artifact modules are created only with real
-callers. Current status is tracked in [project progress](../project-progress.md).
+The tree below is the target structure. `engine.py`, `retry.py`, and
+`target_protocol.py` are implemented. The optional process and Artifact modules remain
+planned until they have real callers. Current status is tracked in
+[project progress](../project-progress.md).
 
 ```text
 run/
@@ -18,6 +19,15 @@ run/
 Complete Run lifecycle orchestration belongs in `application/run_management.py`.
 Concrete Agent integrations belong in `integrations/targets/`, and Celery background
 submission belongs in `integrations/job_dispatchers/`.
+
+Run retry is a per-Case execution policy. It retries only typed Target infrastructure
+failures classified as rate limiting, timeout, or temporary unavailability. Each retry
+uses a fresh execution and Trace identity with bounded exponential delay. Wrong answers,
+review outcomes, evaluator failures, validation failures, and persistence failures are
+never retried.
+
+The current POC persists the successful attempt's Trace and Results. Persistent failed
+attempt history and retry events in Traces remain future work.
 
 Detailed plans:
 

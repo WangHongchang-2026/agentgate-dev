@@ -12,6 +12,7 @@ from agentgate.domain import (
     EvaluationResult,
     EvaluationRun,
     EvaluatorSpec,
+    FailureStage,
     MetricPlan,
     Outcome,
     ReleaseGateSpec,
@@ -107,6 +108,35 @@ class WindowedTargetAdapter(StubTargetAdapter):
             self.statuses[handle] = CaseExecutionStatus.CANCELLED
             self.active_count -= 1
         super().cancel(handle)
+
+
+class RetryTargetAdapter(StubTargetAdapter):
+    def __init__(
+        self,
+        *,
+        start_failures: int = 0,
+        wait_failures: int = 0,
+        error_code: str = "unavailable",
+    ) -> None:
+        super().__init__()
+        self.start_failures = start_failures
+        self.wait_failures = wait_failures
+        self.error_code = error_code
+        self.start_attempts = 0
+        self.wait_attempts = 0
+
+    def start(self, request: CaseExecutionRequest) -> str:
+        self.start_attempts += 1
+        self.requests[request.execution_id] = request
+        if self.start_attempts <= self.start_failures:
+            raise TargetExecutionError(self.error_code, "Target start failed")
+        return request.execution_id
+
+    def wait(self, handle: str, timeout_seconds: float) -> CaseExecutionResult:
+        self.wait_attempts += 1
+        if self.wait_attempts <= self.wait_failures:
+            raise TargetExecutionError(self.error_code, "Target wait failed")
+        return super().wait(handle, timeout_seconds)
 
 
 def evaluator_spec() -> EvaluatorSpec:
@@ -320,17 +350,156 @@ def test_engine_requires_run_to_be_persisted(tmp_path) -> None:
         engine(repository).execute(pending_run(), StubTargetAdapter())
 
 
-def test_engine_fails_closed_for_unsupported_retry(tmp_path) -> None:
-    repository = SQLiteRepository(tmp_path / "retry.db")
-    run = pending_run(max_retries=1)
+def test_engine_retries_target_wait_failure_and_records_only_success(tmp_path) -> None:
+    repository = SQLiteRepository(tmp_path / "retry-wait.db")
+    run = pending_run(max_retries=2)
     repository.save_run(run)
+    target_adapter = RetryTargetAdapter(wait_failures=2)
+    delays: list[float] = []
 
-    with pytest.raises(ValueError, match="retry support"):
-        engine(repository).execute(run, StubTargetAdapter())
+    completed = RunEngine(
+        repository, evaluate_case, resolve_trace, retry_sleep=delays.append
+    ).execute(run, target_adapter)
 
-    failed = repository.get_run(run.id)
-    assert failed is not None
-    assert failed.status == RunStatus.FAILED
+    assert completed.status is RunStatus.COMPLETED
+    assert target_adapter.wait_attempts == 3
+    assert delays == [1.0, 2.0]
+    assert len(target_adapter.cancelled) == 2
+    assert len(target_adapter.requests) == 3
+    requests = tuple(target_adapter.requests.values())
+    assert len({request.execution_id for request in requests}) == 3
+    assert len({request.traceparent for request in requests}) == 3
+    assert len(repository.list_traces(run.id)) == 1
+    assert len(repository.list_results(run.id)) == 1
+
+
+def test_engine_retries_target_start_failure_with_shared_budget(tmp_path) -> None:
+    repository = SQLiteRepository(tmp_path / "retry-start.db")
+    run = pending_run(max_retries=2)
+    repository.save_run(run)
+    target_adapter = RetryTargetAdapter(start_failures=1, wait_failures=1)
+    delays: list[float] = []
+
+    completed = RunEngine(
+        repository, evaluate_case, resolve_trace, retry_sleep=delays.append
+    ).execute(run, target_adapter)
+
+    assert completed.status is RunStatus.COMPLETED
+    assert target_adapter.start_attempts == 3
+    assert target_adapter.wait_attempts == 2
+    assert delays == [1.0, 2.0]
+    assert len(target_adapter.cancelled) == 1
+    assert len(target_adapter.requests) == 3
+
+
+def test_engine_fails_after_retry_budget_is_exhausted(tmp_path) -> None:
+    repository = SQLiteRepository(tmp_path / "retry-exhausted.db")
+    run = pending_run(max_retries=2)
+    repository.save_run(run)
+    target_adapter = RetryTargetAdapter(wait_failures=3)
+    delays: list[float] = []
+
+    with pytest.raises(TargetExecutionError, match="unavailable"):
+        RunEngine(
+            repository, evaluate_case, resolve_trace, retry_sleep=delays.append
+        ).execute(run, target_adapter)
+
+    assert target_adapter.wait_attempts == 3
+    assert delays == [1.0, 2.0]
+    assert len(target_adapter.cancelled) == 3
+    assert repository.list_traces(run.id) == []
+    assert repository.list_results(run.id) == []
+    assert repository.get_run(run.id).status is RunStatus.FAILED
+
+
+def test_engine_does_not_retry_non_infrastructure_target_failure(tmp_path) -> None:
+    repository = SQLiteRepository(tmp_path / "retry-protocol.db")
+    run = pending_run(max_retries=3)
+    repository.save_run(run)
+    target_adapter = RetryTargetAdapter(
+        wait_failures=1, error_code="protocol_error"
+    )
+    delays: list[float] = []
+
+    with pytest.raises(TargetExecutionError, match="protocol_error"):
+        RunEngine(
+            repository, evaluate_case, resolve_trace, retry_sleep=delays.append
+        ).execute(run, target_adapter)
+
+    assert target_adapter.wait_attempts == 1
+    assert delays == []
+    assert len(target_adapter.requests) == 1
+
+
+def test_engine_does_not_retry_evaluator_failure(tmp_path) -> None:
+    repository = SQLiteRepository(tmp_path / "retry-evaluator.db")
+    run = pending_run(max_retries=3)
+    repository.save_run(run)
+    target_adapter = RetryTargetAdapter()
+    delays: list[float] = []
+
+    def fail_evaluation(case, trace, specs):
+        raise RuntimeError("Evaluator failed")
+
+    with pytest.raises(RuntimeError, match="Evaluator failed"):
+        RunEngine(
+            repository, fail_evaluation, resolve_trace, retry_sleep=delays.append
+        ).execute(run, target_adapter)
+
+    assert target_adapter.wait_attempts == 1
+    assert delays == []
+    assert len(target_adapter.requests) == 1
+
+
+def test_engine_does_not_retry_failed_evaluation_result(tmp_path) -> None:
+    repository = SQLiteRepository(tmp_path / "retry-failed-result.db")
+    run = pending_run(max_retries=3)
+    repository.save_run(run)
+    target_adapter = RetryTargetAdapter()
+    delays: list[float] = []
+
+    def fail_case(case, trace, specs):
+        spec = specs[0]
+        return (
+            EvaluationResult(
+                id=f"result-{case.id}",
+                run_id=trace.run_id,
+                case_id=case.id,
+                trace_id=trace.trace_id,
+                evaluator_id=spec.id,
+                evaluator_name=spec.name,
+                evaluator_version=spec.version,
+                evaluator_content_sha256=spec.content_sha256,
+                evaluator_kind=spec.kind,
+                dimension=spec.dimension,
+                metric=spec.metric,
+                severity=spec.severity,
+                outcome=Outcome.FAIL,
+                score=0,
+                reason="Answer did not match",
+                checks=(
+                    CheckResult(
+                        id=f"check-{case.id}",
+                        name="Output",
+                        outcome=Outcome.FAIL,
+                        score=0,
+                        reason="Answer did not match",
+                        failure_stage=FailureStage.FINAL_OUTPUT,
+                        failure_sequence=0,
+                    ),
+                ),
+                primary_failure_stage=FailureStage.FINAL_OUTPUT,
+            ),
+        )
+
+    completed = RunEngine(
+        repository, fail_case, resolve_trace, retry_sleep=delays.append
+    ).execute(run, target_adapter)
+
+    assert completed.status is RunStatus.COMPLETED
+    assert target_adapter.wait_attempts == 1
+    assert delays == []
+    assert repository.list_results(run.id)[0].outcome is Outcome.FAIL
 
 
 def test_engine_rejects_adapter_version_mismatch(tmp_path) -> None:

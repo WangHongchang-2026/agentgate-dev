@@ -98,6 +98,7 @@ def test_submit_demo_run_persists_then_dispatches_pending_run(tmp_path) -> None:
         evaluator_ids=["skill-routing", "final-state"],
         timeout_seconds=60,
         max_parallel_cases=4,
+        max_retries=2,
     )
 
     assert run.status is RunStatus.PENDING
@@ -109,6 +110,7 @@ def test_submit_demo_run_persists_then_dispatches_pending_run(tmp_path) -> None:
     assert descriptor.ref.external_version_id == "loan-agent-v2-fixed"
     assert run.manifest.timeout_seconds == 60
     assert run.manifest.max_parallel_cases == 4
+    assert run.manifest.max_retries == 2
     assert dispatcher.run_ids == [run.id]
 
 
@@ -124,6 +126,7 @@ def test_execute_demo_run_uses_new_application_and_otel_runtime(tmp_path) -> Non
     report = dependencies.results.get_report(run.id)
     assert run.status is RunStatus.COMPLETED
     assert run.manifest.timeout_seconds == 300
+    assert run.manifest.max_retries == 0
     assert [result.evaluator_id for result in report.results] == [
         "final-state", "skill-routing"
     ]

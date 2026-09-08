@@ -134,15 +134,15 @@ calculate reports, or act as a scheduler.
 
 ### `retry.py`
 
-Applies an explicit retry policy only to classified infrastructure failures such as a
-temporary network error, rate limit, process crash, or transient Agent service error.
+Applies an explicit retry policy only to Target failures classified as `rate_limited`,
+`timeout`, or `unavailable`. The Engine applies one shared per-Case retry budget across
+Target start and wait failures. Delays follow a bounded 1, 2, 4, 8, 16, then 30 second
+schedule.
 
-It never retries wrong answers, policy violations, ordinary evaluator failures, or
-release-gate failures. Every retry uses a new execution identity and emits retry
-information into the Trace. Coding Agent retries require a fresh Workspace.
-
-Create this module only when Engine has a real retry caller and typed failure
-classification.
+It never retries wrong answers, policy violations, evaluator exceptions, validation or
+persistence failures, or release-gate failures. Every retry uses a new execution and
+Trace identity. The current POC persists only the successful attempt's Trace; persistent
+attempt history and retry events in Traces remain future work.
 
 ### `process_manager.py`
 
@@ -251,7 +251,8 @@ It does not mean copying old code.
 | empty `run/scheduler.py` | Remove | `integrations/job_dispatchers/` and application own dispatch |
 | empty `run/targets/` | Remove | Concrete adapters belong in `integrations/targets/` |
 | empty `run/external/` | Remove | Vendor integrations belong in `integrations/` |
-| none | Add when exercised | `run/retry.py`, `run/process_manager.py`, `run/artifacts.py` |
+| none | Added with an Engine caller | `run/retry.py` |
+| none | Add when exercised | `run/process_manager.py`, `run/artifacts.py` |
 
 No compatibility aliases from old Run modules are retained.
 
@@ -268,7 +269,8 @@ Each file requires a source assessment and explicit approval before implementati
    Trace capture and the clean Loan Agent invocation contract are implemented.
 6. [complete] Migrate `application/run_management.py` and the Server caller to the
    new Engine boundary.
-7. Add `retry.py` only after typed infrastructure failures have a real caller.
+7. [complete] Add `retry.py` after typed infrastructure failures have a real Engine
+   caller.
 8. Add `process_manager.py` only with a real local-process Target adapter.
 9. Add `artifacts.py` only with a real Artifact-producing Target.
 10. Remove `run/core.py`, empty legacy files, old target/external folders, and stale
@@ -306,7 +308,9 @@ Each file requires a source assessment and explicit approval before implementati
 
 ### Optional Mechanics
 
-- retry accepts only typed retryable failures and creates a fresh execution identity;
+- retry accepts only typed retryable Target failures, respects its per-Case budget, uses
+  bounded delays, and creates fresh execution and Trace identities;
+- evaluator failures and measured fail/review outcomes never trigger Target retries;
 - local process timeout terminates the complete process tree;
 - concurrency never exceeds the configured limit;
 - Artifact hashes and metadata are deterministic and large content stays outside the
@@ -372,7 +376,7 @@ Status: rejected as redundant
 
 ### `run/engine.py`
 
-Status: implemented; 225 tests passing
+Status: implemented; retry-focused regression passing
 
 | Source | Decision |
 | --- | --- |
@@ -381,7 +385,18 @@ Status: implemented; 225 tests passing
 | `integration/p1-new` | Adapt execution identity, Trace context, strict Trace identity checks, and timeout cancellation. |
 | `integration/p1-new` | Reject direct polling, obsolete models, and concrete integration exceptions in Engine. |
 | Current refactor | Reuse `EvaluationRun`, `transition_run`, repository operations, and `TargetAdapterProtocol`. |
-| From scratch | Inject Case evaluation and Trace resolution, validate complete Result sets, and fail closed for unimplemented retry/parallel settings. |
+| From scratch | Inject Case evaluation and Trace resolution, validate complete Result sets, enforce bounded concurrency, and apply typed infrastructure retry without crossing into evaluation or persistence failures. |
+
+### `run/retry.py`
+
+Status: implemented and wired through `run/engine.py`
+
+| Source | Decision |
+| --- | --- |
+| `goal/p1-demo` | Preserve no retry code; its Run Engine fails immediately for every Target exception. |
+| `integration/p1-new` | Reuse no Run retry orchestration; the available team reference also has no infrastructure retry implementation. |
+| Current refactor | Reuse `RunManifest.max_retries`, typed `TargetExecutionError` codes, and per-attempt execution/Trace identity generation. |
+| From scratch | Implement the fixed retryable-code policy, bounded backoff, shared per-Case budget across start/wait failures, and focused no-evaluation-retry tests. |
 
 ### `integrations/targets/demo_loan.py`
 

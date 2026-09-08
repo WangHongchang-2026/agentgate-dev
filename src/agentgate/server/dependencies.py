@@ -106,6 +106,7 @@ class ServerDependencies:
         evaluator_ids: list[str] | None = None,
         timeout_seconds: float = 300,
         max_parallel_cases: int = 1,
+        max_retries: int = 0,
     ) -> EvaluationRun:
         """Create and asynchronously dispatch one POC Loan Agent evaluation."""
 
@@ -117,6 +118,7 @@ class ServerDependencies:
             evaluator_ids=evaluator_ids,
             timeout_seconds=timeout_seconds,
             max_parallel_cases=max_parallel_cases,
+            max_retries=max_retries,
         )
         return self.runs.dispatch_run(run.id, self.dispatcher)
 
@@ -160,6 +162,7 @@ class ServerDependencies:
             evaluator_ids=evaluator_ids,
             timeout_seconds=300,
             max_parallel_cases=1,
+            max_retries=0,
         )
         capture = InMemoryTraceCapture()
         try:
@@ -180,6 +183,7 @@ class ServerDependencies:
         evaluator_ids: list[str] | None,
         timeout_seconds: float,
         max_parallel_cases: int,
+        max_retries: int,
     ) -> EvaluationRun:
         target = self._resolve_demo_target(version)
         return self.runs.create_run(
@@ -190,6 +194,7 @@ class ServerDependencies:
             evaluator_ids=evaluator_ids,
             timeout_seconds=timeout_seconds,
             max_parallel_cases=max_parallel_cases,
+            max_retries=max_retries,
         )
 
     def _resolve_demo_target(self, version: str) -> TargetSnapshot:

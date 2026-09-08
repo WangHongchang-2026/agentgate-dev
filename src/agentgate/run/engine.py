@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from collections import deque
 from collections.abc import Callable, Iterable, Sequence
+from time import sleep
 from uuid import uuid4
 
 from agentgate.domain import (
@@ -26,6 +27,7 @@ from .target_protocol import (
     TargetExecutionError,
     TargetAdapterProtocol,
 )
+from .retry import can_retry_target_failure, retry_delay_seconds
 
 
 LOGGER = logging.getLogger(__name__)
@@ -34,7 +36,8 @@ CaseEvaluator = Callable[
     [Case, Trace, tuple[EvaluatorSpec, ...]], Sequence[EvaluationResult]
 ]
 TraceResolver = Callable[[CaseExecutionRequest, CaseExecutionResult], Trace]
-ActiveCase = tuple[Case, CaseExecutionRequest, str]
+RetrySleeper = Callable[[float], None]
+ActiveCase = tuple[Case, CaseExecutionRequest, str, int]
 
 
 class RunEngine:
@@ -45,10 +48,12 @@ class RunEngine:
         repository: AgentGateRepository,
         evaluate_case: CaseEvaluator,
         resolve_trace: TraceResolver,
+        retry_sleep: RetrySleeper = sleep,
     ) -> None:
         self.repository = repository
         self.evaluate_case = evaluate_case
         self.resolve_trace = resolve_trace
+        self.retry_sleep = retry_sleep
 
     def execute(
         self, run: EvaluationRun, target_adapter: TargetAdapterProtocol
@@ -99,8 +104,9 @@ class RunEngine:
                         exhausted = True
                         break
 
-                    request, handle = self._start_case(run, case, target_adapter)
-                    active.append((case, request, handle))
+                    active_case = self._start_case(run, case, target_adapter)
+                    active.append(active_case)
+                    _, _, handle, _ = active_case
                     status = target_adapter.get_status(handle)
                     if status not in {
                         CaseExecutionStatus.PENDING,
@@ -111,8 +117,31 @@ class RunEngine:
                 if not active:
                     continue
 
-                case, request, handle = active[0]
-                self._complete_case(run, case, request, handle, target_adapter)
+                case, request, handle, retries_used = active[0]
+                try:
+                    outcome = self._wait_for_target(request, handle, target_adapter)
+                except TargetExecutionError as error:
+                    if not can_retry_target_failure(
+                        error,
+                        retries_used=retries_used,
+                        max_retries=run.manifest.max_retries,
+                    ):
+                        raise
+                    self._cancel(target_adapter, handle)
+                    active.popleft()
+                    retry_number = retries_used + 1
+                    self.retry_sleep(retry_delay_seconds(retry_number))
+                    active.appendleft(
+                        self._start_case(
+                            run,
+                            case,
+                            target_adapter,
+                            retries_used=retry_number,
+                        )
+                    )
+                    continue
+
+                self._record_case(run, case, request, outcome)
                 active.popleft()
         except Exception:
             self._cancel_active(target_adapter, active)
@@ -123,23 +152,34 @@ class RunEngine:
         run: EvaluationRun,
         case: Case,
         target_adapter: TargetAdapterProtocol,
-    ) -> tuple[CaseExecutionRequest, str]:
-        request = self._build_request(run, case)
-        handle = target_adapter.start(request)
-        if not handle.strip():
-            raise TargetExecutionError(
-                "protocol_error", "Target returned a blank execution handle"
-            )
-        return request, handle
+        *,
+        retries_used: int = 0,
+    ) -> ActiveCase:
+        while True:
+            request = self._build_request(run, case)
+            try:
+                handle = target_adapter.start(request)
+                if not handle.strip():
+                    raise TargetExecutionError(
+                        "protocol_error", "Target returned a blank execution handle"
+                    )
+                return case, request, handle, retries_used
+            except TargetExecutionError as error:
+                if not can_retry_target_failure(
+                    error,
+                    retries_used=retries_used,
+                    max_retries=run.manifest.max_retries,
+                ):
+                    raise
+                retries_used += 1
+                self.retry_sleep(retry_delay_seconds(retries_used))
 
-    def _complete_case(
-        self,
-        run: EvaluationRun,
-        case: Case,
+    @staticmethod
+    def _wait_for_target(
         request: CaseExecutionRequest,
         handle: str,
         target_adapter: TargetAdapterProtocol,
-    ) -> None:
+    ) -> CaseExecutionResult:
         outcome = target_adapter.wait(handle, request.timeout_seconds)
         status = target_adapter.get_status(handle)
         if status == CaseExecutionStatus.CANCELLED:
@@ -149,6 +189,15 @@ class RunEngine:
                 "protocol_error",
                 f"Target wait returned while execution status was {status.value}",
             )
+        return outcome
+
+    def _record_case(
+        self,
+        run: EvaluationRun,
+        case: Case,
+        request: CaseExecutionRequest,
+        outcome: CaseExecutionResult,
+    ) -> None:
         trace = self.resolve_trace(request, outcome)
         self._validate_trace(request, outcome, trace)
         self.repository.save_trace(trace)
@@ -164,7 +213,7 @@ class RunEngine:
         target_adapter: TargetAdapterProtocol,
         active: Iterable[ActiveCase],
     ) -> None:
-        for _, _, handle in active:
+        for _, _, handle, _ in active:
             cls._cancel(target_adapter, handle)
 
     def _require_persisted_run(self, run: EvaluationRun) -> EvaluationRun:
@@ -182,8 +231,6 @@ class RunEngine:
         run: EvaluationRun, target_adapter: TargetAdapterProtocol
     ) -> None:
         manifest = run.manifest
-        if manifest.max_retries != 0:
-            raise ValueError("RunEngine retry support is not implemented")
         if target_adapter.adapter_type != manifest.target.adapter_type:
             raise ValueError("Target adapter_type does not match RunManifest")
         if target_adapter.adapter_version != manifest.target.adapter_version:

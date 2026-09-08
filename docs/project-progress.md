@@ -90,7 +90,7 @@ Last updated: 2026-09-08
 | [x] | Celery dispatcher | Submit `run_id` through Redis | `src/agentgate/integrations/job_dispatchers/celery.py` |
 | [x] | Celery worker | Load and execute the persisted Run with the same optional Judge catalog and task-local client cleanup | `src/agentgate/integrations/job_dispatchers/celery.py` |
 | [ ] | Customer scheduler integration | Accept work from an external Java scheduler through the shared Run boundary | `src/agentgate/server/routes/runs.py` or `src/agentgate/integrations/job_dispatchers/`; planned after POC |
-| [ ] | Retry mechanics | Retry classified infrastructure failures only | `src/agentgate/run/retry.py` **new** |
+| [x] | Retry mechanics | Retry only classified Target infrastructure failures with bounded backoff and a fresh execution identity; never retry evaluation failures | `src/agentgate/run/retry.py`, `src/agentgate/run/engine.py`, `src/agentgate/application/run_management.py`, `src/agentgate/server/routes/runs.py` |
 | [ ] | Local process management | Start, monitor, limit, and stop local Agent processes | `src/agentgate/run/process_manager.py` **new** |
 | [ ] | Run Artifact collection | Register files and reports produced during execution | `src/agentgate/run/artifacts.py` **new** |
 | [x] | Run cleanup | Remove legacy core, scheduler, lifecycle, model, and adapter placeholder files | `src/agentgate/run/` |
@@ -212,6 +212,8 @@ worktree audit and feature delivery remain.
 - Customer-specific Java scheduler and Agent-platform adapters.
 - Production observability platform integrations and external Result callbacks.
 - Automated resume or retry of partially completed Runs.
+- Persisted per-attempt retry history and retry events in Traces; the POC stores only the
+  successful execution Trace.
 - Persisted A/B identity, pair history, and A/B-specific lineage after the POC.
 - Semantic or embedding-based failure clustering.
 - Persisted Optimization Reports and cross-Run history.
