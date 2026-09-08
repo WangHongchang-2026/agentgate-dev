@@ -5,7 +5,11 @@ from datetime import timedelta
 import pytest
 
 from agentgate.application import RunManagement, TargetCatalog
-from agentgate.application.evaluator_management import DEFAULT_EVALUATOR_MANAGEMENT
+from agentgate.application.evaluator_management import (
+    EvaluatorCatalogConflict,
+    EvaluatorManagement,
+    build_default_evaluator_management,
+)
 from agentgate.demo.bootstrap import (
     ensure_demo_dataset,
     ensure_demo_target_descriptors,
@@ -15,7 +19,12 @@ from agentgate.demo.targets import (
     build_demo_target_snapshot,
     get_demo_target_descriptor,
 )
-from agentgate.domain import RunStatus, TargetSnapshot
+from agentgate.domain import (
+    EvaluatorKind,
+    EvaluatorSeverity,
+    RunStatus,
+    TargetSnapshot,
+)
 from agentgate.evaluator.models import DuplicateEvaluatorId, UnknownEvaluator
 from agentgate.integrations.observability import InMemoryTraceCapture
 from agentgate.integrations.targets import DemoLoanTargetAdapter
@@ -44,10 +53,17 @@ def seed_demo(repository: SQLiteRepository) -> None:
     ensure_demo_target_descriptors(TargetCatalog(repository))
 
 
+def run_management(
+    repository: SQLiteRepository,
+) -> tuple[RunManagement, EvaluatorManagement]:
+    evaluators = build_default_evaluator_management(repository)
+    return RunManagement(repository, evaluators), evaluators
+
+
 def test_create_run_persists_exact_pending_manifest(tmp_path) -> None:
     repository = SQLiteRepository(tmp_path / "create-run.db")
     seed_demo(repository)
-    management = RunManagement(repository, DEFAULT_EVALUATOR_MANAGEMENT)
+    management, _ = run_management(repository)
 
     run = management.create_run(
         target(),
@@ -66,10 +82,82 @@ def test_create_run_persists_exact_pending_manifest(tmp_path) -> None:
     assert run.manifest.timeout_seconds == 30
 
 
+def test_create_run_snapshots_latest_enabled_user_evaluator_version(tmp_path) -> None:
+    repository = SQLiteRepository(tmp_path / "user-evaluator-run.db")
+    seed_demo(repository)
+    runs, evaluators = run_management(repository)
+    evaluator, _ = evaluators.create_evaluator(
+        "Custom output",
+        kind=EvaluatorKind.RULE,
+        dimension="answer",
+        metric="custom_output_v1",
+        implementation_id="final_output",
+        config={},
+    )
+
+    with pytest.raises(EvaluatorCatalogConflict, match="disabled"):
+        runs.create_run(
+            target(),
+            dataset_id=LOAN_DATASET.id,
+            evaluator_ids=(evaluator.id,),
+        )
+
+    first = evaluators.publish_draft(evaluator.id)
+    with pytest.raises(EvaluatorCatalogConflict, match="disabled"):
+        runs.create_run(
+            target(),
+            dataset_id=LOAN_DATASET.id,
+            evaluator_ids=(evaluator.id,),
+        )
+
+    evaluators.update_evaluator(evaluator.id, enabled=True)
+    first_run = runs.create_run(
+        target(),
+        dataset_id=LOAN_DATASET.id,
+        evaluator_ids=(evaluator.id,),
+    )
+    assert first_run.manifest.evaluator_specs == (first,)
+
+    evaluators.create_draft(evaluator.id)
+    evaluators.replace_draft(
+        evaluator.id,
+        kind=EvaluatorKind.RULE,
+        dimension="answer",
+        metric="custom_output_v2",
+        severity=EvaluatorSeverity.BLOCKING,
+        implementation_id="final_output",
+        implementation_version="1",
+        config={},
+        children=(),
+        combination=None,
+    )
+    second = evaluators.publish_draft(evaluator.id)
+    evaluators.update_evaluator(evaluator.id, enabled=False)
+
+    stored_first_run = repository.get_run(first_run.id)
+    assert stored_first_run is not None
+    assert stored_first_run.manifest.evaluator_specs == (first,)
+    with pytest.raises(EvaluatorCatalogConflict, match="disabled"):
+        runs.create_run(
+            target(),
+            dataset_id=LOAN_DATASET.id,
+            evaluator_ids=(evaluator.id,),
+        )
+
+    evaluators.update_evaluator(evaluator.id, enabled=True)
+    second_run = runs.create_run(
+        target(),
+        dataset_id=LOAN_DATASET.id,
+        evaluator_ids=(evaluator.id,),
+    )
+    assert second.version == "2"
+    assert second_run.manifest.evaluator_specs == (second,)
+
+
 def test_execute_run_uses_engine_adapter_and_trace_resolver(tmp_path) -> None:
     repository = SQLiteRepository(tmp_path / "execute-run.db")
     seed_demo(repository)
-    management = RunManagement(repository, DEFAULT_EVALUATOR_MANAGEMENT)
+    management, evaluators = run_management(repository)
     run = management.create_run(target(), dataset_id=LOAN_DATASET.id)
     capture = InMemoryTraceCapture()
     adapter = DemoLoanTargetAdapter(capture)
@@ -79,7 +167,7 @@ def test_execute_run_uses_engine_adapter_and_trace_resolver(tmp_path) -> None:
     assert completed.status is RunStatus.COMPLETED
     assert len(repository.list_traces(run.id)) == 1
     results = repository.list_results(run.id)
-    assert len(results) == len(DEFAULT_EVALUATOR_MANAGEMENT.available_specs)
+    assert len(results) == len(evaluators.default_specs)
     assert all(result.outcome.value not in {"fail", "review", "error"}
                for result in results)
     capture.shutdown()
@@ -88,9 +176,9 @@ def test_execute_run_uses_engine_adapter_and_trace_resolver(tmp_path) -> None:
 def test_create_run_rejects_unknown_or_duplicate_evaluators(tmp_path) -> None:
     repository = SQLiteRepository(tmp_path / "invalid-run.db")
     seed_demo(repository)
-    management = RunManagement(repository, DEFAULT_EVALUATOR_MANAGEMENT)
+    management, _ = run_management(repository)
 
-    with pytest.raises(UnknownEvaluator, match="unknown Evaluators"):
+    with pytest.raises(UnknownEvaluator, match="unknown Evaluator: missing"):
         management.create_run(
             target(), dataset_id=LOAN_DATASET.id, evaluator_ids=("missing",)
         )
@@ -104,7 +192,7 @@ def test_create_run_rejects_unknown_or_duplicate_evaluators(tmp_path) -> None:
 
 def test_execute_run_rejects_unknown_run(tmp_path) -> None:
     repository = SQLiteRepository(tmp_path / "missing-run.db")
-    management = RunManagement(repository, DEFAULT_EVALUATOR_MANAGEMENT)
+    management, _ = run_management(repository)
     capture = InMemoryTraceCapture()
 
     with pytest.raises(ValueError, match="unknown EvaluationRun"):
@@ -117,7 +205,7 @@ def test_execute_run_rejects_unknown_run(tmp_path) -> None:
 def test_create_run_requires_persisted_matching_target_descriptor(tmp_path) -> None:
     repository = SQLiteRepository(tmp_path / "missing-target-descriptor.db")
     ensure_demo_dataset(repository)
-    management = RunManagement(repository, DEFAULT_EVALUATOR_MANAGEMENT)
+    management, _ = run_management(repository)
     fixed = target()
 
     with pytest.raises(LookupError, match="unknown TargetDescriptor"):
@@ -143,7 +231,7 @@ def test_create_run_requires_persisted_matching_target_descriptor(tmp_path) -> N
 def test_dispatch_run_submits_only_the_persisted_run_id(tmp_path) -> None:
     repository = SQLiteRepository(tmp_path / "dispatch-run.db")
     seed_demo(repository)
-    management = RunManagement(repository, DEFAULT_EVALUATOR_MANAGEMENT)
+    management, _ = run_management(repository)
     run = management.create_run(target(), dataset_id=LOAN_DATASET.id)
     dispatcher = RecordingDispatcher()
 
@@ -157,7 +245,7 @@ def test_dispatch_run_submits_only_the_persisted_run_id(tmp_path) -> None:
 def test_dispatch_failure_is_persisted_without_exception_details(tmp_path) -> None:
     repository = SQLiteRepository(tmp_path / "dispatch-failure.db")
     seed_demo(repository)
-    management = RunManagement(repository, DEFAULT_EVALUATOR_MANAGEMENT)
+    management, _ = run_management(repository)
     run = management.create_run(target(), dataset_id=LOAN_DATASET.id)
     dispatcher = RecordingDispatcher(
         ConnectionError("redis://user:secret@example.invalid")
@@ -175,7 +263,7 @@ def test_dispatch_failure_is_persisted_without_exception_details(tmp_path) -> No
 def test_fail_stale_runs_preserves_active_and_pending_runs(tmp_path) -> None:
     repository = SQLiteRepository(tmp_path / "stale-runs.db")
     seed_demo(repository)
-    management = RunManagement(repository, DEFAULT_EVALUATOR_MANAGEMENT)
+    management, _ = run_management(repository)
     stale = management.create_run(
         target(), dataset_id=LOAN_DATASET.id, timeout_seconds=10
     )
@@ -199,7 +287,7 @@ def test_fail_stale_runs_preserves_active_and_pending_runs(tmp_path) -> None:
 
 def test_fail_stale_runs_rejects_negative_grace_period(tmp_path) -> None:
     repository = SQLiteRepository(tmp_path / "invalid-grace.db")
-    management = RunManagement(repository, DEFAULT_EVALUATOR_MANAGEMENT)
+    management, _ = run_management(repository)
 
     with pytest.raises(ValueError, match="must not be negative"):
         management.fail_stale_runs(grace_seconds=-1)

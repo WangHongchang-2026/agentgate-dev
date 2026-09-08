@@ -95,9 +95,10 @@ def execute_evaluation_run(run_id: str) -> str:
     capture: InMemoryTraceCapture | None = None
     try:
         evaluator_management = (
-            build_default_evaluator_management()
+            build_default_evaluator_management(repository)
             if configured_judge is None
             else build_default_evaluator_management(
+                repository,
                 judge_client=configured_judge.client,
                 judge_model_id=configured_judge.model_id,
                 judge_credential_ref=configured_judge.credential_ref,

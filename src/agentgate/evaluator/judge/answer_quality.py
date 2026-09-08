@@ -226,6 +226,38 @@ class AnswerQualityJudge:
                 )
         object.__setattr__(self, "model_clients", MappingProxyType(clients))
 
+    def validate_spec(self, spec: EvaluatorSpec) -> None:
+        """Validate a spec without invoking the configured Judge model."""
+        self._validate_and_get_config(spec)
+
+    def _validate_and_get_config(
+        self,
+        spec: EvaluatorSpec,
+    ) -> _AnswerQualityConfig:
+        if spec.kind != self.kind:
+            raise ValueError(
+                f"answer_quality requires kind {self.kind.value!r}, "
+                f"got {spec.kind.value!r}"
+            )
+        if spec.implementation_id != self.implementation_id:
+            raise ValueError(
+                "answer_quality requires implementation_id "
+                f"{self.implementation_id!r}, got {spec.implementation_id!r}"
+            )
+        if spec.implementation_version != self.implementation_version:
+            raise ValueError(
+                "answer_quality requires implementation_version "
+                f"{self.implementation_version!r}, "
+                f"got {spec.implementation_version!r}"
+            )
+
+        config = _AnswerQualityConfig.from_spec(spec)
+        if config.provider_id not in self.model_clients:
+            raise ValueError(
+                f"no Judge model client configured for provider {config.provider_id!r}"
+            )
+        return config
+
     def evaluate_case(
         self,
         spec: EvaluatorSpec,
@@ -234,7 +266,7 @@ class AnswerQualityJudge:
         resolve: ResultResolver,
     ) -> Evaluation:
         del resolve
-        config = _AnswerQualityConfig.from_spec(spec)
+        config = self._validate_and_get_config(spec)
         method = MethodRef(
             implementation_id=self.implementation_id,
             implementation_version=self.implementation_version,
@@ -252,11 +284,7 @@ class AnswerQualityJudge:
                 )
             )
 
-        client = self.model_clients.get(config.provider_id)
-        if client is None:
-            raise ValueError(
-                f"no Judge model client configured for provider {config.provider_id!r}"
-            )
+        client = self.model_clients[config.provider_id]
         request = build_judge_request(
             model_id=config.model_id,
             instruction=config.instruction,

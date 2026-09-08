@@ -5,7 +5,7 @@ from datetime import timedelta
 import pytest
 
 from agentgate.application.evaluator_management import (
-    DEFAULT_EVALUATOR_MANAGEMENT,
+    build_default_evaluator_management,
 )
 from agentgate.domain import (
     Case, CaseTurn, ReleaseGateSpec, MetricPlan, EvaluationRun, RunManifest, TargetRef,
@@ -15,8 +15,8 @@ from agentgate.demo.loan import LOAN_DATASET_VERSION
 from agentgate.storage.sqlite import SQLiteRepository
 
 
-def manifest():
-    evaluator_specs = DEFAULT_EVALUATOR_MANAGEMENT.available_specs
+def manifest(repository: SQLiteRepository):
+    evaluator_specs = build_default_evaluator_management(repository).default_specs
     return RunManifest(
         dataset=LOAN_DATASET_VERSION,
         target=TargetSnapshot(
@@ -38,8 +38,9 @@ def manifest():
     )
 
 
-def test_manifest_is_deeply_immutable_and_hash_is_stable():
-    first = manifest()
+def test_manifest_is_deeply_immutable_and_hash_is_stable(tmp_path):
+    repository = SQLiteRepository(tmp_path / "manifest.db")
+    first = manifest(repository)
     second = RunManifest.model_validate(first.model_dump(mode="json"))
     assert first.manifest_sha256 == second.manifest_sha256
     with pytest.raises(TypeError):
@@ -58,7 +59,7 @@ def test_mutating_source_data_cannot_change_domain_content():
 
 def test_repository_rejects_tampered_manifest(tmp_path):
     repository = SQLiteRepository(tmp_path / "tamper.db")
-    run = EvaluationRun(manifest=manifest())
+    run = EvaluationRun(manifest=manifest(repository))
     repository.save_run(run)
     with sqlite3.connect(repository.path) as db:
         payload = json.loads(db.execute(
@@ -72,7 +73,7 @@ def test_repository_rejects_tampered_manifest(tmp_path):
 
 def test_repository_preserves_run_identity_and_terminal_state(tmp_path):
     repository = SQLiteRepository(tmp_path / "run-lifecycle.db")
-    pending = EvaluationRun(id="run", manifest=manifest())
+    pending = EvaluationRun(id="run", manifest=manifest(repository))
     repository.save_run(pending)
 
     changed_creation = pending.model_copy(
@@ -82,7 +83,11 @@ def test_repository_preserves_run_identity_and_terminal_state(tmp_path):
         repository.save_run(changed_creation)
 
     changed_manifest = pending.model_copy(
-        update={"manifest": manifest().model_copy(update={"created_at": pending.created_at})}
+        update={
+            "manifest": manifest(repository).model_copy(
+                update={"created_at": pending.created_at}
+            )
+        }
     )
     with pytest.raises(ValueError, match="manifest is immutable"):
         repository.save_run(changed_manifest)
@@ -109,8 +114,12 @@ def test_repository_preserves_run_identity_and_terminal_state(tmp_path):
 
 def test_repository_lists_runs_with_valid_limit_and_deterministic_ties(tmp_path):
     repository = SQLiteRepository(tmp_path / "run-list.db")
-    first = EvaluationRun(id="b-run", manifest=manifest())
-    second = EvaluationRun(id="a-run", manifest=manifest(), created_at=first.created_at)
+    first = EvaluationRun(id="b-run", manifest=manifest(repository))
+    second = EvaluationRun(
+        id="a-run",
+        manifest=manifest(repository),
+        created_at=first.created_at,
+    )
     repository.save_run(first)
     repository.save_run(second)
 
@@ -122,7 +131,7 @@ def test_repository_lists_runs_with_valid_limit_and_deterministic_ties(tmp_path)
 
 def test_repository_claims_a_pending_run_once(tmp_path):
     repository = SQLiteRepository(tmp_path / "run-claim.db")
-    pending = EvaluationRun(id="run", manifest=manifest())
+    pending = EvaluationRun(id="run", manifest=manifest(repository))
     repository.save_run(pending)
     started_at = pending.created_at + timedelta(seconds=1)
 
@@ -138,10 +147,10 @@ def test_repository_claims_a_pending_run_once(tmp_path):
 
 def test_repository_lists_and_counts_runs_by_status(tmp_path):
     repository = SQLiteRepository(tmp_path / "run-status.db")
-    first = EvaluationRun(id="first", manifest=manifest())
+    first = EvaluationRun(id="first", manifest=manifest(repository))
     second = EvaluationRun(
         id="second",
-        manifest=manifest(),
+        manifest=manifest(repository),
         created_at=first.created_at + timedelta(seconds=1),
     )
     repository.save_run(first)

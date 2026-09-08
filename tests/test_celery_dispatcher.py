@@ -6,7 +6,6 @@ import pytest
 
 from agentgate.application import RunManagement, TargetCatalog
 from agentgate.application.evaluator_management import (
-    DEFAULT_EVALUATOR_MANAGEMENT,
     build_default_evaluator_management,
 )
 from agentgate.demo.bootstrap import (
@@ -121,7 +120,8 @@ def test_worker_executes_persisted_run_and_duplicate_is_noop(
     monkeypatch.setenv("AGENTGATE_DB", str(database_path))
     repository = SQLiteRepository(database_path)
     seed_demo(repository)
-    run = RunManagement(repository, DEFAULT_EVALUATOR_MANAGEMENT).create_run(
+    management = build_default_evaluator_management(repository)
+    run = RunManagement(repository, management).create_run(
         target(), dataset_id=LOAN_DATASET.id
     )
 
@@ -130,7 +130,7 @@ def test_worker_executes_persisted_run_and_duplicate_is_noop(
     assert completed is not None
     assert completed.status is RunStatus.COMPLETED
     result_count = len(repository.list_results(run.id))
-    assert result_count == len(DEFAULT_EVALUATOR_MANAGEMENT.available_specs)
+    assert result_count == len(management.default_specs)
 
     assert execute_evaluation_run.run(run.id) == RunStatus.COMPLETED.value
     assert len(repository.list_results(run.id)) == result_count
@@ -146,6 +146,7 @@ def test_worker_executes_configured_judge_and_closes_client(
     client = RecordingJudgeClient()
     configuration = configured_judge(client)
     management = build_default_evaluator_management(
+        repository,
         judge_client=client,
         judge_model_id=configuration.model_id,
         judge_credential_ref=configuration.credential_ref,
@@ -161,7 +162,7 @@ def test_worker_executes_configured_judge_and_closes_client(
 
     assert execute_evaluation_run.run(run.id) == RunStatus.COMPLETED.value
 
-    assert len(repository.list_results(run.id)) == len(management.available_specs)
+    assert len(repository.list_results(run.id)) == len(management.default_specs)
     assert len(client.requests) == len(LOAN_DATASET_VERSION.cases)
     assert client.closed is True
 
@@ -173,7 +174,8 @@ def test_worker_closes_judge_client_when_composition_fails(
     monkeypatch.setenv("AGENTGATE_DB", str(database_path))
     repository = SQLiteRepository(database_path)
     seed_demo(repository)
-    run = RunManagement(repository, DEFAULT_EVALUATOR_MANAGEMENT).create_run(
+    management = build_default_evaluator_management(repository)
+    run = RunManagement(repository, management).create_run(
         target(), dataset_id=LOAN_DATASET.id
     )
     client = RecordingJudgeClient()
@@ -184,7 +186,8 @@ def test_worker_closes_judge_client_when_composition_fails(
         lambda: configuration,
     )
 
-    def fail_composition(**kwargs) -> None:
+    def fail_composition(*args, **kwargs) -> None:
+        del args
         del kwargs
         raise ValueError("composition failed")
 
