@@ -71,7 +71,9 @@ CaseExecution domain model in P1.
 - **Progress**: number of fully evaluated Cases divided by the number of Cases pinned
   in the RunManifest.
 
-Celery Beat is not required. The POC dispatches Runs immediately after creation.
+Immediate Runs are dispatched after creation. The optional scheduled-Run capability
+uses Celery Beat only to trigger due-Run release; its durable schedule remains in
+SQLite. See the [Scheduled Run plan](../scheduler/implementation-plan.md).
 
 ## 4. Ownership Boundaries
 
@@ -284,6 +286,8 @@ Initial settings:
 - accepted content restricted to JSON;
 - one task argument: `run_id`;
 - worker concurrency `1` by default for the small demo host;
+- worker prefetch multiplier `1` for fairer queue consumption;
+- scheduled-Run release interval `10` seconds by default;
 - task time limit greater than the maximum Run timeout plus cleanup allowance;
 - late acknowledgment enabled only with atomic Run claiming;
 - worker-lost rejection disabled;

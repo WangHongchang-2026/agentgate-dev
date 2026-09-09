@@ -27,6 +27,7 @@ from .target import TargetSnapshot
 class RunStatus(StrEnum):
     """Lifecycle state of an Evaluation Run."""
 
+    SCHEDULED = "scheduled"
     PENDING = "pending"
     RUNNING = "running"
     COMPLETED = "completed"
@@ -149,6 +150,7 @@ class EvaluationRun(DomainModel):
     manifest: RunManifest
     status: RunStatus = RunStatus.PENDING
     created_at: datetime = Field(default_factory=utcnow)
+    scheduled_for: datetime | None = None
     started_at: datetime | None = None
     completed_at: datetime | None = None
     error: str | None = None
@@ -158,7 +160,7 @@ class EvaluationRun(DomainModel):
     def validate_id(cls, value: str) -> str:
         return require_non_blank(value, "EvaluationRun id")
 
-    @field_validator("created_at", "started_at", "completed_at")
+    @field_validator("created_at", "scheduled_for", "started_at", "completed_at")
     @classmethod
     def normalize_timestamps(
         cls, value: datetime | None, info: ValidationInfo
@@ -178,6 +180,8 @@ class EvaluationRun(DomainModel):
 
     @model_validator(mode="after")
     def validate_lifecycle(self) -> "EvaluationRun":
+        if self.scheduled_for is not None and self.scheduled_for <= self.created_at:
+            raise ValueError("scheduled_for must be later than created_at")
         if self.started_at is not None and self.started_at < self.created_at:
             raise ValueError("started_at must not precede created_at")
         if self.completed_at is not None:
@@ -185,7 +189,12 @@ class EvaluationRun(DomainModel):
             if self.completed_at < earliest:
                 raise ValueError("completed_at must not precede Run activity")
 
-        if self.status == RunStatus.PENDING:
+        if self.status == RunStatus.SCHEDULED:
+            if self.scheduled_for is None:
+                raise ValueError("scheduled EvaluationRun requires scheduled_for")
+            if self.started_at is not None or self.completed_at is not None or self.error:
+                raise ValueError("scheduled EvaluationRun cannot contain execution outcome")
+        elif self.status == RunStatus.PENDING:
             if self.started_at is not None or self.completed_at is not None or self.error:
                 raise ValueError("pending EvaluationRun cannot contain execution outcome")
         elif self.status == RunStatus.RUNNING:
@@ -206,6 +215,7 @@ class EvaluationRun(DomainModel):
 
 
 _ALLOWED_TRANSITIONS = {
+    RunStatus.SCHEDULED: {RunStatus.PENDING, RunStatus.CANCELLED},
     RunStatus.PENDING: {RunStatus.RUNNING, RunStatus.FAILED, RunStatus.CANCELLED},
     RunStatus.RUNNING: {RunStatus.COMPLETED, RunStatus.FAILED, RunStatus.CANCELLED},
 }
@@ -226,7 +236,10 @@ def transition_run(
         raise ValueError("transition occurred_at must not precede Run activity")
 
     updates: dict[str, object] = {"status": new_status, "error": None}
-    if new_status == RunStatus.RUNNING:
+    if new_status == RunStatus.PENDING:
+        if run.scheduled_for is None or timestamp < run.scheduled_for:
+            raise ValueError("scheduled EvaluationRun cannot be released before scheduled_for")
+    elif new_status == RunStatus.RUNNING:
         if error is not None:
             raise ValueError("running transition cannot contain an error")
         updates["started_at"] = timestamp

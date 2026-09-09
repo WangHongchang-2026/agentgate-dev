@@ -40,10 +40,13 @@ def test_sqlite_initialization_enables_wal_and_schema_checks(tmp_path):
                 ("draft", "dataset", 1, "draft", "now", "hash", "{}"),
             )
         with pytest.raises(sqlite3.IntegrityError, match="CHECK constraint"):
-            connection.execute(
-                "INSERT INTO runs VALUES(?,?,?,?)",
-                ("run", "unknown", "now", "{}"),
-            )
+                connection.execute(
+                    """
+                    INSERT INTO runs(id,status,created_at,payload)
+                    VALUES(?,?,?,?)
+                    """,
+                    ("run", "unknown", "now", "{}"),
+                )
 
 
 def test_sqlite_persists_catalog_and_enforces_one_draft(tmp_path):

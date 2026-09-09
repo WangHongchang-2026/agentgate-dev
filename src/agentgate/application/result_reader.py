@@ -37,6 +37,7 @@ class RunProgress(BaseModel):
     completed_cases: int = Field(ge=0)
     progress: float = Field(ge=0, le=1)
     created_at: datetime
+    scheduled_for: datetime | None
     started_at: datetime | None
     completed_at: datetime | None
     duration_seconds: float | None = Field(default=None, ge=0)
@@ -50,6 +51,7 @@ class RunActivity(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     status_counts: dict[RunStatus, int]
+    scheduled: tuple[RunProgress, ...]
     queued: tuple[RunProgress, ...]
     running: tuple[RunProgress, ...]
     recent: tuple[RunProgress, ...]
@@ -108,6 +110,9 @@ class ResultReader:
         if recent_limit < 1:
             raise ValueError("recent Run limit must be at least 1")
         projection_time = normalize_utc(now or utcnow(), "Run activity time")
+        scheduled_runs = self.repository.list_runs_by_status(
+            RunStatus.SCHEDULED, oldest_first=True
+        )
         queued_runs = self.repository.list_runs_by_status(
             RunStatus.PENDING, oldest_first=True
         )
@@ -129,6 +134,10 @@ class ResultReader:
         )[:recent_limit]
         return RunActivity(
             status_counts=self.repository.count_runs_by_status(),
+            scheduled=tuple(
+                self._project_run(run, now=projection_time)
+                for run in scheduled_runs
+            ),
             queued=tuple(
                 self._project_run(run, now=projection_time, queue_position=index)
                 for index, run in enumerate(queued_runs, start=1)
@@ -183,6 +192,7 @@ class ResultReader:
         latest = self.get_report(latest_run.id) if latest_run is not None else None
         return {
             "total_runs": sum(statuses.values()),
+            "scheduled_runs": statuses[RunStatus.SCHEDULED],
             "pending_runs": statuses[RunStatus.PENDING],
             "running_runs": statuses[RunStatus.RUNNING],
             "completed_runs": statuses[RunStatus.COMPLETED],
@@ -234,6 +244,7 @@ class ResultReader:
             completed_cases=completed_cases,
             progress=completed_cases / total_cases if total_cases else 0,
             created_at=run.created_at,
+            scheduled_for=run.scheduled_for,
             started_at=run.started_at,
             completed_at=run.completed_at,
             duration_seconds=duration_seconds,

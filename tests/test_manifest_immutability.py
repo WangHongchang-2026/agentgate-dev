@@ -257,6 +257,7 @@ def test_repository_lists_and_counts_runs_by_status(tmp_path):
         run.id for run in repository.list_runs_by_status(RunStatus.RUNNING, limit=1)
     ] == ["second"]
     assert repository.count_runs_by_status() == {
+        RunStatus.SCHEDULED: 0,
         RunStatus.PENDING: 1,
         RunStatus.RUNNING: 1,
         RunStatus.COMPLETED: 0,

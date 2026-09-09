@@ -137,6 +137,26 @@ python3 -m celery \
   --loglevel=INFO --concurrency=1
 ```
 
+Scheduled Runs additionally require one lightweight scheduler worker and Celery Beat:
+
+```bash
+AGENTGATE_DB="$PWD/agentgate-demo.db" \
+AGENTGATE_REDIS_URL="redis://127.0.0.1:6379/0" \
+PYTHONPATH=src \
+python3 -m celery \
+  -A agentgate.integrations.job_dispatchers.celery:celery_app worker \
+  --loglevel=INFO --concurrency=1 --queues=agentgate.scheduler \
+  --hostname=scheduler@%h
+```
+
+```bash
+AGENTGATE_SCHEDULER_INTERVAL_SECONDS=10 \
+PYTHONPATH=src \
+python3 -m celery \
+  -A agentgate.integrations.job_dispatchers.celery:celery_app beat \
+  --loglevel=INFO
+```
+
 ```bash
 AGENTGATE_DB="$PWD/agentgate-demo.db" \
 AGENTGATE_REDIS_URL="redis://127.0.0.1:6379/0" \
@@ -151,6 +171,11 @@ AGENTGATE_API_TARGET="http://127.0.0.1:8000" npm run dev
 
 Open the Vite URL, submit an evaluation, then use **运行队列** to inspect queue position,
 Case progress, timing, failures, and recent completed reports.
+
+`scheduled_for` is an optional timezone-aware UTC value on `POST /api/evaluations`.
+The default scheduler interval is 10 seconds, so a due Run normally enters the
+execution queue within 10 seconds of that value. Worker availability determines its
+actual start time.
 
 ## Asynchronous Run APIs
 

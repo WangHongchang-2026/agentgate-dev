@@ -84,6 +84,52 @@ def test_evaluation_run_follows_legal_lifecycle() -> None:
     assert completed.error is None
 
 
+def test_scheduled_run_releases_only_at_its_requested_time() -> None:
+    created_at = datetime(2026, 9, 5, tzinfo=UTC)
+    scheduled_for = created_at + timedelta(hours=1)
+    scheduled = EvaluationRun(
+        manifest=manifest(),
+        status=RunStatus.SCHEDULED,
+        created_at=created_at,
+        scheduled_for=scheduled_for,
+    )
+
+    with pytest.raises(ValueError, match="cannot be released before"):
+        transition_run(
+            scheduled,
+            RunStatus.PENDING,
+            scheduled_for - timedelta(seconds=1),
+        )
+
+    pending = transition_run(scheduled, RunStatus.PENDING, scheduled_for)
+    assert pending.status is RunStatus.PENDING
+    assert pending.scheduled_for == scheduled_for
+
+
+def test_scheduled_run_requires_a_future_timezone_aware_time() -> None:
+    created_at = datetime(2026, 9, 5, tzinfo=UTC)
+    with pytest.raises(ValidationError, match="requires scheduled_for"):
+        EvaluationRun(
+            manifest=manifest(),
+            status=RunStatus.SCHEDULED,
+            created_at=created_at,
+        )
+    with pytest.raises(ValidationError, match="later than created_at"):
+        EvaluationRun(
+            manifest=manifest(),
+            status=RunStatus.SCHEDULED,
+            created_at=created_at,
+            scheduled_for=created_at,
+        )
+    with pytest.raises(ValidationError, match="timezone-aware"):
+        EvaluationRun(
+            manifest=manifest(),
+            status=RunStatus.SCHEDULED,
+            created_at=created_at,
+            scheduled_for=datetime(2026, 9, 6),
+        )
+
+
 def test_failed_transition_requires_error() -> None:
     run = EvaluationRun(manifest=manifest())
 

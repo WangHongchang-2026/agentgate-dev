@@ -28,6 +28,7 @@ from .optimization_analysis import (
 )
 from .result_reader import ResultReader, RunActivity, RunProgress
 from .run_management import RunManagement
+from .run_scheduling import RunScheduling
 from .skill_analysis import (
     SkillAnalysis,
     SkillAnalysisFindingNotFound,
@@ -62,6 +63,7 @@ __all__ = [
     "ResultReader",
     "RunActivity",
     "RunManagement",
+    "RunScheduling",
     "RunProgress",
     "SkillAnalysis",
     "SkillAnalysisFindingNotFound",

@@ -17,6 +17,7 @@ Last updated: 2026-09-09
 | `[CODEX-EVALUATOR]` | Persistent Evaluator Catalog | Complete and integrated into `refactor-1` |
 | `[CODEX-SKILL]` | Static Skill Analysis backend and API | Complete and integrated into `refactor-1` |
 | `[CODEX-OPTIMIZER]` | Optimizer backend and API | Complete on `feature/optimizer`; full regression passed |
+| `[CODEX-SCHEDULE]` | One-time scheduled Evaluation Runs | Complete and uncommitted on `feature/scheduled-runs` |
 | `[UNASSIGNED]` | Web pages | Not started |
 
 ## Core Foundation
@@ -90,6 +91,7 @@ Last updated: 2026-09-09
 | [x] | Activity projection | Return queued, running, and recent terminal Runs | `src/agentgate/application/result_reader.py` |
 | [x] | Celery dispatcher | Submit `run_id` through Redis | `src/agentgate/integrations/job_dispatchers/celery.py` |
 | [x] | Celery worker | Load and execute the persisted Run with the same optional Judge catalog and task-local client cleanup | `src/agentgate/integrations/job_dispatchers/celery.py` |
+| [x] | Scheduled Runs | Persist one-time future execution, atomically release due Runs, and expose query/cancellation through Run APIs | `src/agentgate/domain/run.py`, `src/agentgate/application/run_scheduling.py`, `src/agentgate/storage/sqlite.py`, `src/agentgate/integrations/job_dispatchers/celery.py`, `src/agentgate/server/routes/runs.py` |
 | [ ] | Customer scheduler integration | Accept work from an external Java scheduler through the shared Run boundary | `src/agentgate/server/routes/runs.py` or `src/agentgate/integrations/job_dispatchers/`; planned after POC |
 | [x] | Retry mechanics | Retry only classified Target infrastructure failures with bounded backoff and a fresh execution identity; never retry evaluation failures | `src/agentgate/run/retry.py`, `src/agentgate/run/engine.py`, `src/agentgate/application/run_management.py`, `src/agentgate/server/routes/runs.py` |
 | [ ] | Local process management | Start, monitor, limit, and stop local Agent processes | `src/agentgate/run/process_manager.py` **new** |
@@ -193,7 +195,7 @@ worktree audit and feature delivery remain.
 
 | Status | Capability | Function | Code location |
 |---|---|---|---|
-| [x] | Current backend regression | Verify the integrated backend including Optimizer | `tests/` - 712 passing |
+| [x] | Current backend regression | Verify the integrated backend including scheduled Runs | `tests/` - 789 passing |
 | [x] | Redis/Celery integration | Verify broker, worker, state, queue visibility, and progress end to end | `tests/test_celery_dispatcher.py`, `web/tests/`, operational smoke |
 | [x] | Browser verification | Verify all currently implemented desktop and mobile workflows | `web/tests/` - 8 passing |
 | [x] | Documentation | Explain setup, APIs, Redis, Celery, and demo operation | `README.md`, `web/README.md`, `docs/` |
@@ -209,7 +211,7 @@ worktree audit and feature delivery remain.
 - Dependency-based evaluator short-circuiting with explicit blocked/skipped Results and
   `blocked_by_evaluator_id` provenance.
 - Priority queues, tenant fairness, multiple worker pools, and resource-aware routing.
-- Time-based reservations and recurring schedules.
+- Recurring schedules, scheduling priorities, and calendar rules.
 - Immediate interruption of arbitrary blocking Target calls and persisted per-attempt
   cancellation history.
 - Customer-specific Java scheduler and Agent-platform adapters.

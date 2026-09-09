@@ -8,7 +8,7 @@ from pathlib import Path
 from celery import Celery
 from celery.app.task import Task
 
-from agentgate.application import RunManagement
+from agentgate.application import RunManagement, RunScheduling
 from agentgate.application.evaluator_management import (
     build_default_evaluator_management,
 )
@@ -22,8 +22,11 @@ from agentgate.storage.sqlite import SQLiteRepository
 
 
 TASK_NAME = "agentgate.execute_evaluation_run"
+SCHEDULER_TASK_NAME = "agentgate.dispatch_due_evaluation_runs"
+SCHEDULER_QUEUE = "agentgate.scheduler"
 DEFAULT_REDIS_URL = "redis://localhost:6379/0"
 DEFAULT_TASK_TIME_LIMIT_SECONDS = 360
+DEFAULT_SCHEDULER_INTERVAL_SECONDS = 10
 
 
 def _positive_int_setting(name: str, default: int) -> int:
@@ -44,6 +47,10 @@ def create_celery_app() -> Celery:
         "agentgate",
         broker=os.getenv("AGENTGATE_REDIS_URL", DEFAULT_REDIS_URL),
     )
+    scheduler_interval = _positive_int_setting(
+        "AGENTGATE_SCHEDULER_INTERVAL_SECONDS",
+        DEFAULT_SCHEDULER_INTERVAL_SECONDS,
+    )
     app.conf.update(
         accept_content=["json"],
         result_backend=None,
@@ -60,6 +67,17 @@ def create_celery_app() -> Celery:
         worker_concurrency=_positive_int_setting(
             "AGENTGATE_WORKER_CONCURRENCY", 1
         ),
+        worker_prefetch_multiplier=1,
+        task_routes={
+            SCHEDULER_TASK_NAME: {"queue": SCHEDULER_QUEUE},
+        },
+        beat_schedule={
+            "dispatch-due-evaluation-runs": {
+                "task": SCHEDULER_TASK_NAME,
+                "schedule": scheduler_interval,
+                "options": {"queue": SCHEDULER_QUEUE},
+            }
+        },
     )
     return app
 
@@ -121,6 +139,23 @@ def execute_evaluation_run(run_id: str) -> str:
             if configured_judge is not None:
                 configured_judge.client.close()
     return completed.status.value
+
+
+@celery_app.task(
+    name=SCHEDULER_TASK_NAME,
+    ignore_result=True,
+    queue=SCHEDULER_QUEUE,
+)
+def dispatch_due_evaluation_runs() -> int:
+    """Release due scheduled Runs and submit them to the execution queue."""
+
+    repository = SQLiteRepository(
+        Path(os.getenv("AGENTGATE_DB", "agentgate.db"))
+    )
+    dispatched = RunScheduling(repository).dispatch_due_runs(
+        CeleryJobDispatcher()
+    )
+    return len(dispatched)
 
 
 class CeleryJobDispatcher:

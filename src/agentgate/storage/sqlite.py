@@ -25,6 +25,7 @@ from agentgate.domain import (
     Trace,
     canonical_json,
     content_sha256,
+    normalize_utc,
     transition_run,
 )
 from agentgate.evaluator.versioning import (
@@ -127,13 +128,18 @@ CREATE INDEX IF NOT EXISTS idx_dataset_versions_dataset
 CREATE TABLE IF NOT EXISTS runs (
     id TEXT PRIMARY KEY,
     status TEXT NOT NULL CHECK(
-        status IN ('pending', 'running', 'completed', 'failed', 'cancelled')
+        status IN (
+            'scheduled', 'pending', 'running', 'completed', 'failed', 'cancelled'
+        )
     ),
     created_at TEXT NOT NULL,
+    scheduled_for TEXT,
     payload TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_runs_status_created
     ON runs(status, created_at, id);
+CREATE INDEX IF NOT EXISTS idx_runs_due
+    ON runs(status, scheduled_for, created_at, id);
 CREATE TABLE IF NOT EXISTS run_asset_refs (
     run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
     asset_kind TEXT NOT NULL CHECK(
@@ -943,8 +949,22 @@ class SQLiteRepository:
             if existing is None:
                 references = self._run_asset_references(db, run)
                 db.execute(
-                    "INSERT INTO runs(id,status,created_at,payload) VALUES(?,?,?,?)",
-                    (run.id, run.status, run.created_at.isoformat(), canonical_json(run)),
+                    """
+                    INSERT INTO runs(
+                        id,status,created_at,scheduled_for,payload
+                    ) VALUES(?,?,?,?,?)
+                    """,
+                    (
+                        run.id,
+                        run.status,
+                        run.created_at.isoformat(),
+                        (
+                            run.scheduled_for.isoformat()
+                            if run.scheduled_for is not None
+                            else None
+                        ),
+                        canonical_json(run),
+                    ),
                 )
                 db.executemany(
                     """
@@ -963,6 +983,8 @@ class SQLiteRepository:
                 raise ValueError("EvaluationRun manifest is immutable")
             if run.created_at != stored.created_at:
                 raise ValueError("EvaluationRun created_at is immutable")
+            if run.scheduled_for != stored.scheduled_for:
+                raise ValueError("EvaluationRun scheduled_for is immutable")
             if stored.started_at is not None and run.started_at != stored.started_at:
                 raise ValueError("EvaluationRun started_at is immutable once set")
             if stored.completed_at is not None:
@@ -1187,6 +1209,46 @@ class SQLiteRepository:
             )
             return running if cursor.rowcount == 1 else None
 
+    def claim_due_scheduled_runs(
+        self, due_at: datetime, limit: int = 100
+    ) -> list[EvaluationRun]:
+        if limit < 1:
+            raise ValueError("scheduled Run claim limit must be at least 1")
+        current_time = normalize_utc(due_at, "scheduled Run due_at")
+        claimed: list[EvaluationRun] = []
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            rows = db.execute(
+                """
+                SELECT payload FROM runs
+                WHERE status='scheduled' AND scheduled_for<=?
+                ORDER BY scheduled_for, created_at, id
+                LIMIT ?
+                """,
+                (current_time.isoformat(), limit),
+            ).fetchall()
+            for row in rows:
+                scheduled = EvaluationRun.model_validate_json(row[0])
+                pending = transition_run(
+                    scheduled,
+                    RunStatus.PENDING,
+                    occurred_at=current_time,
+                )
+                cursor = db.execute(
+                    """
+                    UPDATE runs SET status=?, payload=?
+                    WHERE id=? AND status='scheduled'
+                    """,
+                    (
+                        pending.status,
+                        canonical_json(pending),
+                        pending.id,
+                    ),
+                )
+                if cursor.rowcount == 1:
+                    claimed.append(pending)
+        return claimed
+
     def cancel_run(
         self, run_id: str, cancelled_at: datetime
     ) -> EvaluationRun | None:
@@ -1199,7 +1261,11 @@ class SQLiteRepository:
                 return None
 
             current = EvaluationRun.model_validate_json(row[0])
-            if current.status not in {RunStatus.PENDING, RunStatus.RUNNING}:
+            if current.status not in {
+                RunStatus.SCHEDULED,
+                RunStatus.PENDING,
+                RunStatus.RUNNING,
+            }:
                 return None
             cancelled = transition_run(
                 current,
@@ -1229,9 +1295,14 @@ class SQLiteRepository:
         if limit is not None and limit < 1:
             raise ValueError("Run list limit must be at least 1")
         direction = "ASC" if oldest_first else "DESC"
+        order_column = (
+            "COALESCE(scheduled_for, created_at)"
+            if status in {RunStatus.SCHEDULED, RunStatus.PENDING}
+            else "created_at"
+        )
         query = (
             "SELECT payload FROM runs WHERE status=? "
-            f"ORDER BY created_at {direction}, id"
+            f"ORDER BY {order_column} {direction}, id"
         )
         parameters: tuple[object, ...] = (status.value,)
         if limit is not None:

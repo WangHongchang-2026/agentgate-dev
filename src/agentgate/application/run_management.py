@@ -59,8 +59,9 @@ class RunManagement:
         timeout_seconds: float = 300,
         max_parallel_cases: int = 1,
         max_retries: int = 0,
+        scheduled_for: datetime | None = None,
     ) -> EvaluationRun:
-        """Resolve exact inputs, persist a pending Run, and return it."""
+        """Resolve exact inputs and persist a pending or scheduled Run."""
 
         self.target_catalog.resolve_descriptor(
             target.ref,
@@ -79,6 +80,12 @@ class RunManagement:
             else self.evaluator_management.select(evaluator_ids)
         )
         self.evaluator_management.validate_plan(dataset, selected)
+        created_at = utcnow()
+        normalized_schedule = (
+            normalize_utc(scheduled_for, "EvaluationRun scheduled_for")
+            if scheduled_for is not None
+            else None
+        )
         run = EvaluationRun(
             manifest=RunManifest(
                 dataset=dataset,
@@ -91,7 +98,14 @@ class RunManagement:
                 timeout_seconds=timeout_seconds,
                 max_parallel_cases=max_parallel_cases,
                 max_retries=max_retries,
-            )
+            ),
+            status=(
+                RunStatus.SCHEDULED
+                if normalized_schedule is not None
+                else RunStatus.PENDING
+            ),
+            created_at=created_at,
+            scheduled_for=normalized_schedule,
         )
         self.repository.save_run(run)
         return run
@@ -102,7 +116,11 @@ class RunManagement:
         source = self.repository.get_run(source_run_id)
         if source is None:
             raise LookupError(f"unknown EvaluationRun: {source_run_id}")
-        if source.status in {RunStatus.PENDING, RunStatus.RUNNING}:
+        if source.status in {
+            RunStatus.SCHEDULED,
+            RunStatus.PENDING,
+            RunStatus.RUNNING,
+        }:
             raise ValueError(
                 f"cannot rerun {source.status.value} EvaluationRun"
             )
@@ -172,6 +190,7 @@ class RunManagement:
             return run
         if run.status in {RunStatus.COMPLETED, RunStatus.FAILED}:
             raise ValueError(f"cannot cancel {run.status.value} EvaluationRun")
+        was_dispatched = run.status in {RunStatus.PENDING, RunStatus.RUNNING}
 
         cancelled = self.repository.cancel_run(run.id, utcnow())
         if cancelled is None:
@@ -186,6 +205,8 @@ class RunManagement:
                 )
             raise RuntimeError("Run cancellation could not be persisted")
 
+        if not was_dispatched:
+            return cancelled
         try:
             dispatcher.cancel(cancelled.id)
         except Exception as exc:

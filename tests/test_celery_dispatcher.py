@@ -22,6 +22,7 @@ from agentgate.evaluator.judge import JudgeRequest, JudgeResponse
 from agentgate.integrations.job_dispatchers.celery import (
     CeleryJobDispatcher,
     create_celery_app,
+    dispatch_due_evaluation_runs,
     execute_evaluation_run,
 )
 from agentgate.integrations.model_providers.environment import ConfiguredJudgeModel
@@ -125,6 +126,7 @@ def test_celery_app_uses_json_broker_only_configuration(monkeypatch) -> None:
     monkeypatch.setenv("AGENTGATE_REDIS_URL", "redis://broker.example:6379/4")
     monkeypatch.setenv("AGENTGATE_WORKER_CONCURRENCY", "2")
     monkeypatch.setenv("AGENTGATE_TASK_TIME_LIMIT_SECONDS", "420")
+    monkeypatch.setenv("AGENTGATE_SCHEDULER_INTERVAL_SECONDS", "17")
 
     app = create_celery_app()
 
@@ -136,7 +138,36 @@ def test_celery_app_uses_json_broker_only_configuration(monkeypatch) -> None:
     assert app.conf.task_acks_late is True
     assert app.conf.task_reject_on_worker_lost is False
     assert app.conf.worker_concurrency == 2
+    assert app.conf.worker_prefetch_multiplier == 1
     assert app.conf.task_time_limit == 420
+    assert app.conf.beat_schedule["dispatch-due-evaluation-runs"]["schedule"] == 17
+    assert app.conf.task_routes["agentgate.dispatch_due_evaluation_runs"]["queue"] == (
+        "agentgate.scheduler"
+    )
+
+
+def test_scheduler_task_uses_configured_database_and_dispatcher(
+    tmp_path, monkeypatch
+) -> None:
+    database_path = tmp_path / "scheduler-task.db"
+    monkeypatch.setenv("AGENTGATE_DB", str(database_path))
+    calls: list[str] = []
+
+    class RecordingScheduling:
+        def __init__(self, repository) -> None:
+            calls.append(repository.path)
+
+        def dispatch_due_runs(self, dispatcher):
+            calls.append(type(dispatcher).__name__)
+            return (object(), object())
+
+    monkeypatch.setattr(
+        "agentgate.integrations.job_dispatchers.celery.RunScheduling",
+        RecordingScheduling,
+    )
+
+    assert dispatch_due_evaluation_runs.run() == 2
+    assert calls == [str(database_path), "CeleryJobDispatcher"]
 
 
 def test_worker_executes_persisted_run_and_duplicate_is_noop(

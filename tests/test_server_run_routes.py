@@ -78,6 +78,54 @@ def test_run_routes_submit_pending_evaluation_and_expose_activity(tmp_path) -> N
     assert activity.json()["queued"][0]["run_id"] == run_id
 
 
+def test_run_route_schedules_lists_and_cancels_future_evaluation(tmp_path) -> None:
+    client, dispatcher = _client(tmp_path)
+    scheduled_for = "2099-09-10T02:00:00Z"
+
+    with client:
+        launched = client.post(
+            "/api/evaluations",
+            json={
+                "version": "loan-agent-v2-fixed",
+                "dataset_id": LOAN_DATASET.id,
+                "dataset_version": 1,
+                "scheduled_for": scheduled_for,
+            },
+        )
+        run_id = launched.json()["run_id"]
+        listed = client.get("/api/runs", params={"status": "scheduled"})
+        activity = client.get("/api/runs/activity")
+        cancelled = client.post(f"/api/runs/{run_id}/cancel")
+
+    assert launched.status_code == 202
+    assert launched.json()["status"] == "scheduled"
+    assert launched.json()["scheduled_for"] == "2099-09-10T02:00:00Z"
+    assert dispatcher.run_ids == []
+    assert [item["id"] for item in listed.json()] == [run_id]
+    assert activity.json()["status_counts"]["scheduled"] == 1
+    assert activity.json()["scheduled"][0]["run_id"] == run_id
+    assert cancelled.json()["status"] == "cancelled"
+    assert dispatcher.cancelled_run_ids == []
+
+
+def test_run_route_rejects_non_future_schedule(tmp_path) -> None:
+    client, dispatcher = _client(tmp_path)
+
+    with client:
+        response = client.post(
+            "/api/evaluations",
+            json={
+                "version": "loan-agent-v2-fixed",
+                "dataset_id": LOAN_DATASET.id,
+                "dataset_version": 1,
+                "scheduled_for": "2020-01-01T00:00:00Z",
+            },
+        )
+
+    assert response.status_code == 422
+    assert dispatcher.run_ids == []
+
+
 def test_run_route_persists_configured_case_concurrency(tmp_path) -> None:
     client, dispatcher = _client(tmp_path)
 

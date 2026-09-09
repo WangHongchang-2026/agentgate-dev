@@ -33,6 +33,7 @@ Detailed implementation plans must follow the consolidated architecture and ledg
 | Server | [server/](server/) | FastAPI transport, dependency wiring, error mapping, and HTTP routes |
 | Web architecture | [web/](web/) | Vue application structure, routing, API boundaries, and frontend rules |
 | Job dispatch | [job-dispatcher/](job-dispatcher/) | Whole-Run asynchronous dispatch, worker delivery, and queue visibility |
+| Scheduled Runs | [scheduler/](scheduler/) | Durable future Run eligibility and periodic queue submission |
 
 Cross-capability orchestration belongs in `application/`. External systems are connected
 through `integrations/`. Persistence implementations belong in `storage/`.

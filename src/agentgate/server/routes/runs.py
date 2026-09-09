@@ -1,5 +1,6 @@
 """Evaluation Run submission, activity, and status endpoints."""
 
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -35,6 +36,7 @@ class LaunchRequest(BaseModel):
     max_parallel_cases: int = Field(default=1, ge=1, le=32)
     max_retries: int = Field(default=0, ge=0, le=5)
     case_ids: list[str] | None = None
+    scheduled_for: datetime | None = None
 
 
 class RunSetupSkillAnalysisRequest(BaseModel):
@@ -73,6 +75,7 @@ def launch_evaluation(
             timeout_seconds=request.timeout_seconds,
             max_parallel_cases=request.max_parallel_cases,
             max_retries=request.max_retries,
+            scheduled_for=request.scheduled_for,
         )
         return dependencies.results.get_run_progress(run.id)
     except RuntimeError as error:

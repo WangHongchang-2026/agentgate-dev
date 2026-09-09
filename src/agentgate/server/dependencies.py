@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+from datetime import datetime
 from functools import partial
 from pathlib import Path
 from typing import Any
@@ -37,6 +38,7 @@ from agentgate.demo.targets import (
 from agentgate.domain import (
     EvaluationRun,
     EvaluatorRef,
+    RunStatus,
     SkillAnalysisReport,
     TargetSnapshot,
 )
@@ -107,8 +109,9 @@ class ServerDependencies:
         timeout_seconds: float = 300,
         max_parallel_cases: int = 1,
         max_retries: int = 0,
+        scheduled_for: datetime | None = None,
     ) -> EvaluationRun:
-        """Create and asynchronously dispatch one POC Loan Agent evaluation."""
+        """Create one POC Loan Agent Run and dispatch it when eligible."""
 
         run = self._create_demo_run(
             version,
@@ -119,7 +122,10 @@ class ServerDependencies:
             timeout_seconds=timeout_seconds,
             max_parallel_cases=max_parallel_cases,
             max_retries=max_retries,
+            scheduled_for=scheduled_for,
         )
+        if run.status is RunStatus.SCHEDULED:
+            return run
         return self.runs.dispatch_run(run.id, self.dispatcher)
 
     def submit_ab_runs(
@@ -184,6 +190,7 @@ class ServerDependencies:
         timeout_seconds: float,
         max_parallel_cases: int,
         max_retries: int,
+        scheduled_for: datetime | None = None,
     ) -> EvaluationRun:
         target = self._resolve_demo_target(version)
         return self.runs.create_run(
@@ -195,6 +202,7 @@ class ServerDependencies:
             timeout_seconds=timeout_seconds,
             max_parallel_cases=max_parallel_cases,
             max_retries=max_retries,
+            scheduled_for=scheduled_for,
         )
 
     def _resolve_demo_target(self, version: str) -> TargetSnapshot:

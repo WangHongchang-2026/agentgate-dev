@@ -33,6 +33,7 @@ Detailed plans:
 
 - [Run implementation](implementation-plan.md)
 - [Job Dispatcher implementation](../job-dispatcher/implementation-plan.md)
+- [Scheduled Run implementation](../scheduler/implementation-plan.md)
 - [External target integration](../history/planning-v1/external-target-plan.md)
 - [Instrumented Demo Agent](../history/planning-v1/demo-agent-plan.md)
 
