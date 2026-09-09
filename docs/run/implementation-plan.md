@@ -1,10 +1,11 @@
 # Run Implementation Plan
 
-Last updated: 2026-09-06
+Last updated: 2026-09-09
 
-Status: core Engine, Target protocol, Demo adapter wiring, atomic Run claiming, and
-incremental Result persistence are implemented. Optional mechanics and legacy cleanup
-remain pending. Asynchronous delivery is tracked in
+Status: core Engine, Target protocol, Demo adapter wiring, atomic Run claiming,
+incremental Result persistence, infrastructure retry, and cooperative cancellation are
+implemented. Optional process and Artifact mechanics remain pending. Asynchronous
+delivery is tracked in
 [`../job-dispatcher/implementation-plan.md`](../job-dispatcher/implementation-plan.md).
 
 ## 1. Purpose
@@ -127,7 +128,9 @@ Executes one RunManifest:
 5. reject a Trace that is not eligible for evaluation;
 6. invoke the evaluator executor;
 7. persist Trace, Results, and Artifact references;
-8. transition the EvaluationRun to completed, failed, or cancelled.
+8. observe externally persisted cancellation at safe execution boundaries;
+9. cancel locally owned active Target handles when cancellation is observed;
+10. transition the EvaluationRun to completed, failed, or cancelled.
 
 Engine does not construct vendor requests, poll observability backends directly,
 calculate reports, or act as a scheduler.
@@ -169,6 +172,11 @@ preserved.
 - Domain code owns legal `EvaluationRun` state transitions.
 - Engine must persist terminal failure state before propagating an execution exception.
 - User cancellation is not reported as infrastructure failure.
+- An externally persisted cancellation wins a concurrent completion or failure and is
+  returned without rewriting its terminal timestamps.
+- Adapter-originated cancellation remains a typed Target failure that Engine persists
+  before propagating.
+- Cooperative checks do not forcibly interrupt an arbitrary blocking adapter call.
 - Adapter failures cross the protocol as typed, sanitized failures; vendor exceptions
   do not leak into domain objects or API responses.
 - Evaluator execution errors become EvaluationResults according to the evaluator
@@ -277,6 +285,8 @@ Each file requires a source assessment and explicit approval before implementati
     imports.
 11. [complete] Run focused tests, the complete backend suite, and the real demo Run.
 12. Implement whole-Run asynchronous delivery through the Job Dispatcher plan.
+13. [complete] Observe persisted cancellation at safe boundaries, cancel active handles,
+    and preserve cancellation across terminal-state races.
 
 ## 10. Test Plan
 
@@ -302,6 +312,9 @@ Each file requires a source assessment and explicit approval before implementati
 - Trace correlation and eligibility are enforced before evaluation;
 - Results retain exact Run, Case, Evaluator, and Trace references;
 - completion, failure, and cancellation persist legal terminal states;
+- persisted cancellation stops new Cases and retries, prevents subsequent Result
+  persistence, and cancels active Target handles at the next safe boundary;
+- cancellation remains authoritative when it races with Engine completion or failure;
 - evaluator errors do not become infrastructure retries;
 - creating a new Run from the same manifest uses a new execution identity, while
   duplicate delivery of one existing `run_id` does not execute it twice.
@@ -385,7 +398,10 @@ Status: implemented; retry-focused regression passing
 | `integration/p1-new` | Adapt execution identity, Trace context, strict Trace identity checks, and timeout cancellation. |
 | `integration/p1-new` | Reject direct polling, obsolete models, and concrete integration exceptions in Engine. |
 | Current refactor | Reuse `EvaluationRun`, `transition_run`, repository operations, and `TargetAdapterProtocol`. |
-| From scratch | Inject Case evaluation and Trace resolution, validate complete Result sets, enforce bounded concurrency, and apply typed infrastructure retry without crossing into evaluation or persistence failures. |
+| `goal/p1-demo` and `integration/p1-new` | Reuse no persisted-state cooperative cancellation; neither reference implements that workflow. |
+| Current refactor | Reuse repository Run status, typed Target cancellation, and the adapter `cancel(handle)` boundary. |
+| From scratch | Inject Case evaluation and Trace resolution, validate complete Result sets, enforce bounded concurrency, apply typed infrastructure retry, and observe persisted cancellation without crossing ownership boundaries. |
+| From scratch | Implement safe-boundary cancellation checks and cancellation-wins terminal race handling. |
 
 ### `run/retry.py`
 

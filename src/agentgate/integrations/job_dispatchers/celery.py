@@ -133,3 +133,8 @@ class CeleryJobDispatcher:
         if not isinstance(run_id, str) or not run_id.strip():
             raise ValueError("run_id must not be blank")
         self.task.apply_async(args=[run_id], task_id=run_id)
+
+    def cancel(self, run_id: str) -> None:
+        if not isinstance(run_id, str) or not run_id.strip():
+            raise ValueError("run_id must not be blank")
+        self.task.app.control.revoke(run_id, terminate=False)

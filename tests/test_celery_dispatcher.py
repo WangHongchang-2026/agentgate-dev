@@ -32,9 +32,23 @@ from agentgate.storage.sqlite import SQLiteRepository
 class RecordingTask:
     def __init__(self) -> None:
         self.calls: list[dict[str, object]] = []
+        self.app = RecordingApp()
 
     def apply_async(self, **kwargs) -> None:
         self.calls.append(kwargs)
+
+
+class RecordingControl:
+    def __init__(self) -> None:
+        self.revocations: list[tuple[str, bool]] = []
+
+    def revoke(self, task_id: str, *, terminate: bool) -> None:
+        self.revocations.append((task_id, terminate))
+
+
+class RecordingApp:
+    def __init__(self) -> None:
+        self.control = RecordingControl()
 
 
 class RecordingJudgeClient:
@@ -95,6 +109,18 @@ def test_dispatcher_sends_only_run_id_with_correlated_task_id() -> None:
         dispatcher.submit("  ")
 
 
+def test_dispatcher_revokes_correlated_task_without_terminating_worker() -> None:
+    task = RecordingTask()
+    dispatcher = CeleryJobDispatcher(task=task)  # type: ignore[arg-type]
+
+    dispatcher.cancel("run-123")
+
+    assert task.app.control.revocations == [("run-123", False)]
+    with pytest.raises(ValueError, match="run_id must not be blank"):
+        dispatcher.cancel("  ")
+    assert task.app.control.revocations == [("run-123", False)]
+
+
 def test_celery_app_uses_json_broker_only_configuration(monkeypatch) -> None:
     monkeypatch.setenv("AGENTGATE_REDIS_URL", "redis://broker.example:6379/4")
     monkeypatch.setenv("AGENTGATE_WORKER_CONCURRENCY", "2")
@@ -134,6 +160,26 @@ def test_worker_executes_persisted_run_and_duplicate_is_noop(
 
     assert execute_evaluation_run.run(run.id) == RunStatus.COMPLETED.value
     assert len(repository.list_results(run.id)) == result_count
+
+
+def test_worker_skips_run_cancelled_before_delivery(tmp_path, monkeypatch) -> None:
+    database_path = tmp_path / "cancelled-worker.db"
+    monkeypatch.setenv("AGENTGATE_DB", str(database_path))
+    repository = SQLiteRepository(database_path)
+    seed_demo(repository)
+    management = build_default_evaluator_management(repository)
+    run = RunManagement(repository, management).create_run(
+        target(), dataset_id=LOAN_DATASET.id
+    )
+    cancelled = repository.cancel_run(run.id, run.created_at)
+    assert cancelled is not None
+
+    status = execute_evaluation_run.run(run.id)
+
+    assert status == RunStatus.CANCELLED.value
+    assert repository.get_run(run.id) == cancelled
+    assert repository.list_traces(run.id) == []
+    assert repository.list_results(run.id) == []
 
 
 def test_worker_executes_configured_judge_and_closes_client(

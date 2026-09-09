@@ -137,6 +137,9 @@ class AgentGateRepository(Protocol):
     def claim_pending_run(
         self, run_id: str, started_at: datetime
     ) -> EvaluationRun | None: ...
+    def cancel_run(
+        self, run_id: str, cancelled_at: datetime
+    ) -> EvaluationRun | None: ...
     def list_runs_by_status(
         self,
         status: RunStatus,

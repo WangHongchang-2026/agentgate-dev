@@ -27,6 +27,7 @@ from agentgate.domain import (
     EvaluatorSeverity,
     RunStatus,
     TargetSnapshot,
+    transition_run,
 )
 from agentgate.evaluator.models import DuplicateEvaluatorId, UnknownEvaluator
 from agentgate.integrations.observability import InMemoryTraceCapture
@@ -35,14 +36,25 @@ from agentgate.storage.sqlite import SQLiteRepository
 
 
 class RecordingDispatcher:
-    def __init__(self, failure: Exception | None = None) -> None:
+    def __init__(
+        self,
+        failure: Exception | None = None,
+        cancel_failure: Exception | None = None,
+    ) -> None:
         self.failure = failure
+        self.cancel_failure = cancel_failure
         self.run_ids: list[str] = []
+        self.cancelled_run_ids: list[str] = []
 
     def submit(self, run_id: str) -> None:
         self.run_ids.append(run_id)
         if self.failure is not None:
             raise self.failure
+
+    def cancel(self, run_id: str) -> None:
+        self.cancelled_run_ids.append(run_id)
+        if self.cancel_failure is not None:
+            raise self.cancel_failure
 
 
 def target(version: str = "loan-agent-v2-fixed") -> TargetSnapshot:
@@ -365,6 +377,126 @@ def test_dispatch_failure_is_persisted_without_exception_details(tmp_path) -> No
     assert failed.status is RunStatus.FAILED
     assert failed.error == "Run dispatch failed: ConnectionError"
     assert "secret" not in failed.error
+
+
+def test_cancel_run_persists_pending_and_running_cancellation(tmp_path) -> None:
+    repository = SQLiteRepository(tmp_path / "cancel-runs.db")
+    seed_demo(repository)
+    management, _ = run_management(repository)
+    pending = management.create_run(target(), dataset_id=LOAN_DATASET.id)
+    running = management.create_run(target(), dataset_id=LOAN_DATASET.id)
+    claimed = repository.claim_pending_run(running.id, running.created_at)
+    assert claimed is not None
+    dispatcher = RecordingDispatcher()
+
+    cancelled_pending = management.cancel_run(pending.id, dispatcher)
+    cancelled_running = management.cancel_run(running.id, dispatcher)
+
+    assert cancelled_pending.status is RunStatus.CANCELLED
+    assert cancelled_pending.started_at is None
+    assert cancelled_running.status is RunStatus.CANCELLED
+    assert cancelled_running.started_at == claimed.started_at
+    assert dispatcher.cancelled_run_ids == [pending.id, running.id]
+    assert repository.get_run(pending.id) == cancelled_pending
+    assert repository.get_run(running.id) == cancelled_running
+
+
+def test_cancel_run_is_idempotent_and_rejects_unknown_or_terminal_runs(
+    tmp_path,
+) -> None:
+    repository = SQLiteRepository(tmp_path / "cancel-run-states.db")
+    seed_demo(repository)
+    management, _ = run_management(repository)
+    already_cancelled = management.create_run(target(), dataset_id=LOAN_DATASET.id)
+    completed_pending = management.create_run(target(), dataset_id=LOAN_DATASET.id)
+    failed_pending = management.create_run(target(), dataset_id=LOAN_DATASET.id)
+    cancelled = repository.cancel_run(
+        already_cancelled.id,
+        already_cancelled.created_at,
+    )
+    assert cancelled is not None
+    completed_running = repository.claim_pending_run(
+        completed_pending.id,
+        completed_pending.created_at,
+    )
+    failed_running = repository.claim_pending_run(
+        failed_pending.id,
+        failed_pending.created_at,
+    )
+    assert completed_running is not None
+    assert failed_running is not None
+    completed = transition_run(completed_running, RunStatus.COMPLETED)
+    failed = transition_run(
+        failed_running,
+        RunStatus.FAILED,
+        error="Target failed",
+    )
+    repository.save_run(completed)
+    repository.save_run(failed)
+    dispatcher = RecordingDispatcher()
+
+    assert management.cancel_run(cancelled.id, dispatcher) == cancelled
+    with pytest.raises(LookupError, match="unknown EvaluationRun"):
+        management.cancel_run("missing", dispatcher)
+    with pytest.raises(ValueError, match="cannot cancel completed"):
+        management.cancel_run(completed.id, dispatcher)
+    with pytest.raises(ValueError, match="cannot cancel failed"):
+        management.cancel_run(failed.id, dispatcher)
+
+    assert dispatcher.cancelled_run_ids == []
+    assert repository.get_run(completed.id) == completed
+    assert repository.get_run(failed.id) == failed
+
+
+def test_cancel_run_keeps_final_state_when_dispatcher_signal_fails(
+    tmp_path,
+    caplog,
+) -> None:
+    repository = SQLiteRepository(tmp_path / "cancel-signal-failure.db")
+    seed_demo(repository)
+    management, _ = run_management(repository)
+    run = management.create_run(target(), dataset_id=LOAN_DATASET.id)
+    dispatcher = RecordingDispatcher(
+        cancel_failure=ConnectionError("redis password=secret")
+    )
+
+    cancelled = management.cancel_run(run.id, dispatcher)
+
+    assert cancelled.status is RunStatus.CANCELLED
+    assert repository.get_run(run.id) == cancelled
+    assert dispatcher.cancelled_run_ids == [run.id]
+    assert "ConnectionError" in caplog.text
+    assert "secret" not in caplog.text
+
+
+def test_cancel_run_preserves_concurrently_completed_state(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    repository = SQLiteRepository(tmp_path / "cancel-race.db")
+    seed_demo(repository)
+    management, _ = run_management(repository)
+    run = management.create_run(target(), dataset_id=LOAN_DATASET.id)
+    dispatcher = RecordingDispatcher()
+
+    def complete_instead(run_id, cancelled_at):
+        running = repository.claim_pending_run(run_id, cancelled_at)
+        assert running is not None
+        completed = transition_run(
+            running,
+            RunStatus.COMPLETED,
+            occurred_at=cancelled_at,
+        )
+        repository.save_run(completed)
+        return None
+
+    monkeypatch.setattr(repository, "cancel_run", complete_instead)
+
+    with pytest.raises(ValueError, match="cannot cancel completed"):
+        management.cancel_run(run.id, dispatcher)
+
+    assert repository.get_run(run.id).status is RunStatus.COMPLETED
+    assert dispatcher.cancelled_run_ids == []
 
 
 def test_fail_stale_runs_preserves_active_and_pending_runs(tmp_path) -> None:

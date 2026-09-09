@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Sequence
 from datetime import datetime, timedelta
 
@@ -26,6 +27,9 @@ from agentgate.storage.repository import AgentGateRepository
 from .dataset_management import DatasetManagement
 from .evaluator_management import EvaluatorManagement
 from .target_catalog import TargetCatalog
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 class RunManagement:
@@ -138,6 +142,43 @@ class RunManagement:
                     raise
             raise RuntimeError("Run dispatch failed") from exc
         return run
+
+    def cancel_run(
+        self,
+        run_id: str,
+        dispatcher: JobDispatcher,
+    ) -> EvaluationRun:
+        """Persist cancellation and best-effort signal its dispatched job."""
+
+        run = self.repository.get_run(run_id)
+        if run is None:
+            raise LookupError(f"unknown EvaluationRun: {run_id}")
+        if run.status is RunStatus.CANCELLED:
+            return run
+        if run.status in {RunStatus.COMPLETED, RunStatus.FAILED}:
+            raise ValueError(f"cannot cancel {run.status.value} EvaluationRun")
+
+        cancelled = self.repository.cancel_run(run.id, utcnow())
+        if cancelled is None:
+            current = self.repository.get_run(run.id)
+            if current is None:
+                raise LookupError(f"unknown EvaluationRun: {run_id}")
+            if current.status is RunStatus.CANCELLED:
+                return current
+            if current.status in {RunStatus.COMPLETED, RunStatus.FAILED}:
+                raise ValueError(
+                    f"cannot cancel {current.status.value} EvaluationRun"
+                )
+            raise RuntimeError("Run cancellation could not be persisted")
+
+        try:
+            dispatcher.cancel(cancelled.id)
+        except Exception as exc:
+            LOGGER.warning(
+                "Run cancellation signal failed with %s",
+                type(exc).__name__,
+            )
+        return cancelled
 
     def fail_stale_runs(
         self,

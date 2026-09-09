@@ -1,6 +1,6 @@
 # AgentGate Project Progress
 
-Last updated: 2026-09-08
+Last updated: 2026-09-09
 
 ## Status Legend
 
@@ -82,8 +82,9 @@ Last updated: 2026-09-08
 | [x] | Reproducible Case subset | Pin ordered Case IDs in the RunManifest and execute only that selection without changing the Dataset version | `src/agentgate/domain/run.py`, `src/agentgate/run/engine.py` |
 | [x] | Worker claiming | Prevent two workers from executing the same Run | `src/agentgate/storage/sqlite.py` |
 | [x] | Incremental persistence | Save each Case's Results as soon as evaluation finishes | `src/agentgate/run/engine.py` |
-| [x] | Dispatcher protocol | Define whole-Run submission through `submit(run_id)` | `src/agentgate/integrations/job_dispatchers/protocol.py` |
+| [x] | Dispatcher protocol | Define whole-Run submission and cancellation through `submit(run_id)` and `cancel(run_id)` | `src/agentgate/integrations/job_dispatchers/protocol.py` |
 | [x] | Dispatch workflow | Submit persisted Runs and fail dispatch errors safely | `src/agentgate/application/run_management.py` |
+| [x] | Run cancellation | Atomically cancel pending/running Runs, revoke queued delivery, and cooperatively stop active execution | `src/agentgate/storage/sqlite.py`, `src/agentgate/application/run_management.py`, `src/agentgate/run/engine.py`, `src/agentgate/integrations/job_dispatchers/celery.py`, `src/agentgate/server/routes/runs.py` |
 | [x] | Stale-Run recovery | Fail Runs abandoned by an expired worker | `src/agentgate/application/run_management.py` |
 | [x] | Progress projection | Calculate completed Cases and Run progress from Results | `src/agentgate/application/result_reader.py` |
 | [x] | Activity projection | Return queued, running, and recent terminal Runs | `src/agentgate/application/result_reader.py` |
@@ -208,7 +209,8 @@ worktree audit and feature delivery remain.
   `blocked_by_evaluator_id` provenance.
 - Priority queues, tenant fairness, multiple worker pools, and resource-aware routing.
 - Time-based reservations and recurring schedules.
-- Cooperative cancellation of active local and remote Agent executions.
+- Immediate interruption of arbitrary blocking Target calls and persisted per-attempt
+  cancellation history.
 - Customer-specific Java scheduler and Agent-platform adapters.
 - Production observability platform integrations and external Result callbacks.
 - Automated resume or retry of partially completed Runs.

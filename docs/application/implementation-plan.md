@@ -1,6 +1,6 @@
 # Application Implementation Plan
 
-Last updated: 2026-09-08
+Last updated: 2026-09-09
 
 ## 1. Purpose
 
@@ -78,12 +78,18 @@ P1 public operations:
 create_run(...)      -> persisted pending EvaluationRun
 dispatch_run(...)    -> submit only run_id or persist a safe dispatch failure
 execute_run(...)     -> completed/failed/cancelled EvaluationRun
+cancel_run(...)      -> persisted cancelled EvaluationRun
 fail_stale_runs(...) -> fail abandoned running Runs after their recovery deadline
 ```
 
-Add running-Run cancellation only when execution handles are persisted and a real
-dispatcher can route cancellation to the active worker. Do not claim cancellation that
-the synchronous POC cannot perform.
+Cancellation atomically transitions pending and running Runs to `CANCELLED`. Unknown
+Run IDs are not found, completed or failed Runs are lifecycle conflicts, and an already
+cancelled Run is returned idempotently. Dispatcher cancellation is requested only after
+the terminal state is durable; signaling failure cannot reverse that state.
+
+Active execution observes shared persisted state and cancels locally owned Target
+handles at safe execution boundaries. Immediate interruption inside an arbitrary
+blocking adapter call remains out of scope.
 
 ### `dataset_management.py`
 

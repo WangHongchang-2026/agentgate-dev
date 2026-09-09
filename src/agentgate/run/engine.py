@@ -71,11 +71,15 @@ class RunEngine:
         try:
             self._validate_execution(running, target_adapter)
             self._execute_cases(running, target_adapter)
+            self._raise_if_cancelled(running.id)
 
             completed = transition_run(running, RunStatus.COMPLETED)
             self.repository.save_run(completed)
             return completed
         except Exception as exc:
+            current = self.repository.get_run(running.id)
+            if current is not None and current.status is RunStatus.CANCELLED:
+                return current
             terminal_status = (
                 RunStatus.CANCELLED
                 if isinstance(exc, TargetExecutionError) and exc.code == "cancelled"
@@ -97,7 +101,9 @@ class RunEngine:
 
         try:
             while active or not exhausted:
+                self._raise_if_cancelled(run.id)
                 while not exhausted and len(active) < run.manifest.max_parallel_cases:
+                    self._raise_if_cancelled(run.id)
                     try:
                         case = next(pending_cases)
                     except StopIteration:
@@ -118,6 +124,7 @@ class RunEngine:
                     continue
 
                 case, request, handle, retries_used = active[0]
+                self._raise_if_cancelled(run.id)
                 try:
                     outcome = self._wait_for_target(request, handle, target_adapter)
                 except TargetExecutionError as error:
@@ -141,6 +148,7 @@ class RunEngine:
                     )
                     continue
 
+                self._raise_if_cancelled(run.id)
                 self._record_case(run, case, request, outcome)
                 active.popleft()
         except Exception:
@@ -156,6 +164,7 @@ class RunEngine:
         retries_used: int = 0,
     ) -> ActiveCase:
         while True:
+            self._raise_if_cancelled(run.id)
             request = self._build_request(run, case)
             try:
                 handle = target_adapter.start(request)
@@ -200,12 +209,24 @@ class RunEngine:
     ) -> None:
         trace = self.resolve_trace(request, outcome)
         self._validate_trace(request, outcome, trace)
+        self._raise_if_cancelled(run.id)
         self.repository.save_trace(trace)
         case_results = tuple(
             self.evaluate_case(case, trace, run.manifest.evaluator_specs)
         )
+        self._raise_if_cancelled(run.id)
         self._validate_results(run, case, trace, case_results)
         self.repository.save_results(case_results)
+
+    def _raise_if_cancelled(self, run_id: str) -> None:
+        current = self.repository.get_run(run_id)
+        if current is None:
+            raise ValueError("EvaluationRun disappeared during execution")
+        if current.status is RunStatus.CANCELLED:
+            raise TargetExecutionError(
+                "cancelled",
+                "EvaluationRun cancellation was requested",
+            )
 
     @classmethod
     def _cancel_active(

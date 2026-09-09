@@ -1,10 +1,10 @@
 # Server Implementation Plan
 
-Last updated: 2026-09-07
+Last updated: 2026-09-09
 
-Status: the modular Server and asynchronous HTTP 202 Run slice are implemented.
-Submission, activity, per-Run status, completed reports, and stale-Run reconciliation
-follow `docs/job-dispatcher/implementation-plan.md`.
+Status: the modular Server, asynchronous HTTP 202 Run slice, and Run cancellation API
+are implemented. Submission, activity, per-Run status, cancellation, completed reports,
+and stale-Run reconciliation follow `docs/job-dispatcher/implementation-plan.md`.
 
 ## 1. Purpose
 
@@ -108,7 +108,11 @@ logic.
 - Calls `RunManagement.create_run()` and `dispatch_run()`.
 - Submission persists a pending Run, dispatches only its ID, and returns HTTP 202.
 - Worker-side `execute_run()` is never called inside the HTTP request.
-- Cancellation/progress endpoints are added only when the dispatcher supports them.
+- `POST /api/runs/{run_id}/cancel` delegates to `RunManagement.cancel_run()` and returns
+  the existing `RunProgress` projection.
+- Cancellation returns 200 for a successful or idempotent request, 404 for an unknown
+  Run, and 409 for a completed or failed Run.
+- Cancellation accepts no request body and exposes no force-kill or dispatcher options.
 
 ### `routes/datasets.py`
 
@@ -159,6 +163,12 @@ Celery worker
   -> DemoLoanTargetAdapter
   -> persisted terminal EvaluationRun
 
+Cancellation request
+  -> POST /api/runs/{run_id}/cancel
+  -> routes/runs.py
+  -> RunManagement.cancel_run(run_id, dispatcher)
+  -> HTTP 200 cancelled RunProgress
+
 Vue Web
   -> GET /api/runs/{run_id}
   -> routes/results.py
@@ -175,8 +185,9 @@ changes dispatch timing, not Run creation or worker execution contracts.
 System:       GET /health
 Overview:     GET /api/overview
 Catalogs:     GET /api/versions, GET /api/evaluators
-Runs:         GET /api/runs, POST /api/evaluations
-Run activity: GET /api/runs/activity, GET /api/runs/{run_id}/status   planned
+Runs:         GET /api/runs, POST /api/evaluations,
+              POST /api/runs/{run_id}/cancel
+Run activity: GET /api/runs/activity, GET /api/runs/{run_id}/status
 Results:      GET /api/runs/{run_id}
 Traces:       GET /api/runs/{run_id}/traces/{case_id}
 Datasets:     /api/datasets/**
@@ -286,6 +297,8 @@ Each file requires source assessment and explicit approval before implementation
     launch with HTTP 202 dispatch.
 14. [complete] Add Run activity and per-Run status endpoints.
 15. [complete] Verify queue, worker, progress, and terminal-state API behavior.
+16. [complete] Add thin Run cancellation routing with stable not-found and lifecycle
+    conflict responses.
 
 CLI migration is explicitly deferred. `control_plane/` and `run/core.py` remain only for
 CLI until that later phase.
@@ -300,6 +313,9 @@ CLI until that later phase.
 - selected evaluator IDs remain exact;
 - Run/report/Trace/overview reads use Application modules;
 - unknown resources map to stable HTTP errors;
+- pending/running cancellation returns cancelled progress, repeated cancellation is
+  idempotent, and completed/failed cancellation returns conflict;
+- cancellation routes expose no worker termination or dispatcher controls;
 - OTLP rejects unsupported content types and malformed payloads;
 - route modules never query SQLite directly;
 - current API tests pass without importing `EvaluationService` in Server code;
@@ -327,7 +343,9 @@ Server refactoring is complete when:
 - the current Vue-facing API paths remain functional;
 - the demo evaluation uses the new Run Engine and real OTel spans;
 - OTLP transport is isolated under integrations;
-- focused API tests and the complete backend suite pass.
+- focused API tests and the complete backend suite pass;
+- Run cancellation calls the Application workflow and never mutates repository state in
+  the route.
 
 ## 13. Implementation Decisions
 
@@ -388,7 +406,7 @@ Status: implemented; 257 tests passing
 
 ### `server/routes/runs.py`
 
-Status: asynchronous HTTP 202 dispatch, activity, and status endpoints implemented
+Status: asynchronous dispatch, activity, status, and cancellation endpoints implemented
 
 | Source | Decision |
 | --- | --- |
@@ -396,6 +414,9 @@ Status: asynchronous HTTP 202 dispatch, activity, and status endpoints implement
 | `integration/p1-new` | Reject external HTTP launch, rerun, comparison, and regression routes until their Application contracts exist. |
 | Current refactor | Reuse `ResultReader.list_runs()` and the existing launch request while replacing `ServerDependencies.execute_demo_run()`. |
 | From scratch | Add HTTP 202 dispatch plus activity and status routes through Application services. |
+| `goal/p1-demo` and `integration/p1-new` | Reuse no Run cancellation route; neither reference provides the approved API workflow. |
+| Current refactor | Reuse `RunManagement.cancel_run()`, `ResultReader.get_run_progress()`, and stable not-found/conflict helpers. |
+| From scratch | Add the bodyless cancellation endpoint, lifecycle error mapping, and focused API contract tests. |
 
 ### `server/routes/results.py`
 

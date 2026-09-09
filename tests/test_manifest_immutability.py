@@ -145,6 +145,96 @@ def test_repository_claims_a_pending_run_once(tmp_path):
     assert repository.claim_pending_run("missing", started_at) is None
 
 
+def test_repository_atomically_cancels_pending_run(tmp_path):
+    repository = SQLiteRepository(tmp_path / "cancel-pending.db")
+    pending = EvaluationRun(id="run", manifest=manifest(repository))
+    repository.save_run(pending)
+    cancelled_at = pending.created_at + timedelta(seconds=1)
+
+    cancelled = repository.cancel_run(pending.id, cancelled_at)
+
+    assert cancelled is not None
+    assert cancelled.status is RunStatus.CANCELLED
+    assert cancelled.started_at is None
+    assert cancelled.completed_at == cancelled_at
+    assert repository.get_run(pending.id) == cancelled
+    assert repository.cancel_run(pending.id, cancelled_at) is None
+    assert repository.claim_pending_run(pending.id, cancelled_at) is None
+
+
+def test_repository_atomically_cancels_running_run(tmp_path):
+    repository = SQLiteRepository(tmp_path / "cancel-running.db")
+    pending = EvaluationRun(id="run", manifest=manifest(repository))
+    repository.save_run(pending)
+    started_at = pending.created_at + timedelta(seconds=1)
+    running = repository.claim_pending_run(pending.id, started_at)
+    assert running is not None
+    cancelled_at = started_at + timedelta(seconds=1)
+
+    cancelled = repository.cancel_run(pending.id, cancelled_at)
+
+    assert cancelled is not None
+    assert cancelled.status is RunStatus.CANCELLED
+    assert cancelled.started_at == started_at
+    assert cancelled.completed_at == cancelled_at
+    assert repository.get_run(pending.id) == cancelled
+
+
+def test_repository_cancellation_rejects_ineligible_runs_and_time(tmp_path):
+    repository = SQLiteRepository(tmp_path / "cancel-ineligible.db")
+    completed_pending = EvaluationRun(
+        id="completed",
+        manifest=manifest(repository),
+    )
+    failed_pending = EvaluationRun(
+        id="failed",
+        manifest=manifest(repository),
+    )
+    invalid_time = EvaluationRun(
+        id="invalid-time",
+        manifest=manifest(repository),
+    )
+    for run in (completed_pending, failed_pending, invalid_time):
+        repository.save_run(run)
+
+    completed_running = transition_run(
+        completed_pending,
+        RunStatus.RUNNING,
+        occurred_at=completed_pending.created_at + timedelta(seconds=1),
+    )
+    completed = transition_run(
+        completed_running,
+        RunStatus.COMPLETED,
+        occurred_at=completed_running.started_at + timedelta(seconds=1),
+    )
+    failed_running = transition_run(
+        failed_pending,
+        RunStatus.RUNNING,
+        occurred_at=failed_pending.created_at + timedelta(seconds=1),
+    )
+    failed = transition_run(
+        failed_running,
+        RunStatus.FAILED,
+        occurred_at=failed_running.started_at + timedelta(seconds=1),
+        error="Target failed",
+    )
+    repository.save_run(completed)
+    repository.save_run(failed)
+
+    assert repository.cancel_run("missing", completed.completed_at) is None
+    assert repository.cancel_run(completed.id, completed.completed_at) is None
+    assert repository.cancel_run(failed.id, failed.completed_at) is None
+    with pytest.raises(ValueError, match="precede Run activity"):
+        repository.cancel_run(
+            invalid_time.id,
+            invalid_time.created_at - timedelta(seconds=1),
+        )
+
+    assert repository.get_run(completed.id) == completed
+    assert repository.get_run(failed.id) == failed
+    assert repository.get_run(invalid_time.id) == invalid_time
+
+
 def test_repository_lists_and_counts_runs_by_status(tmp_path):
     repository = SQLiteRepository(tmp_path / "run-status.db")
     first = EvaluationRun(id="first", manifest=manifest(repository))

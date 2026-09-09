@@ -1187,6 +1187,39 @@ class SQLiteRepository:
             )
             return running if cursor.rowcount == 1 else None
 
+    def cancel_run(
+        self, run_id: str, cancelled_at: datetime
+    ) -> EvaluationRun | None:
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute(
+                "SELECT payload FROM runs WHERE id=?", (run_id,)
+            ).fetchone()
+            if row is None:
+                return None
+
+            current = EvaluationRun.model_validate_json(row[0])
+            if current.status not in {RunStatus.PENDING, RunStatus.RUNNING}:
+                return None
+            cancelled = transition_run(
+                current,
+                RunStatus.CANCELLED,
+                occurred_at=cancelled_at,
+            )
+            cursor = db.execute(
+                """
+                UPDATE runs SET status=?, payload=?
+                WHERE id=? AND status=?
+                """,
+                (
+                    cancelled.status,
+                    canonical_json(cancelled),
+                    run_id,
+                    current.status,
+                ),
+            )
+            return cancelled if cursor.rowcount == 1 else None
+
     def list_runs_by_status(
         self,
         status: RunStatus,

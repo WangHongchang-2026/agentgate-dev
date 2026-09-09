@@ -15,6 +15,7 @@ from agentgate.domain import (
 )
 from agentgate.server.dependencies import ServerDependencies, get_dependencies
 from agentgate.server.errors import (
+    raise_conflict,
     raise_not_found,
     raise_service_unavailable,
     raise_unprocessable,
@@ -103,6 +104,20 @@ def run_status(run_id: str, dependencies: Dependencies) -> RunProgress:
         return dependencies.results.get_run_progress(run_id)
     except LookupError as error:
         raise_not_found(error)
+
+
+@router.post("/runs/{run_id}/cancel")
+def cancel_run(run_id: str, dependencies: Dependencies) -> RunProgress:
+    try:
+        cancelled = dependencies.runs.cancel_run(
+            run_id,
+            dependencies.dispatcher,
+        )
+        return dependencies.results.get_run_progress(cancelled.id)
+    except LookupError as error:
+        raise_not_found(error)
+    except ValueError as error:
+        raise_conflict(error)
 
 
 @router.get("/runs/{run_id}/manifest")

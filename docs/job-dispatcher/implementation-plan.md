@@ -1,6 +1,6 @@
 # Job Dispatcher Implementation Plan
 
-Last updated: 2026-09-07
+Last updated: 2026-09-09
 
 ## 1. Purpose
 
@@ -112,6 +112,7 @@ Customer integration changes the dispatch adapter, not `RunEngine`.
 ```python
 class JobDispatcher(Protocol):
     def submit(self, run_id: str) -> None: ...
+    def cancel(self, run_id: str) -> None: ...
 ```
 
 Rules:
@@ -120,6 +121,10 @@ Rules:
 - the payload contains only the non-blank `run_id`;
 - Dataset content, credentials, prompts, and snapshots never enter the broker message;
 - Celery uses `run_id` as the task ID where practical for operational correlation;
+- cancellation is persisted before `cancel()` signals the dispatcher;
+- Celery revokes the correlated task with `terminate=False` and never kills a worker
+  process;
+- dispatcher cancellation failure cannot undo a persisted terminal state;
 - application code depends on the protocol, not Celery;
 - tests use a small in-test fake; no production `inline.py` is added unless a real
   non-Celery runtime needs it.
@@ -176,6 +181,19 @@ Celery configuration uses late acknowledgment only after the atomic claim exists
 `task_reject_on_worker_lost` remains disabled in P1 to avoid uncontrolled message
 loops.
 
+### Cancellation
+
+Cancellation uses an atomic repository transition from `PENDING` or `RUNNING` to
+`CANCELLED`. An already-cancelled Run is idempotent; completed and failed Runs are not
+rewritten.
+
+After persistence, the dispatcher revokes the Celery task identified by `run_id` with
+`terminate=False`. A queued task delivered despite revoke reads the terminal Run and
+exits without execution. A running `RunEngine` observes the shared state at safe
+execution boundaries, stops launching Cases, and cancels its locally owned Target
+handles. Immediate interruption inside an arbitrary blocking adapter call is not
+provided.
+
 ## 7. Progress Model
 
 Do not add a mutable progress counter or a CaseExecution domain class.
@@ -222,6 +240,9 @@ GET /api/runs/activity
 GET /api/runs/{run_id}/status
   Return lifecycle state, progress, timestamps, duration, error, and queue position.
 
+POST /api/runs/{run_id}/cancel
+  Atomically cancel a pending/running Run and return cancelled Run progress.
+
 GET /api/runs/{run_id}
   Keep the existing completed-report behavior.
 ```
@@ -247,13 +268,10 @@ Required POC visualization:
 Visible UI labels are Chinese. Source identifiers, API fields, TypeScript names, and
 comments remain English.
 
-P1 cancellation is intentionally limited:
-
-- pending cancellation may be added using an atomic SQLite transition and Celery
-  revoke;
-- active cancellation is deferred until `RunEngine` and Target adapters support
-  cooperative cancellation;
-- the server must not programmatically terminate a Celery worker process.
+P1 cancellation supports queued and running Runs. Queued delivery is revoked, while
+active execution cooperates through persisted state at safe boundaries. The server does
+not programmatically terminate a Celery worker process or promise immediate interruption
+inside a blocking Target call.
 
 ## 10. Celery Configuration
 
@@ -350,6 +368,8 @@ Goal Mode authorized this sequence for autonomous implementation.
    workspace, with polling that stops when no active Runs remain.
 10. [complete] Run backend tests, API integration tests, Web checks, and real-stack
     desktop/mobile browser verification.
+11. [complete] Add atomic pending/running cancellation, non-terminating Celery revoke,
+    worker-side safe-boundary cooperation, and the cancellation API.
 
 No compatibility aliases are added during the refactor.
 
@@ -364,6 +384,9 @@ Backend behavior:
 - a duplicate delivery is a no-op;
 - broker failure produces a durable failed Run;
 - stale running work becomes failed without losing partial evidence;
+- pending and running cancellation becomes durable before Celery revoke;
+- cancelled queued delivery is a worker no-op, and active execution stops at a safe
+  boundary without terminating the worker process;
 - status counts include all Runs rather than only the latest 50;
 - queue order is deterministic for Runs with distinct creation times.
 
@@ -416,7 +439,7 @@ lifecycle counters required for this dispatcher POC.
 - priority queues and tenant fairness;
 - multiple worker pools and resource-aware routing;
 - exact broker queue position;
-- active cooperative cancellation;
+- immediate interruption of arbitrary blocking Target calls;
 - automatic retry or resume of partial Runs;
 - high-availability broker and PostgreSQL deployment;
 - a customer-specific Java scheduler adapter;

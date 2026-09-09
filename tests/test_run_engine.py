@@ -22,6 +22,7 @@ from agentgate.domain import (
     TargetSnapshot,
     TargetType,
     Trace,
+    utcnow,
 )
 from agentgate.run.engine import RunEngine
 from agentgate.run.target_protocol import (
@@ -562,3 +563,112 @@ def test_engine_records_target_cancellation(tmp_path) -> None:
     assert cancelled is not None
     assert cancelled.status == RunStatus.CANCELLED
     assert cancelled.error is None
+
+
+def test_engine_observes_cancellation_after_wait_and_cancels_parallel_handles(
+    tmp_path,
+) -> None:
+    repository = SQLiteRepository(tmp_path / "cancel-during-wait.db")
+    cases = tuple(
+        Case(
+            id=f"case-{index}",
+            name=f"Case {index}",
+            turns=(CaseTurn(id=f"turn-{index}", input={"message": "hello"}),),
+        )
+        for index in range(1, 5)
+    )
+    run = pending_run(cases=cases, max_parallel_cases=3)
+    repository.save_run(run)
+
+    class CancelOnWaitAdapter(WindowedTargetAdapter):
+        def wait(self, handle, timeout_seconds):
+            cancelled = repository.cancel_run(run.id, utcnow())
+            assert cancelled is not None
+            return super().wait(handle, timeout_seconds)
+
+    target_adapter = CancelOnWaitAdapter()
+
+    cancelled = engine(repository).execute(run, target_adapter)
+
+    assert cancelled.status is RunStatus.CANCELLED
+    assert repository.get_run(run.id) == cancelled
+    assert len(target_adapter.requests) == 3
+    assert len(target_adapter.cancelled) == 3
+    assert target_adapter.active_count == 0
+    assert repository.list_traces(run.id) == []
+    assert repository.list_results(run.id) == []
+
+
+def test_engine_observes_cancellation_during_evaluation_before_results(
+    tmp_path,
+) -> None:
+    repository = SQLiteRepository(tmp_path / "cancel-during-evaluation.db")
+    run = pending_run()
+    repository.save_run(run)
+    target_adapter = StubTargetAdapter()
+
+    def cancel_during_evaluation(case, trace, specs):
+        cancelled = repository.cancel_run(run.id, utcnow())
+        assert cancelled is not None
+        return evaluate_case(case, trace, specs)
+
+    cancelled = RunEngine(
+        repository,
+        cancel_during_evaluation,
+        resolve_trace,
+    ).execute(run, target_adapter)
+
+    assert cancelled.status is RunStatus.CANCELLED
+    assert len(repository.list_traces(run.id)) == 1
+    assert repository.list_results(run.id) == []
+
+
+def test_engine_observes_cancellation_during_retry_backoff(tmp_path) -> None:
+    repository = SQLiteRepository(tmp_path / "cancel-during-retry.db")
+    run = pending_run(max_retries=2)
+    repository.save_run(run)
+    target_adapter = RetryTargetAdapter(wait_failures=1)
+    delays: list[float] = []
+
+    def cancel_during_backoff(delay):
+        delays.append(delay)
+        cancelled = repository.cancel_run(run.id, utcnow())
+        assert cancelled is not None
+
+    cancelled = RunEngine(
+        repository,
+        evaluate_case,
+        resolve_trace,
+        retry_sleep=cancel_during_backoff,
+    ).execute(run, target_adapter)
+
+    assert cancelled.status is RunStatus.CANCELLED
+    assert delays == [1.0]
+    assert target_adapter.start_attempts == 1
+    assert target_adapter.wait_attempts == 1
+    assert len(target_adapter.cancelled) == 1
+    assert repository.list_traces(run.id) == []
+    assert repository.list_results(run.id) == []
+
+
+def test_engine_preserves_cancellation_that_wins_completion_race(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    repository = SQLiteRepository(tmp_path / "cancel-completion-race.db")
+    run = pending_run()
+    repository.save_run(run)
+    original_save_run = repository.save_run
+
+    def cancel_before_completion(value):
+        if value.status is RunStatus.COMPLETED:
+            cancelled = repository.cancel_run(value.id, value.completed_at)
+            assert cancelled is not None
+        original_save_run(value)
+
+    monkeypatch.setattr(repository, "save_run", cancel_before_completion)
+
+    cancelled = engine(repository).execute(run, StubTargetAdapter())
+
+    assert cancelled.status is RunStatus.CANCELLED
+    assert repository.get_run(run.id) == cancelled
