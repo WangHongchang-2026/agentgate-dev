@@ -125,21 +125,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_dataset_active_draft
     WHERE status = 'draft';
 CREATE INDEX IF NOT EXISTS idx_dataset_versions_dataset
     ON dataset_versions(dataset_id, status, version);
-CREATE TABLE IF NOT EXISTS runs (
-    id TEXT PRIMARY KEY,
-    status TEXT NOT NULL CHECK(
-        status IN (
-            'scheduled', 'pending', 'running', 'completed', 'failed', 'cancelled'
-        )
-    ),
-    created_at TEXT NOT NULL,
-    scheduled_for TEXT,
-    payload TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_runs_status_created
-    ON runs(status, created_at, id);
-CREATE INDEX IF NOT EXISTS idx_runs_due
-    ON runs(status, scheduled_for, created_at, id);
 CREATE TABLE IF NOT EXISTS run_asset_refs (
     run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
     asset_kind TEXT NOT NULL CHECK(
@@ -190,6 +175,27 @@ CREATE INDEX IF NOT EXISTS idx_traces_run ON traces(run_id);
 CREATE INDEX IF NOT EXISTS idx_results_run ON results(run_id);
 """
 
+_RUNS_TABLE_SCHEMA = """
+CREATE TABLE runs (
+    id TEXT PRIMARY KEY,
+    status TEXT NOT NULL CHECK(
+        status IN (
+            'scheduled', 'pending', 'running', 'completed', 'failed', 'cancelled'
+        )
+    ),
+    created_at TEXT NOT NULL,
+    scheduled_for TEXT,
+    payload TEXT NOT NULL
+)
+"""
+
+_RUNS_INDEX_SCHEMA = """
+CREATE INDEX IF NOT EXISTS idx_runs_status_created
+    ON runs(status, created_at, id);
+CREATE INDEX IF NOT EXISTS idx_runs_due
+    ON runs(status, scheduled_for, created_at, id);
+"""
+
 
 class SQLiteRepository:
     """SQLite JSON-document adapter behind a PostgreSQL-compatible domain boundary."""
@@ -224,6 +230,37 @@ class SQLiteRepository:
         with self._connect() as db:
             db.execute("PRAGMA journal_mode = WAL")
             db.executescript(_SCHEMA)
+            self._ensure_runs_schema(db)
+            db.executescript(_RUNS_INDEX_SCHEMA)
+
+    @staticmethod
+    def _ensure_runs_schema(db: sqlite3.Connection) -> None:
+        row = db.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='runs'"
+        ).fetchone()
+        if row is None:
+            db.execute(_RUNS_TABLE_SCHEMA)
+            return
+
+        columns = {
+            column[1] for column in db.execute("PRAGMA table_info(runs)").fetchall()
+        }
+        if "scheduled_for" in columns and "'scheduled'" in row[0]:
+            return
+
+        db.execute("PRAGMA foreign_keys = OFF")
+        try:
+            db.execute(_RUNS_TABLE_SCHEMA.replace("runs", "runs_new", 1))
+            db.execute(
+                """
+                INSERT INTO runs_new(id, status, created_at, scheduled_for, payload)
+                SELECT id, status, created_at, NULL, payload FROM runs
+                """
+            )
+            db.execute("DROP TABLE runs")
+            db.execute("ALTER TABLE runs_new RENAME TO runs")
+        finally:
+            db.execute("PRAGMA foreign_keys = ON")
 
     def save_target_descriptor(self, descriptor: TargetDescriptor) -> None:
         with self._connect() as db:

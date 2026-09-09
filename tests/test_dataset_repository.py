@@ -49,6 +49,48 @@ def test_sqlite_initialization_enables_wal_and_schema_checks(tmp_path):
                 )
 
 
+def test_sqlite_initialization_upgrades_legacy_runs_table(tmp_path):
+    path = tmp_path / "legacy-runs.db"
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            """
+            CREATE TABLE runs (
+                id TEXT PRIMARY KEY,
+                status TEXT NOT NULL CHECK(
+                    status IN ('pending', 'running', 'completed', 'failed', 'cancelled')
+                ),
+                created_at TEXT NOT NULL,
+                payload TEXT NOT NULL
+            )
+            """
+        )
+        connection.execute(
+            "INSERT INTO runs VALUES(?,?,?,?)",
+            ("existing", "pending", "2026-09-09T00:00:00+00:00", "{}"),
+        )
+
+    SQLiteRepository(path)
+
+    with sqlite3.connect(path) as connection:
+        columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(runs)").fetchall()
+        }
+        assert "scheduled_for" in columns
+        assert connection.execute(
+            "SELECT status FROM runs WHERE id='existing'"
+        ).fetchone() == ("pending",)
+        connection.execute(
+            "INSERT INTO runs VALUES(?,?,?,?,?)",
+            (
+                "scheduled",
+                "scheduled",
+                "2026-09-09T00:00:00+00:00",
+                "2026-09-10T00:00:00+00:00",
+                "{}",
+            ),
+        )
+
+
 def test_sqlite_persists_catalog_and_enforces_one_draft(tmp_path):
     repository = SQLiteRepository(tmp_path / "repository.db")
     service = DatasetManagement(repository)
