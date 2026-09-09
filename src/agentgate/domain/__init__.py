@@ -13,6 +13,7 @@ from .base import (
     utcnow,
 )
 from .case import Case, CaseCategory, CaseDifficulty, CaseTurn
+from .credential import ApiKeyMetadata, ApiKeyScope
 from .dataset import Dataset, DatasetVersion, DatasetVersionStatus
 from .evaluator import (
     CombinationPolicy, Evaluator, EvaluatorDraft, EvaluatorKind, EvaluatorRef,

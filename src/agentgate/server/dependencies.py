@@ -22,6 +22,7 @@ from agentgate.application import (
     TargetCatalog,
     create_ab_runs,
 )
+from agentgate.application.credential_management import ApiKeyManagement
 from agentgate.application.evaluator_management import (
     EvaluatorManagement,
     build_default_evaluator_management,
@@ -41,6 +42,11 @@ from agentgate.domain import (
     RunStatus,
     SkillAnalysisReport,
     TargetSnapshot,
+)
+from agentgate.integrations.credentials.encryption import ApiKeyEncryptor
+from agentgate.integrations.credentials.environment import (
+    API_KEY_ENCRYPTION_KEY_ENV,
+    load_api_key_encryptor,
 )
 from agentgate.integrations.job_dispatchers import JobDispatcher
 from agentgate.integrations.job_dispatchers.celery import CeleryJobDispatcher
@@ -72,6 +78,7 @@ class ServerDependencies:
     lineage: LineageQueries
     skill_analysis: SkillAnalysis
     optimization: OptimizationAnalysis
+    api_keys: ApiKeyManagement | None
     dispatcher: JobDispatcher
     demo_state: dict[str, dict]
     _judge_client: OpenAICompatibleModelClient | None = field(
@@ -228,6 +235,7 @@ def get_dependencies(request: Request) -> ServerDependencies:
 def build_dependencies(
     database_path: str | Path | None = None,
     dispatcher: JobDispatcher | None = None,
+    api_key_encryptor: ApiKeyEncryptor | None = None,
 ) -> ServerDependencies:
     """Build isolated dependencies for one AgentGate FastAPI application."""
 
@@ -236,6 +244,12 @@ def build_dependencies(
     target_catalog = TargetCatalog(repository)
     ensure_demo_target_descriptors(target_catalog)
     ensure_demo_dataset(repository)
+    configured_api_key_encryptor = api_key_encryptor
+    if (
+        configured_api_key_encryptor is None
+        and API_KEY_ENCRYPTION_KEY_ENV in os.environ
+    ):
+        configured_api_key_encryptor = load_api_key_encryptor()
     configured_judge = load_judge_model_from_environment()
     try:
         evaluator_management = (
@@ -267,6 +281,11 @@ def build_dependencies(
             lineage=LineageQueries(repository),
             skill_analysis=SkillAnalysis(repository, skill_analyzer),
             optimization=OptimizationAnalysis(repository),
+            api_keys=(
+                ApiKeyManagement(repository, configured_api_key_encryptor)
+                if configured_api_key_encryptor is not None
+                else None
+            ),
             dispatcher=dispatcher or CeleryJobDispatcher(),
             demo_state={},
             _judge_client=(

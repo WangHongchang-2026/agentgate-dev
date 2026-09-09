@@ -8,11 +8,13 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from agentgate.integrations.credentials.encryption import ApiKeyEncryptor
 from agentgate.integrations.job_dispatchers import JobDispatcher
 from agentgate.server.dependencies import build_dependencies
 from agentgate.server.routes import (
     catalogs,
     comparisons,
+    credentials,
     datasets,
     evaluators,
     lineage,
@@ -28,10 +30,15 @@ from agentgate.server.routes import (
 def create_app(
     database_path: str | Path | None = None,
     dispatcher: JobDispatcher | None = None,
+    api_key_encryptor: ApiKeyEncryptor | None = None,
 ) -> FastAPI:
     """Build one AgentGate HTTP application with isolated dependencies."""
 
-    dependencies = build_dependencies(database_path, dispatcher)
+    dependencies = build_dependencies(
+        database_path,
+        dispatcher,
+        api_key_encryptor,
+    )
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
@@ -56,6 +63,7 @@ def create_app(
     application.include_router(system.router)
     application.include_router(datasets.router)
     application.include_router(catalogs.router)
+    application.include_router(credentials.router)
     application.include_router(evaluators.router)
     application.include_router(runs.router)
     application.include_router(results.router)

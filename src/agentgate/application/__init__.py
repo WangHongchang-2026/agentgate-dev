@@ -1,6 +1,7 @@
 """AgentGate application use cases."""
 
 from .ab_testing import ABRunPair, create_ab_runs
+from .credential_management import ApiKeyManagement
 from .dataset_management import DatasetManagement
 from .evaluator_management import (
     BuiltinEvaluatorMutation,
@@ -41,6 +42,7 @@ from .target_catalog import TargetCatalog
 
 __all__ = [
     "ABRunPair",
+    "ApiKeyManagement",
     "BuiltinEvaluatorMutation",
     "DatasetManagement",
     "EvaluatorCatalogConflict",

@@ -22,9 +22,20 @@ from agentgate.domain import (
     TargetType,
     Trace,
 )
+from agentgate.domain.credential import ApiKeyMetadata
 
 
 class AgentGateRepository(Protocol):
+    def save_api_key(
+        self, metadata: ApiKeyMetadata, encrypted_api_key: str
+    ) -> None: ...
+    def get_api_key_metadata(
+        self, api_key_id: str
+    ) -> ApiKeyMetadata | None: ...
+    def list_api_key_metadata(self) -> list[ApiKeyMetadata]: ...
+    def get_encrypted_api_key(self, api_key_id: str) -> str | None: ...
+    def delete_api_key(self, api_key_id: str) -> None: ...
+
     def save_target_descriptor(self, descriptor: TargetDescriptor) -> None: ...
     def get_target_descriptor(
         self, content_sha256: str

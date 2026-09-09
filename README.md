@@ -120,6 +120,32 @@ specification or Run manifest.
 Persistent provider administration, tenant isolation, and Web model-provider settings
 are intentionally deferred beyond this POC configuration path.
 
+### API Key Vault Configuration
+
+API Key management is enabled only when the server receives a persistent encryption
+master key:
+
+```bash
+export AGENTGATE_API_KEY_ENCRYPTION_KEY="<URL-safe Base64 for exactly 32 random bytes>"
+```
+
+Keep the same master key available across server restarts and for every process that
+must resolve the same stored API Keys. Changing or losing it makes existing encrypted
+entries unreadable. AgentGate does not generate a fallback key. Without this variable,
+the rest of the application remains available while API Key endpoints return `503`.
+
+The metadata-only management API is:
+
+- `POST /api/api-keys` creates a shared or private API Key.
+- `GET /api/api-keys` lists safe metadata.
+- `GET /api/api-keys/{api_key_id}` returns safe metadata.
+- `DELETE /api/api-keys/{api_key_id}` deletes the stored API Key.
+
+Plaintext API Keys are accepted only by the create request, encrypted before
+persistence with AES-256-GCM, and never returned by the API. This feature provides the
+vault management and internal resolution boundary. Selecting a stored API Key in a Run
+or Evaluator configuration is not connected yet.
+
 Start each process in its own terminal. The API and worker must use the same absolute
 SQLite path and Redis URL. When the optional Judge is enabled, both processes must also
 receive the identical four Judge values above.

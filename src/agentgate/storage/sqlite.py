@@ -28,12 +28,23 @@ from agentgate.domain import (
     normalize_utc,
     transition_run,
 )
+from agentgate.domain.credential import ApiKeyMetadata
 from agentgate.evaluator.versioning import (
     publish_evaluator_draft as build_evaluator_publication,
 )
 
 
 _SCHEMA = """
+CREATE TABLE IF NOT EXISTS api_keys (
+    id TEXT PRIMARY KEY,
+    scope TEXT NOT NULL CHECK(scope IN ('shared', 'private')),
+    provider_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    metadata_payload TEXT NOT NULL,
+    encrypted_api_key TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_api_keys_created
+    ON api_keys(created_at, id);
 CREATE TABLE IF NOT EXISTS target_descriptors (
     content_sha256 TEXT PRIMARY KEY,
     source_id TEXT NOT NULL,
@@ -261,6 +272,73 @@ class SQLiteRepository:
             db.execute("ALTER TABLE runs_new RENAME TO runs")
         finally:
             db.execute("PRAGMA foreign_keys = ON")
+
+    def save_api_key(
+        self, metadata: ApiKeyMetadata, encrypted_api_key: str
+    ) -> None:
+        if not isinstance(encrypted_api_key, str) or not encrypted_api_key.strip():
+            raise ValueError("encrypted API Key must be a nonblank string")
+        with self._connect() as db:
+            try:
+                db.execute(
+                    """
+                    INSERT INTO api_keys(
+                        id,scope,provider_id,created_at,
+                        metadata_payload,encrypted_api_key
+                    ) VALUES(?,?,?,?,?,?)
+                    """,
+                    (
+                        metadata.id,
+                        metadata.scope.value,
+                        metadata.provider_id,
+                        metadata.created_at.isoformat(),
+                        canonical_json(metadata),
+                        encrypted_api_key,
+                    ),
+                )
+            except sqlite3.IntegrityError:
+                existing = db.execute(
+                    "SELECT 1 FROM api_keys WHERE id=?", (metadata.id,)
+                ).fetchone()
+                if existing is not None:
+                    raise ValueError(
+                        f"API Key already exists: {metadata.id}"
+                    ) from None
+                raise
+
+    def get_api_key_metadata(
+        self, api_key_id: str
+    ) -> ApiKeyMetadata | None:
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT metadata_payload FROM api_keys WHERE id=?",
+                (api_key_id,),
+            ).fetchone()
+        return ApiKeyMetadata.model_validate_json(row[0]) if row else None
+
+    def list_api_key_metadata(self) -> list[ApiKeyMetadata]:
+        with self._connect() as db:
+            rows = db.execute(
+                """
+                SELECT metadata_payload FROM api_keys
+                ORDER BY created_at ASC, id ASC
+                """
+            ).fetchall()
+        return [ApiKeyMetadata.model_validate_json(row[0]) for row in rows]
+
+    def get_encrypted_api_key(self, api_key_id: str) -> str | None:
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT encrypted_api_key FROM api_keys WHERE id=?",
+                (api_key_id,),
+            ).fetchone()
+        return row[0] if row else None
+
+    def delete_api_key(self, api_key_id: str) -> None:
+        with self._connect() as db:
+            cursor = db.execute("DELETE FROM api_keys WHERE id=?", (api_key_id,))
+            if cursor.rowcount != 1:
+                raise ValueError(f"unknown API Key: {api_key_id}")
 
     def save_target_descriptor(self, descriptor: TargetDescriptor) -> None:
         with self._connect() as db:
