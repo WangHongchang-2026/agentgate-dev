@@ -114,6 +114,7 @@ Last updated: 2026-09-09
 | [x] | Lineage queries | Find Runs by Dataset, Case, Target, Skill, or Evaluator version and construct relationship graphs | `src/agentgate/application/lineage_queries.py`, `src/agentgate/server/routes/lineage.py` |
 | [x] | Asynchronous Run API | Create a Run, dispatch it, and return `202 Accepted` | `src/agentgate/server/routes/runs.py` |
 | [x] | Run activity API | Expose queue, running status, progress, and history | `src/agentgate/server/routes/runs.py` |
+| [x] | Historical Run rerun API | Create and dispatch a new Run from an exact terminal Run manifest without mutating history | `src/agentgate/application/run_management.py`, `src/agentgate/server/routes/runs.py` |
 | [ ] | API contract review | Finalize response models and sanitized error behavior | `src/agentgate/server/` |
 
 ## CLI

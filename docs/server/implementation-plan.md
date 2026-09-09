@@ -2,8 +2,9 @@
 
 Last updated: 2026-09-09
 
-Status: the modular Server, asynchronous HTTP 202 Run slice, and Run cancellation API
-are implemented. Submission, activity, per-Run status, cancellation, completed reports,
+Status: the modular Server, asynchronous HTTP 202 Run slice, Run cancellation API, and
+historical Run rerun API are implemented. Submission, activity, per-Run status,
+cancellation, rerun, completed reports,
 and stale-Run reconciliation follow `docs/job-dispatcher/implementation-plan.md`.
 
 ## 1. Purpose
@@ -113,6 +114,10 @@ logic.
 - Cancellation returns 200 for a successful or idempotent request, 404 for an unknown
   Run, and 409 for a completed or failed Run.
 - Cancellation accepts no request body and exposes no force-kill or dispatcher options.
+- `POST /api/runs/{run_id}/rerun` creates and asynchronously dispatches a new pending Run
+  from a terminal source Run's exact immutable manifest.
+- Historical rerun returns 202, accepts no body or configuration overrides, returns 404
+  for an unknown source, and returns 409 for a pending or running source.
 
 ### `routes/datasets.py`
 
@@ -186,7 +191,7 @@ System:       GET /health
 Overview:     GET /api/overview
 Catalogs:     GET /api/versions, GET /api/evaluators
 Runs:         GET /api/runs, POST /api/evaluations,
-              POST /api/runs/{run_id}/cancel
+              POST /api/runs/{run_id}/cancel, POST /api/runs/{run_id}/rerun
 Run activity: GET /api/runs/activity, GET /api/runs/{run_id}/status
 Results:      GET /api/runs/{run_id}
 Traces:       GET /api/runs/{run_id}/traces/{case_id}
@@ -406,17 +411,20 @@ Status: implemented; 257 tests passing
 
 ### `server/routes/runs.py`
 
-Status: asynchronous dispatch, activity, status, and cancellation endpoints implemented
+Status: asynchronous dispatch, activity, status, cancellation, and historical rerun
+endpoints implemented; 780 tests passing
 
 | Source | Decision |
 | --- | --- |
 | `goal/p1-demo` | Adapt `/api/runs`, `/api/evaluations`, and the current launch request. |
-| `integration/p1-new` | Reject external HTTP launch, rerun, comparison, and regression routes until their Application contracts exist. |
+| `integration/p1-new` | Adapt terminal-source validation only; reject obsolete models, Target overrides, single-Case comparison coupling, and broad service ownership. |
 | Current refactor | Reuse `ResultReader.list_runs()` and the existing launch request while replacing `ServerDependencies.execute_demo_run()`. |
 | From scratch | Add HTTP 202 dispatch plus activity and status routes through Application services. |
 | `goal/p1-demo` and `integration/p1-new` | Reuse no Run cancellation route; neither reference provides the approved API workflow. |
 | Current refactor | Reuse `RunManagement.cancel_run()`, `ResultReader.get_run_progress()`, and stable not-found/conflict helpers. |
 | From scratch | Add the bodyless cancellation endpoint, lifecycle error mapping, and focused API contract tests. |
+| Current refactor | Reuse `RunManagement.create_rerun()`, `dispatch_run()`, `ResultReader.get_run_progress()`, and stable error helpers. |
+| From scratch | Add a bodyless HTTP 202 rerun endpoint that exposes no historical configuration overrides. |
 
 ### `server/routes/results.py`
 
@@ -425,7 +433,7 @@ Status: implemented; 263 tests passing
 | Source | Decision |
 | --- | --- |
 | `goal/p1-demo` | Adapt overview, completed report, and Trace read endpoints. |
-| `integration/p1-new` | Reject rerun, comparison, and regression mutations until their Application contracts exist. |
+| `integration/p1-new` | Keep rerun, comparison, and regression mutations out of Results routes; those belong to their owning Application and HTTP capabilities. |
 | Current refactor | Reuse `ResultReader` exclusively. |
 | From scratch | Add focused tests for successful, missing, and pending reads. |
 

@@ -14,7 +14,7 @@ from agentgate.demo.bootstrap import (
     ensure_demo_dataset,
     ensure_demo_target_descriptors,
 )
-from agentgate.demo.loan import LOAN_DATASET
+from agentgate.demo.loan import LOAN_DATASET, LOAN_DATASET_VERSION
 from agentgate.demo.targets import (
     build_demo_target_snapshot,
     get_demo_target_descriptor,
@@ -140,6 +140,91 @@ def test_create_run_persists_retry_limit(tmp_path) -> None:
             dataset_id=LOAN_DATASET.id,
             max_retries=-1,
         )
+
+
+def test_create_rerun_preserves_exact_manifest_and_source(tmp_path) -> None:
+    repository = SQLiteRepository(tmp_path / "create-rerun.db")
+    seed_demo(repository)
+    management, _ = run_management(repository)
+    pending = management.create_run(
+        target("loan-agent-v1-risky"),
+        dataset_id=LOAN_DATASET.id,
+        dataset_version=1,
+        case_ids=(LOAN_DATASET_VERSION.cases[0].id,),
+        evaluator_ids=("skill-routing", "final-state"),
+        timeout_seconds=45,
+        max_parallel_cases=2,
+        max_retries=3,
+    )
+    running = repository.claim_pending_run(pending.id, pending.created_at)
+    assert running is not None
+    completed = transition_run(running, RunStatus.COMPLETED)
+    repository.save_run(completed)
+    source_payload = repository.get_run(completed.id).model_dump_json()
+
+    rerun = management.create_rerun(completed.id)
+
+    assert rerun.id != completed.id
+    assert rerun.status is RunStatus.PENDING
+    assert rerun.started_at is None
+    assert rerun.completed_at is None
+    assert rerun.error is None
+    assert rerun.manifest == completed.manifest
+    assert rerun.manifest.manifest_sha256 == completed.manifest.manifest_sha256
+    assert repository.get_run(rerun.id) == rerun
+    assert repository.get_run(completed.id).model_dump_json() == source_payload
+    assert repository.list_traces(rerun.id) == []
+    assert repository.list_results(rerun.id) == []
+
+
+def test_create_rerun_accepts_failed_and_cancelled_sources(tmp_path) -> None:
+    repository = SQLiteRepository(tmp_path / "terminal-reruns.db")
+    seed_demo(repository)
+    management, _ = run_management(repository)
+    failed_pending = management.create_run(target(), dataset_id=LOAN_DATASET.id)
+    cancelled_pending = management.create_run(target(), dataset_id=LOAN_DATASET.id)
+    failed_running = repository.claim_pending_run(
+        failed_pending.id,
+        failed_pending.created_at,
+    )
+    assert failed_running is not None
+    failed = transition_run(failed_running, RunStatus.FAILED, error="Target failed")
+    repository.save_run(failed)
+    cancelled = repository.cancel_run(
+        cancelled_pending.id,
+        cancelled_pending.created_at,
+    )
+    assert cancelled is not None
+
+    failed_rerun = management.create_rerun(failed.id)
+    cancelled_rerun = management.create_rerun(cancelled.id)
+
+    assert failed_rerun.status is RunStatus.PENDING
+    assert failed_rerun.manifest == failed.manifest
+    assert cancelled_rerun.status is RunStatus.PENDING
+    assert cancelled_rerun.manifest == cancelled.manifest
+
+
+def test_create_rerun_rejects_unknown_and_active_sources(tmp_path) -> None:
+    repository = SQLiteRepository(tmp_path / "invalid-reruns.db")
+    seed_demo(repository)
+    management, _ = run_management(repository)
+    pending = management.create_run(target(), dataset_id=LOAN_DATASET.id)
+    running_pending = management.create_run(target(), dataset_id=LOAN_DATASET.id)
+    running = repository.claim_pending_run(
+        running_pending.id,
+        running_pending.created_at,
+    )
+    assert running is not None
+
+    with pytest.raises(LookupError, match="unknown EvaluationRun"):
+        management.create_rerun("missing")
+    with pytest.raises(ValueError, match="cannot rerun pending"):
+        management.create_rerun(pending.id)
+    with pytest.raises(ValueError, match="cannot rerun running"):
+        management.create_rerun(running.id)
+
+    assert {run.id for run in repository.list_runs()} == {pending.id, running.id}
 
 
 def test_create_run_snapshots_latest_enabled_user_evaluator_version(tmp_path) -> None:

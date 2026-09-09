@@ -120,6 +120,20 @@ def cancel_run(run_id: str, dependencies: Dependencies) -> RunProgress:
         raise_conflict(error)
 
 
+@router.post("/runs/{run_id}/rerun", status_code=202)
+def rerun_run(run_id: str, dependencies: Dependencies) -> RunProgress:
+    try:
+        rerun = dependencies.runs.create_rerun(run_id)
+        dependencies.runs.dispatch_run(rerun.id, dependencies.dispatcher)
+        return dependencies.results.get_run_progress(rerun.id)
+    except LookupError as error:
+        raise_not_found(error)
+    except RuntimeError as error:
+        raise_service_unavailable(error)
+    except ValueError as error:
+        raise_conflict(error)
+
+
 @router.get("/runs/{run_id}/manifest")
 def run_manifest(run_id: str, dependencies: Dependencies) -> RunManifest:
     try:

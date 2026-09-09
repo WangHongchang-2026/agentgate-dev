@@ -61,8 +61,8 @@ Application modules do not own:
 
 ### `run_management.py`
 
-Owns Run creation, submission, cancellation, and the shared worker-side execution entry
-point.
+Owns Run creation, historical rerun, submission, cancellation, and the shared
+worker-side execution entry point.
 
 - Resolves a published Dataset version and selected Evaluator versions.
 - Accepts an exact `TargetSnapshot`; Target discovery belongs in `target_catalog.py`.
@@ -76,11 +76,16 @@ P1 public operations:
 
 ```text
 create_run(...)      -> persisted pending EvaluationRun
+create_rerun(...)    -> pending Run with the exact historical manifest
 dispatch_run(...)    -> submit only run_id or persist a safe dispatch failure
 execute_run(...)     -> completed/failed/cancelled EvaluationRun
 cancel_run(...)      -> persisted cancelled EvaluationRun
 fail_stale_runs(...) -> fail abandoned running Runs after their recovery deadline
 ```
+
+Historical rerun accepts completed, failed, or cancelled Runs and creates a new pending
+Run from the exact persisted manifest. It does not re-resolve current Dataset, Target, or
+Evaluator state, copy execution outputs, or mutate the source Run.
 
 Cancellation atomically transitions pending and running Runs to `CANCELLED`. Unknown
 Run IDs are not found, completed or failed Runs are lifecycle conflicts, and an already
@@ -336,8 +341,8 @@ Application refactoring is complete when:
 
 ### `application/run_management.py`
 
-Status: create, execute, dispatch, stale-Run, FastAPI, and Celery worker workflows
-implemented
+Status: create, historical rerun, execute, dispatch, cancellation, stale-Run, FastAPI,
+and Celery worker workflows implemented
 
 | Source | Decision |
 | --- | --- |
@@ -345,6 +350,9 @@ implemented
 | `integration/p1-new` | Preserve exact Target snapshot and selected-evaluator ideas; reject obsolete models and the broad registry/service. |
 | Current refactor | Reuse `DatasetManagement`, `RunManifest`, `RunEngine`, evaluator validation/execution, and repository contracts. |
 | From scratch | Implement separate `create_run()` and `execute_run()` operations so dispatchers transport only `run_id`. |
+| `integration/p1-new` rerun | Adapt terminal-source validation; reject its obsolete Run model, Target override, single-Case-only behavior, and comparison coupling. |
+| Current refactor rerun | Reuse the exact immutable `RunManifest`, `EvaluationRun` construction, repository persistence, and existing dispatch boundary. |
+| From scratch rerun | Add `create_rerun()` with no current-catalog lookup and no copied execution outputs. |
 
 ### `application/result_reader.py`
 

@@ -96,6 +96,21 @@ class RunManagement:
         self.repository.save_run(run)
         return run
 
+    def create_rerun(self, source_run_id: str) -> EvaluationRun:
+        """Create a pending Run from one terminal Run's exact manifest."""
+
+        source = self.repository.get_run(source_run_id)
+        if source is None:
+            raise LookupError(f"unknown EvaluationRun: {source_run_id}")
+        if source.status in {RunStatus.PENDING, RunStatus.RUNNING}:
+            raise ValueError(
+                f"cannot rerun {source.status.value} EvaluationRun"
+            )
+
+        rerun = EvaluationRun(manifest=source.manifest)
+        self.repository.save_run(rerun)
+        return rerun
+
     def execute_run(
         self,
         run_id: str,

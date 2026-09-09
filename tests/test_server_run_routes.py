@@ -455,6 +455,116 @@ def test_run_route_rejects_unknown_and_terminal_cancellation(tmp_path) -> None:
     assert dispatcher.cancelled_run_ids == []
 
 
+def test_run_route_reruns_exact_historical_configuration(tmp_path) -> None:
+    client, dispatcher = _client(tmp_path)
+    dependencies = client.app.state.dependencies
+    repository = dependencies.repository
+    source = dependencies.execute_demo_run("loan-agent-v1-risky")
+    source_payload = repository.get_run(source.id).model_dump_json()
+
+    with client:
+        response = client.post(f"/api/runs/{source.id}/rerun")
+
+    assert response.status_code == 202
+    rerun_id = response.json()["run_id"]
+    rerun = repository.get_run(rerun_id)
+    assert rerun is not None
+    assert rerun.id != source.id
+    assert rerun.status is RunStatus.PENDING
+    assert rerun.manifest == source.manifest
+    assert dispatcher.run_ids == [rerun.id]
+    assert repository.get_run(source.id).model_dump_json() == source_payload
+    assert repository.list_traces(rerun.id) == []
+    assert repository.list_results(rerun.id) == []
+
+
+def test_run_route_reruns_failed_and_cancelled_runs(tmp_path) -> None:
+    client, dispatcher = _client(tmp_path)
+    dependencies = client.app.state.dependencies
+    repository = dependencies.repository
+    completed = dependencies.execute_demo_run("loan-agent-v2-fixed")
+    failed_pending = dependencies.runs.create_rerun(completed.id)
+    failed_running = repository.claim_pending_run(
+        failed_pending.id,
+        failed_pending.created_at,
+    )
+    assert failed_running is not None
+    failed = transition_run(failed_running, RunStatus.FAILED, error="Target failed")
+    repository.save_run(failed)
+    cancelled_pending = dependencies.runs.create_rerun(completed.id)
+    cancelled = repository.cancel_run(
+        cancelled_pending.id,
+        cancelled_pending.created_at,
+    )
+    assert cancelled is not None
+
+    with client:
+        failed_response = client.post(f"/api/runs/{failed.id}/rerun")
+        cancelled_response = client.post(f"/api/runs/{cancelled.id}/rerun")
+
+    assert failed_response.status_code == 202
+    assert cancelled_response.status_code == 202
+    assert dispatcher.run_ids == [
+        failed_response.json()["run_id"],
+        cancelled_response.json()["run_id"],
+    ]
+
+
+def test_run_route_rejects_unknown_and_active_reruns(tmp_path) -> None:
+    client, dispatcher = _client(tmp_path)
+    dependencies = client.app.state.dependencies
+    repository = dependencies.repository
+    completed = dependencies.execute_demo_run("loan-agent-v2-fixed")
+    pending = dependencies.runs.create_rerun(completed.id)
+    running_pending = dependencies.runs.create_rerun(completed.id)
+    running = repository.claim_pending_run(
+        running_pending.id,
+        running_pending.created_at,
+    )
+    assert running is not None
+
+    with client:
+        missing = client.post("/api/runs/missing/rerun")
+        pending_response = client.post(f"/api/runs/{pending.id}/rerun")
+        running_response = client.post(f"/api/runs/{running.id}/rerun")
+
+    assert missing.status_code == 404
+    assert missing.json()["detail"] == "unknown EvaluationRun: missing"
+    assert pending_response.status_code == 409
+    assert pending_response.json()["detail"] == (
+        "cannot rerun pending EvaluationRun"
+    )
+    assert running_response.status_code == 409
+    assert running_response.json()["detail"] == (
+        "cannot rerun running EvaluationRun"
+    )
+    assert dispatcher.run_ids == []
+
+
+def test_run_route_persists_failed_rerun_when_dispatch_fails(tmp_path) -> None:
+    dispatcher = RecordingDispatcher(ConnectionError("redis password=secret"))
+    client, _ = _client(tmp_path, dispatcher)
+    dependencies = client.app.state.dependencies
+    repository = dependencies.repository
+    source = dependencies.execute_demo_run("loan-agent-v2-fixed")
+
+    with client:
+        response = client.post(f"/api/runs/{source.id}/rerun")
+        failed_runs = client.get("/api/runs", params={"status": "failed"})
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == (
+        "Evaluation dispatch service is unavailable"
+    )
+    assert len(failed_runs.json()) == 1
+    failed_rerun = repository.get_run(failed_runs.json()[0]["id"])
+    assert failed_rerun is not None
+    assert failed_rerun.manifest == source.manifest
+    assert failed_rerun.error == "Run dispatch failed: ConnectionError"
+    assert dispatcher.run_ids == [failed_rerun.id]
+    assert "secret" not in failed_runs.text
+
+
 def test_run_manifest_returns_exact_pending_execution_provenance(tmp_path) -> None:
     client, dispatcher = _client(tmp_path)
 
