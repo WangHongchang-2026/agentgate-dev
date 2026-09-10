@@ -27,6 +27,7 @@ from agentgate.application.evaluator_management import (
     EvaluatorManagement,
     build_default_evaluator_management,
 )
+from agentgate.application.result_case_writeback import ResultCaseWriteback
 from agentgate.demo.bootstrap import (
     ensure_demo_dataset,
     ensure_demo_target_descriptors,
@@ -75,6 +76,7 @@ class ServerDependencies:
     targets: TargetCatalog
     runs: RunManagement
     results: ResultReader
+    result_case_writeback: ResultCaseWriteback
     lineage: LineageQueries
     skill_analysis: SkillAnalysis
     optimization: OptimizationAnalysis
@@ -241,6 +243,7 @@ def build_dependencies(
 
     path = database_path or os.getenv("AGENTGATE_DB", "agentgate.db")
     repository = SQLiteRepository(path)
+    dataset_management = DatasetManagement(repository)
     target_catalog = TargetCatalog(repository)
     ensure_demo_target_descriptors(target_catalog)
     ensure_demo_dataset(repository)
@@ -273,11 +276,15 @@ def build_dependencies(
         )
         return ServerDependencies(
             repository=repository,
-            datasets=DatasetManagement(repository),
+            datasets=dataset_management,
             evaluators=evaluator_management,
             targets=target_catalog,
             runs=RunManagement(repository, evaluator_management),
             results=ResultReader(repository),
+            result_case_writeback=ResultCaseWriteback(
+                repository,
+                dataset_management,
+            ),
             lineage=LineageQueries(repository),
             skill_analysis=SkillAnalysis(repository, skill_analyzer),
             optimization=OptimizationAnalysis(repository),

@@ -15,6 +15,7 @@ from agentgate.domain import (
     Trace,
 )
 from agentgate.domain.base import normalize_utc, utcnow
+from agentgate.result.analytics import ResultAnalytics, calculate_result_analytics
 from agentgate.result.comparison import EvaluationComparison, compare_reports
 from agentgate.result.report import build_evaluation_report
 from agentgate.storage.repository import AgentGateRepository
@@ -157,6 +158,15 @@ class ResultReader:
         if run.status is not RunStatus.COMPLETED:
             raise ValueError("EvaluationReport requires a completed EvaluationRun")
         return build_evaluation_report(run, self.repository.list_results(run.id))
+
+    def get_analytics(self, run_id: str) -> ResultAnalytics:
+        run = self._get_run(run_id)
+        if run.status is not RunStatus.COMPLETED:
+            raise ValueError("Result analytics requires a completed EvaluationRun")
+        return calculate_result_analytics(
+            run,
+            self.repository.list_results(run.id),
+        )
 
     def compare_runs(
         self,

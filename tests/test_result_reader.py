@@ -96,6 +96,8 @@ def test_reader_rejects_unknown_and_non_completed_runs(tmp_path) -> None:
         reader.get_trace("missing", "case")
     with pytest.raises(LookupError, match="unknown EvaluationRun"):
         reader.get_run_manifest("missing")
+    with pytest.raises(LookupError, match="unknown EvaluationRun"):
+        reader.get_analytics("missing")
 
     pending = run_management(repository).create_run(
         target(), dataset_id=LOAN_DATASET.id
@@ -104,6 +106,20 @@ def test_reader_rejects_unknown_and_non_completed_runs(tmp_path) -> None:
         reader.get_report(pending.id)
     with pytest.raises(LookupError, match="unknown Trace"):
         reader.get_trace(pending.id, "missing")
+    with pytest.raises(ValueError, match="completed EvaluationRun"):
+        reader.get_analytics(pending.id)
+
+
+def test_reader_calculates_analytics_from_persisted_results(tmp_path) -> None:
+    repository = SQLiteRepository(tmp_path / "reader-analytics.db")
+    run = completed_run(repository)
+
+    analytics = ResultReader(repository).get_analytics(run.id)
+
+    assert analytics.run_id == run.id
+    assert analytics.by_evaluator.available is True
+    assert analytics.by_category.buckets[0].key == "boundary"
+    assert analytics.by_difficulty.buckets[0].key == "hard"
 
 
 def test_reader_returns_exact_manifest_for_pending_and_completed_runs(
