@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from agentgate.dataset.formats.xlsx import dump as dump_xlsx
-from agentgate.domain import Case, CaseTurn
+from agentgate.domain import Case, CaseDifficulty, CaseTurn
 from agentgate.server.dependencies import build_dependencies
 from agentgate.server.routes.datasets import router
 
@@ -103,6 +103,64 @@ def test_xlsx_routes_import_draft_and_stream_published_version(tmp_path) -> None
             "content-disposition"
         ]
         assert downloaded.headers["etag"] == f'"{published.json()["content_sha256"]}"'
+
+
+def test_case_difficulty_and_notes_update_creates_traceable_dataset_version(
+    tmp_path,
+) -> None:
+    with _client(tmp_path) as client:
+        created = client.post(
+            "/api/datasets",
+            json={"name": "Regression Dataset", "description": "Case metadata"},
+        )
+        dataset_id = created.json()["dataset"]["id"]
+        case = Case(
+            id="metadata-case",
+            name="Metadata Case",
+            difficulty=CaseDifficulty.EASY,
+            notes="Initial review note",
+            turns=(CaseTurn(id="metadata-turn", input={"message": "hello"}),),
+        )
+        assert client.post(
+            f"/api/datasets/{dataset_id}/drafts/cases",
+            json=case.model_dump(mode="json"),
+        ).status_code == 201
+        assert client.post(
+            f"/api/datasets/{dataset_id}/drafts/publish"
+        ).status_code == 200
+
+        assert client.post(
+            f"/api/datasets/{dataset_id}/drafts",
+            json={"based_on_version": 1},
+        ).status_code == 201
+        updated_case = case.model_copy(
+            update={
+                "difficulty": CaseDifficulty.HARD,
+                "notes": "Confirmed difficult after regression review",
+            }
+        )
+        updated = client.put(
+            f"/api/datasets/{dataset_id}/drafts/cases/{case.id}",
+            json=updated_case.model_dump(mode="json"),
+        )
+
+        assert updated.status_code == 200
+        assert updated.json()["cases"][0]["difficulty"] == "hard"
+        assert updated.json()["cases"][0]["notes"] == (
+            "Confirmed difficult after regression review"
+        )
+        assert client.post(
+            f"/api/datasets/{dataset_id}/drafts/publish"
+        ).status_code == 200
+
+        first = client.get(f"/api/datasets/{dataset_id}/versions/1").json()
+        second = client.get(f"/api/datasets/{dataset_id}/versions/2").json()
+        assert first["cases"][0]["difficulty"] == "easy"
+        assert first["cases"][0]["notes"] == "Initial review note"
+        assert second["cases"][0]["difficulty"] == "hard"
+        assert second["cases"][0]["notes"] == (
+            "Confirmed difficult after regression review"
+        )
 
 
 def test_xlsx_route_returns_structured_validation_issues(tmp_path) -> None:
